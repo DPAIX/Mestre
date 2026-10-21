@@ -122,6 +122,75 @@ def listar_modelos(url=URL_PADRAO):
     return [item['nome'] for item in listar_catalogo(url)]
 
 
+def mostrar_modelo(modelo, url=URL_PADRAO):
+    """Projeta metadados de /api/show; não retorna prompts nem gera respostas.
+
+    contexto_maximo é a capacidade declarada pelo modelo, não a janela ativa
+    do servidor ou do Claude Code. Nunca segue hosts remotos do documento.
+    """
+    modelo = validar_modelo(modelo)
+    url = validar_url(url)
+    cliente = urllib.request.build_opener(urllib.request.ProxyHandler({}), SemRedirecionamento())
+    pedido = urllib.request.Request(
+        url + '/api/show', json.dumps({'model': modelo, 'verbose': False}).encode('utf-8'),
+        headers={'Accept': 'application/json', 'Content-Type': 'application/json'}, method='POST')
+    try:
+        with cliente.open(pedido, timeout=TIMEOUT_CONSULTA) as resposta:
+            corpo = resposta.read(LIMITE_RESPOSTA + 1)
+    except urllib.error.HTTPError as erro:
+        with erro:
+            codigo = erro.code
+        if codigo == 404:
+            raise FalhaConfiguracao(
+                f'Ollama respondeu HTTP 404 para {modelo}. Confira a tag com --listar; '
+                'o modelo pode estar ausente ou a rota indisponível.'
+            ) from None
+        raise FalhaConfiguracao(f'Ollama respondeu HTTP {codigo}; os metadados não foram verificados.') from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise FalhaConfiguracao(
+            'O serviço Ollama não respondeu no endereço local. Instale e abra o Ollama; '
+            'se necessário, execute ollama serve em outro terminal.'
+        ) from None
+    if len(corpo) > LIMITE_RESPOSTA:
+        raise FalhaConfiguracao('Os metadados do modelo excederam o tamanho permitido.')
+    try:
+        dados = json.loads(corpo.decode('utf-8'))
+        if not isinstance(dados, dict) or 'error' in dados:
+            raise ValueError
+        if not any(chave in dados for chave in ('details', 'model_info', 'capabilities', 'remote_model', 'remote_host')):
+            raise ValueError
+        detalhes = dados.get('details', {})
+        informacoes = dados.get('model_info', {})
+        capacidades = dados.get('capabilities', [])
+        if not isinstance(detalhes, dict) or not isinstance(informacoes, dict) or not isinstance(capacidades, list):
+            raise ValueError
+        from nucleo import redigir
+        def texto(valor):
+            return str(redigir(' '.join(valor.split())))[:100] if isinstance(valor, str) else ''
+        limites = {chave: valor for chave, valor in informacoes.items()
+                   if isinstance(chave, str) and chave.endswith('.context_length')
+                   and isinstance(valor, int) and not isinstance(valor, bool) and 1 <= valor <= 10_000_000}
+        arquitetura = informacoes.get('general.architecture')
+        contexto = limites.get(arquitetura + '.context_length') if isinstance(arquitetura, str) else None
+        if contexto is None and limites:
+            contexto = min(limites.values())
+        lista_capacidades = []
+        for capacidade in capacidades[:20]:
+            if isinstance(capacidade, str):
+                nome = texto(capacidade)
+                if nome and nome not in lista_capacidades:
+                    lista_capacidades.append(nome)
+        remoto = any(isinstance(item.get(chave), str) and item[chave].strip()
+                     for item in (dados, detalhes) for chave in ('remote_model', 'remote_host'))
+        return {'nome': modelo, 'familia': texto(detalhes.get('family') or arquitetura),
+                'parametros': texto(detalhes.get('parameter_size')),
+                'quantizacao': texto(detalhes.get('quantization_level')),
+                'capacidades': lista_capacidades, 'contexto_maximo': contexto,
+                'nuvem': bool(modelo_em_nuvem(modelo) or remoto)}
+    except (ValueError, UnicodeError, KeyError, TypeError, AttributeError):
+        raise FalhaConfiguracao('O serviço local retornou metadados de modelo inválidos.') from None
+
+
 def modelo_instalado(modelo, modelos):
     validar_modelo(modelo)
     candidatos = (modelo, modelo + ':latest') if ':' not in modelo else (modelo,)
@@ -303,6 +372,7 @@ def main(argv=None, caminho=ENV):
     parser = argparse.ArgumentParser(description=__doc__)
     grupo = parser.add_mutually_exclusive_group()
     grupo.add_argument('--listar', action='store_true', help='Lista modelos locais/cloud registrados, sem alterar configuração.')
+    grupo.add_argument('--detalhes', metavar='NOME', help='Lê capacidades e contexto máximo do modelo, sem inferência nem alteração.')
     grupo.add_argument('--usar-existente', action='store_true', help='Ativa um modelo local já registrado, sem download; retorna 3 se nenhum existir.')
     grupo.add_argument('--verificar', action='store_true', help='Verifica a presença do modelo configurado no catálogo, sem inferência.')
     grupo.add_argument('--modelo', help='Ativa somente um modelo já registrado no catálogo local ou cloud.')
@@ -314,6 +384,13 @@ def main(argv=None, caminho=ENV):
         url = validar_url(args.url or os.getenv('OLLAMA_URL') or atuais.get('OLLAMA_URL') or URL_PADRAO)
         if args.listar:
             mostrar_catalogo(listar_catalogo(url))
+            return 0
+        if args.detalhes:
+            detalhes = mostrar_modelo(args.detalhes, url)
+            print(json.dumps(detalhes, ensure_ascii=False, indent=2))
+            print('Contexto máximo é a capacidade declarada; não representa a janela ativa nem um teste de geração.')
+            if detalhes['nuvem']:
+                print('Modelo cloud: as respostas dependem de internet, conta e cota do Ollama.')
             return 0
         modelo = validar_modelo(args.modelo or args.baixar_modelo or os.getenv('OLLAMA_MODEL') or atuais.get('OLLAMA_MODEL') or MODELO_PADRAO)
         if args.usar_existente:

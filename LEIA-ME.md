@@ -1,4 +1,6 @@
-> **v2.3.1:** [Guia dos modelos por conversa e colaboração com Manus](GUIA_MULTIPLOS_CHATS.md) · [Relatório e reversão](REVISAO_V2_3_1.md).
+> **v2.3.2:** [Guia de Mistral, Llama e Qwen](GUIA_MULTIPLOS_CHATS.md) · [Mudanças, testes e reversão](REVISAO_V2_3_2.md).
+
+> **v2.3.1:** [Relatório dos modelos por conversa e colaboração com Manus](REVISAO_V2_3_1.md).
 
 > **v2.3.0:** [Relatório da implementação dos três modos de chats](REVISAO_V2_3_0.md).
 

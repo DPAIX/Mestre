@@ -23,15 +23,23 @@ from equipe_ia import consultar_equipe
 
 class OllamaSimulado(BaseHTTPRequestHandler):
     pedidos=[]
+    exibicoes=[]
+    modelos=['qwen3.5:4b','gemma4:31b-cloud']
     def log_message(self,*args):pass
     def do_GET(self):
-        corpo=json.dumps({'models':[{'name':'qwen3.5:4b'},{'name':'gemma4:31b-cloud'}]}).encode()
+        corpo=json.dumps({'models':[{'name':nome} for nome in self.modelos]}).encode()
         self.send_response(200);self.send_header('Content-Type','application/json')
         self.send_header('Content-Length',str(len(corpo)));self.end_headers();self.wfile.write(corpo)
     def do_POST(self):
         obj=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        self.pedidos.append(obj)
-        corpo=json.dumps({'message':{'content':'Resposta simulada '+str(len(self.pedidos))}}).encode()
+        if self.path=='/api/show':
+            self.exibicoes.append(obj)
+            corpo=json.dumps({'details':{'family':'llama','parameter_size':'7.2B','quantization_level':'Q4_K_M'},
+                              'capabilities':['completion','tools'],'model_info':{'llama.context_length':32768},
+                              'template':'NAO_EXIBIR_TEMPLATE','system':'NAO_EXIBIR_SISTEMA'}).encode()
+        else:
+            self.pedidos.append(obj)
+            corpo=json.dumps({'message':{'content':'Resposta simulada '+str(len(self.pedidos))}}).encode()
         self.send_response(200);self.send_header('Content-Type','application/json')
         self.send_header('Content-Length',str(len(corpo)));self.end_headers();self.wfile.write(corpo)
 
@@ -42,6 +50,8 @@ class FluxosColaboracao(unittest.TestCase):
         self.p=patch.object(nucleo,'DADOS',Path(self.tmp.name));self.p.start();self.addCleanup(self.p.stop)
         nucleo.gravar_json('gestao_vida.json',{'rotina':[],'financeiro':{'saldo':10},'habitos_saude':{}})
         OllamaSimulado.pedidos=[]
+        OllamaSimulado.exibicoes=[]
+        OllamaSimulado.modelos=['qwen3.5:4b','gemma4:31b-cloud']
         self.local=ThreadingHTTPServer(('127.0.0.1',0),OllamaSimulado)
         threading.Thread(target=self.local.serve_forever,daemon=True).start()
         self.addCleanup(self.local.server_close);self.addCleanup(self.local.shutdown)
@@ -108,9 +118,52 @@ class FluxosColaboracao(unittest.TestCase):
             catalogo.assert_not_called()
             status,res=self.req(path='/api/modelos_ollama')
         self.assertEqual(status,200,res)
-        self.assertEqual(res['modelos'],[{'nome':'qwen3.5:4b','nuvem':False},
-                                        {'nome':'gemma4:31b-cloud','nuvem':True}])
+        self.assertEqual([(m['nome'],m['nuvem']) for m in res['modelos']],
+                         [('qwen3.5:4b',False),('gemma4:31b-cloud',True)])
+        self.assertEqual([m['familia'] for m in res['modelos']],['Qwen','Gemma'])
         self.assertEqual(OllamaSimulado.pedidos,[])
+
+    def test_mistral_llama_qwen_preparados_sem_duplicar_com_geracao_real_do_protocolo(self):
+        OllamaSimulado.modelos=['mistral:latest','llama3.2:latest','qwen3.8:27b']
+        modelos=['mistral','llama3.2','qwen3.8:27b']
+        status,res=self.req({'acao':'chats_modelos_ollama','modelos':modelos})
+        self.assertEqual(status,200,res)
+        self.assertEqual(OllamaSimulado.pedidos,[])
+        estado=central.estado_central('painel')
+        originais={c['modelo_ollama']:c['id'] for c in estado['chats']}
+        self.assertEqual(set(originais),set(OllamaSimulado.modelos))
+        self.assertEqual(estado['chat_ativo']['modelo_ollama'],'mistral:latest')
+        self.req({'acao':'chats_modelos_ollama','modelos':modelos})
+        self.assertEqual(len(central.listar_chats('painel')),3)
+        for nome,chat_id in originais.items():
+            self.req({'acao':'chat_selecionar','id':chat_id})
+            self.assertEqual(self.req({'acao':'pergunta','texto':'Pergunta para '+nome})[0],200)
+            self.assertEqual(OllamaSimulado.pedidos[-1]['model'],nome)
+            self.assertEqual(len(central.historico_chat('painel',chat_id)),2)
+
+    def test_detalhes_autenticados_sem_inferencia_nem_prompts(self):
+        url='/api/modelo_ollama?nome=mistral%3Alatest'
+        self.assertEqual(self.req(path=url,token=False)[0],403)
+        self.assertEqual(OllamaSimulado.exibicoes,[])
+        status,res=self.req(path=url)
+        self.assertEqual(status,200,res)
+        self.assertEqual(res['contexto_maximo'],32768)
+        self.assertEqual(res['capacidades'],['completion','tools'])
+        self.assertNotIn('NAO_EXIBIR',json.dumps(res))
+        self.assertEqual(OllamaSimulado.pedidos,[])
+        self.assertEqual(self.req(path='/api/modelo_ollama?nome=mistral&nome=outro')[0],400)
+
+    def test_teste_modelo_exige_confirmacao_uma_chamada_sem_historico(self):
+        central.registrar_troca('painel','HISTORICO_PRIVADO','resposta','Ollama')
+        self.assertEqual(self.req({'acao':'modelo_testar','modelo':'qwen3.5:4b'})[0],400)
+        self.assertEqual(OllamaSimulado.pedidos,[])
+        status,res=self.req({'acao':'modelo_testar','modelo':'qwen3.5:4b','confirmacao':'TESTAR MODELO'})
+        self.assertEqual(status,200,res)
+        self.assertEqual(len(OllamaSimulado.pedidos),1)
+        self.assertEqual(OllamaSimulado.pedidos[0]['model'],'qwen3.5:4b')
+        self.assertNotIn('HISTORICO_PRIVADO',json.dumps(OllamaSimulado.pedidos))
+        self.assertIn('não mede saldo',res['mensagem'])
+        self.assertEqual(len(central.historico_chat('painel')),2)
 
     def test_modelo_por_conversa_e_historico_sem_mudar_padrao(self):
         a=central.criar_chat('painel','Código')

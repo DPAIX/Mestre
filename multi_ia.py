@@ -352,8 +352,25 @@ class Roteador:
         try:modelos=listar_catalogo(base)
         except FalhaConfiguracao as exc:
             raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
+        for item in modelos:
+            nome=item['nome'].rsplit('/',1)[-1].casefold()
+            if nome.startswith('mistral'):familia,uso='Mistral','Redação, rascunhos e propostas de implementação.'
+            elif nome.startswith('llama3.2'):familia,uso='Llama 3.2','Triagem de tarefas e respostas curtas.'
+            elif nome.startswith('llama'):familia,uso='Llama','Conversa e revisão de propostas.'
+            elif nome.startswith('qwen'):familia,uso='Qwen','Análise, programação e revisão de código.'
+            elif nome.startswith('gemma'):familia,uso='Gemma','Revisão e comparação de propostas.'
+            else:familia,uso='Outro','Conversa e contribuição para o projeto.'
+            item.update({'familia':familia,'uso_sugerido':uso})
         return {'modelos':modelos,'padrao':os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip(),
                 'habilitado':os.getenv('OLLAMA_HABILITADO')=='1'}
+
+    def detalhes_ollama(self,modelo):
+        """Metadados declarados pelo Ollama; não consulta/gasta geração."""
+        from configurar_ia_local import mostrar_modelo,FalhaConfiguracao
+        base=endpoint_ollama().removesuffix('/api/chat')
+        try:return mostrar_modelo(modelo,base)
+        except FalhaConfiguracao as exc:
+            raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
 
     def ollama(self,pergunta,historico=None,modelo=None):
         if os.getenv('OLLAMA_HABILITADO')!='1':

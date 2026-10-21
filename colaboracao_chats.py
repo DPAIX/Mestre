@@ -28,7 +28,7 @@ MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
     'assistente_pc.py','nucleo.py','multi_ia.py','colaboracao_chats.py',
     'servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py',
-    'GUIA_MULTIPLOS_CHATS.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md',
+    'GUIA_MULTIPLOS_CHATS.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md','REVISAO_V2_3_2.md',
     'automacao_pc.py','evolucao_segura.py','reinicio_seguro.py',
     'reiniciar_assistente.py','agenda_google.py','verificacao_ambiente.py',
     'configurar_telegram.py','startup_windows.py','ponte_robotask.py',
@@ -133,6 +133,25 @@ def criar_chat(contexto,titulo,provedor='auto'):
         dados=_ler();chat=_novo_chat(dados,_espaco(dados,chave),titulo,provedor)
         _salvar(dados)
         return copy.deepcopy(chat)
+
+
+def preparar_chats_modelos(contexto,modelos):
+    """Cria/seleciona conversas separadas em uma gravação; repetir não duplica."""
+    from configurar_ia_local import validar_modelo
+    chave=_contexto(contexto)
+    if not isinstance(modelos,list) or not 1<=len(modelos)<=4:
+        raise ValueError('Selecione entre um e quatro modelos.')
+    modelos=list(dict.fromkeys(validar_modelo(nome) for nome in modelos))
+    with nucleo._LOCK:
+        dados=_ler();espaco=_espaco(dados,chave);selecionados=[];criados=0
+        for modelo in modelos:
+            chat=next((c for c in espaco['chats'] if c.get('provedor')=='Ollama' and c.get('modelo_ollama')==modelo),None)
+            if chat is None:
+                chat=_novo_chat(dados,espaco,('Ollama · '+modelo)[:100],'Ollama')
+                chat['modelo_ollama']=modelo;criados+=1
+            selecionados.append(copy.deepcopy(chat))
+        espaco['ativo']=selecionados[0]['id'];_salvar(dados)
+        return {'chats':selecionados,'criados':criados}
 
 
 def obter_chat_ativo(contexto):

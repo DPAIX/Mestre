@@ -1,10 +1,12 @@
-# MeuControlePC v2.3.1
+# MeuControlePC v2.3.2
 
 Assistente Python para Windows com bot Telegram, painel local, rotina, finanças, catálogo RoboTask e provedores de IA configuráveis.
 
 Conversas com histórico, contribuições de vários chats, equipe de IAs e opção de inferência local por Ollama. Também inclui rotina editável, Kanban e lembretes opcionais. Veja [como começar e usar os três modos de chats](GUIA_MULTIPLOS_CHATS.md).
 
 Agora permite escolher modelos Ollama por conversa e consultar vários deles na equipe, aproveitando os já instalados. O contexto exportado inclui Manus, Claude Code, OpenCode e Cline. Veja [mudanças, testes e reversão da v2.3.1](REVISAO_V2_3_1.md).
+
+Na v2.3.2, Mistral, Llama 3.2 e Qwen recebem identificação no catálogo, criação de conversas separadas em lote, detalhes de capacidades/contexto e teste explícito de resposta. A disponibilidade vem do seu Ollama; não são criadas tags fictícias nem baixados modelos automaticamente. Veja [a revisão atual](REVISAO_V2_3_2.md).
 
 ## Instalação no Windows
 

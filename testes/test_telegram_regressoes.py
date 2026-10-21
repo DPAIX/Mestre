@@ -129,6 +129,33 @@ class TelegramConfirmacoes(unittest.TestCase):
             app.tratar_pedido(self.mensagem('/ia Pergunta padrão'))
             self.assertNotIn('modelo_ollama',responder.call_args.kwargs)
 
+    def test_modelos_preparar_e_testar_exige_autorizacao_e_confirmacao(self):
+        catalogo={'modelos':[{'nome':'mistral:latest','nuvem':False},{'nome':'llama3.2:latest','nuvem':False}],
+                  'padrao':'mistral:latest','habilitado':True}
+        with patch.object(app.ROTEADOR,'catalogo_ollama',return_value=catalogo) as listar,\
+                patch.object(app.ROTEADOR,'responder',return_value=('OK','Ollama')) as responder,\
+                patch.object(app,'inline',return_value=None):
+            app.tratar_pedido(self.mensagem('/modelos preparar mistral,llama3.2',usuario=3))
+            listar.assert_not_called()
+            app.tratar_pedido(self.mensagem('/modelos preparar mistral,llama3.2'))
+            responder.assert_not_called()
+            app.tratar_pedido(self.mensagem('/modelos testar mistral'))
+            responder.assert_not_called()
+            token=next(iter(app.PENDENTES));chamada=self.chamada();chamada.data='ok:'+token
+            self.callback(chamada);self.callback(chamada)
+            responder.assert_called_once_with('Responda somente OK.',provedor='Ollama',modelo_ollama='mistral:latest')
+
+    def test_modelos_detalhes_nao_consulta_se_nao_autorizado(self):
+        detalhes={'nome':'mistral','familia':'llama','parametros':'7.2B','quantizacao':'Q4_K_M',
+                  'capacidades':['completion','tools'],'contexto_maximo':32768,'nuvem':False}
+        with patch.object(app.ROTEADOR,'detalhes_ollama',return_value=detalhes) as consultar:
+            app.tratar_pedido(self.mensagem('/modelos detalhes mistral',usuario=3))
+            consultar.assert_not_called()
+            app.tratar_pedido(self.mensagem('/modelos detalhes mistral'))
+            consultar.assert_called_once_with('mistral')
+            self.assertIn('32768',self.bot.send_message.call_args.args[1])
+            self.assertIn('não é a janela ativa',self.bot.send_message.call_args.args[1])
+
     def test_equipe_modelos_telegram_confirma_nomes_e_objetivo(self):
         with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao',return_value='Propostas') as executar:
             app.tratar_pedido(self.mensagem('/equipe modelos qwen3.5:4b,gemma4:31b-cloud | Revisar rotina'))

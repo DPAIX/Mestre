@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse,parse_qs
 
 from nucleo import (BASE,DADOS,adicionar_kanban,aprender,analisar_evolucao,detectar_ecossistema,catalogo_robotask,classificar_texto,
     concluir_tarefa,diagnostico,exportacao_segura,gerar_notebook,inicializar,ler_env,
@@ -175,7 +175,7 @@ def interpretar_comando(texto,contexto=None):
                 '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.3.1\n'
+    return ('🤖 MeuControlePC v2.3.2\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
@@ -183,6 +183,7 @@ def mensagem_ajuda():
             '/ia pergunta | /pesquisar assunto | /modelos\n'
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
             '/chat modelo qwen3.5:4b | /modelos ollama\n'
+            '/modelos preparar mistral,llama3.2 | /modelos detalhes NOME | /modelos testar NOME\n'
             '/chat modo on|off /projeto /contexto /contribuir /equipe objetivo /conexoes\n'
             '/atividade Dia | HH:MM | Atividade /lembretes on|off\n'
             '/agenda /furg /notebook /painel /id /macros /ecossistema /evoluir\n'
@@ -240,6 +241,15 @@ class PainelHandler(BaseHTTPRequestHandler):
             except (ValueError,OSError,TypeError,AttributeError):
                 return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
             self._json(estado)
+        elif caminho=='/api/modelo_ollama':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            try:
+                consulta=parse_qs(urlparse(self.path).query)
+                nomes=consulta.get('nome',[])
+                if len(nomes)!=1:raise ValueError('Informe um único nome de modelo.')
+                return self._json(ROTEADOR.detalhes_ollama(nomes[0]))
+            except ValueError as exc:return self._json({'erro':str(redigir(exc))},400)
+            except FalhaAPI as exc:return self._json({'erro':str(redigir(exc))},503)
         elif caminho=='/api/modelos_ollama':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             try:return self._json(ROTEADOR.catalogo_ollama())
@@ -407,11 +417,27 @@ def contexto_mensagem(m):
 def tratar_comandos_novos(m,chave,args,contexto):
     chat=m.chat.id;usuario=m.from_user.id
     if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/modelos' and args.casefold().startswith('preparar '):
+        modelos=[nome.strip() for nome in args[9:].split(',')]
+        enviar_texto_grande(chat,SERVICOS.executar_acao('chats_modelos_ollama',{'modelos':modelos},contexto,ROTEADOR))
+    elif chave=='/modelos' and args.casefold().startswith('testar '):
+        from configurar_ia_local import validar_modelo
+        modelo=validar_modelo(args[7:].strip())
+        confirmar(chat,usuario,'modelo_testar','Fazer uma consulta real ao modelo '+modelo+'? Se for cloud, usa internet, conta e cota. Nenhum histórico será enviado.',
+                  {'modelo':modelo,'confirmacao':'TESTAR MODELO','contexto':contexto})
+    elif chave=='/modelos' and args.casefold().startswith('detalhes '):
+        dados=ROTEADOR.detalhes_ollama(args[9:].strip())
+        linhas=['🦙 '+dados['nome'],
+                'Família: '+dados['familia']+' | Parâmetros: '+dados['parametros']+' | Quantização: '+dados['quantizacao'],
+                'Capacidades: '+(', '.join(dados['capacidades']) or 'não informadas'),
+                'Contexto máximo declarado: '+(str(dados['contexto_maximo']) if dados['contexto_maximo'] else 'não informado'),
+                'Isso não é a janela ativa, RAM disponível nem teste de geração. Não use os 200k presumidos pelo Claude Code como confirmação.']
+        enviar_texto_grande(chat,'\n'.join(linhas))
     elif chave=='/modelos' and args.casefold()=='ollama':
         catalogo=ROTEADOR.catalogo_ollama()
         linhas=['🦙 Modelos registrados no serviço Ollama do PC:']
         for item in catalogo['modelos'][:60]:
-            linhas.append('• '+item['nome']+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
+            linhas.append('• '+item['nome']+' | '+item.get('familia','')+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
         if not catalogo['modelos']:linhas.append('Nenhum modelo registrado. Confira ollama list no PC.')
         linhas.append('Padrão: '+catalogo['padrao']+'. Integração '+('habilitada.' if catalogo['habilitado'] else 'desabilitada; execute configurar_ia_local.bat.'))
         linhas.extend(['/chat modelo NOME seleciona para esta conversa.',
@@ -683,7 +709,7 @@ def configurar_bot():
                     BOT.answer_callback_query(c.id,'Solicitação expirada ou não autorizada.');return
                 if tipo=='cancelar':BOT.answer_callback_query(c.id,'Cancelado');return
                 acao=pend['acao']
-                if acao in ('conexoes_ia','equipe_ia'):
+                if acao in ('conexoes_ia','equipe_ia','modelo_testar'):
                     dados=pend.get('dados',{})
                     BOT.answer_callback_query(c.id,'Consulta iniciada; aguarde o resultado.')
                     enviar_texto_grande(c.message.chat.id,SERVICOS.executar_acao(acao,dados,dados.get('contexto',f'{c.from_user.id}:{c.message.chat.id}:0'),ROTEADOR))
