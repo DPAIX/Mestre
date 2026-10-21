@@ -1,0 +1,9 @@
+﻿id,dia,horario,fim,atividade,local,categoria,prioridade,status
+r1,Seg/Ter,08:30,11:30,Estudo Focado - Cálculo II / Mecânica Geral,Casa / FURG,Estudos,Urgente e Importante,Pendente
+r2,Segunda,12:00,13:00,Reunião semanal @Home,Sala de reunião 105,Robótica & Projetos,Importante,Pendente
+r3,Seg/Ter,13:00,16:00,OpenRob (Bolsa),FURG,Bolsa & Pesquisa,Urgente e Importante,Pendente
+r4,Segunda,13:30,15:30,Estudo Focado - Cálculo II (Tarde),FURG,Estudos,Importante,Pendente
+r5,Terça,14:20,18:00,Gerenciamento de Projetos (04432-A),"Sala 2205, FURG",Aula FURG,Urgente e Importante,Pendente
+r6,Segunda,16:00,18:00,Colete de Assistência,FURG,Extensão / Equipa,Importante,Pendente
+r7,Terça,18:00,20:00,LEP - Engenharia de Produção,Laboratório de Engenharia de Produção - LEP,Laboratório,Importante,Pendente
+r8,Segunda,18:00,21:00,Estudo Focado - Mecânica Geral,Casa,Estudos,Importante,Pendente

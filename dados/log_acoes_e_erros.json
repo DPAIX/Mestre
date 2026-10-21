@@ -1,0 +1,422 @@
+[
+  {
+    "timestamp": "2026-10-21T12:47:39",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:47:40",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:48:04",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:48:04",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:48:19",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:48:19",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:56:17",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:56:18",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:59:59",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T12:59:59",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:00:57",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:00:57",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:01:14",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "0 falhas analisadas",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:01:49",
+    "acao": "exportar_notebook",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:02:37",
+    "acao": "exportar_logs",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:02:49",
+    "acao": "diagnostico_seguro",
+    "status": "executado",
+    "detalhes": "sem alertas básicos",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:22:14",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:22:15",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:22:20",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "0 alertas; 0 falhas recentes",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:24:18",
+    "acao": "api_Gemini",
+    "status": "indisponivel",
+    "detalhes": "Gemini (503/servidor_ocupado): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+    "provedor": "Gemini"
+  },
+  {
+    "timestamp": "2026-10-21T13:24:21",
+    "acao": "api_OpenAI",
+    "status": "indisponivel",
+    "detalhes": "OpenAI (429/sem_creditos): You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+    "provedor": "OpenAI"
+  },
+  {
+    "timestamp": "2026-10-21T13:24:22",
+    "acao": "api_Claude",
+    "status": "indisponivel",
+    "detalhes": "Claude (400/sem_creditos): Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+    "provedor": "Claude"
+  },
+  {
+    "timestamp": "2026-10-21T13:25:46",
+    "acao": "diagnostico_seguro",
+    "status": "executado",
+    "detalhes": "sem alertas básicos",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:12",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "1 alertas; 3 falhas recentes",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:25",
+    "acao": "exportar_notebook",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:25",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:25",
+    "acao": "melhorias_seguras",
+    "status": "executado",
+    "detalhes": "backup, notebook, robotask",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:32",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "1 alertas; 3 falhas recentes",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:37",
+    "acao": "exportar_notebook",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:37",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:37",
+    "acao": "melhorias_seguras",
+    "status": "executado",
+    "detalhes": "backup, notebook, robotask",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:47",
+    "acao": "exportar_notebook",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:47",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:26:47",
+    "acao": "melhorias_seguras",
+    "status": "executado",
+    "detalhes": "backup, notebook, robotask",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:27:04",
+    "acao": "diagnostico_seguro",
+    "status": "executado",
+    "detalhes": "sem alertas básicos",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:42:51",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:42:51",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:42:57",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "0 alertas; 0 falhas ativas; 3 no histórico",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:43:19",
+    "acao": "diagnostico_seguro",
+    "status": "executado",
+    "detalhes": "sem alertas básicos",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:43:32",
+    "acao": "pc_f9",
+    "status": "executado",
+    "detalhes": "Atalho enviado: Ctrl+Alt+F9",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:43:50",
+    "acao": "comando",
+    "status": "falha",
+    "detalhes": "name 'chat' is not defined",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:43:55",
+    "acao": "exportar_logs",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:44:21",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "1 alertas; 1 falhas ativas; 4 no histórico",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:44:26",
+    "acao": "exportar_notebook",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:44:26",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:44:26",
+    "acao": "melhorias_seguras",
+    "status": "executado",
+    "detalhes": "backup, notebook, robotask",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:44:35",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "1 alertas; 1 falhas ativas; 4 no histórico",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T13:45:09",
+    "acao": "diagnostico_seguro",
+    "status": "executado",
+    "detalhes": "sem alertas básicos",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:13:06",
+    "acao": "painel",
+    "status": "iniciado",
+    "detalhes": "http://127.0.0.1:8765",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:13:06",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:13:12",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "0 alertas; 0 falhas ativas; 4 no histórico",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:13:47",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "0 alertas; 0 falhas ativas; 4 no histórico",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:14:04",
+    "acao": "exportar_notebook",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:14:04",
+    "acao": "mapear_robotask",
+    "status": "sucesso",
+    "detalhes": "",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:14:04",
+    "acao": "melhorias_seguras",
+    "status": "executado",
+    "detalhes": "backup, notebook, robotask",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:14:10",
+    "acao": "auto_analise",
+    "status": "executado",
+    "detalhes": "0 alertas; 0 falhas ativas; 4 no histórico",
+    "provedor": "local"
+  },
+  {
+    "timestamp": "2026-10-21T14:15:47",
+    "acao": "api_Gemini",
+    "status": "indisponivel",
+    "detalhes": "Gemini (503/servidor_ocupado): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+    "provedor": "Gemini"
+  },
+  {
+    "timestamp": "2026-10-21T14:15:49",
+    "acao": "api_OpenAI",
+    "status": "indisponivel",
+    "detalhes": "OpenAI (429/sem_creditos): You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+    "provedor": "OpenAI"
+  },
+  {
+    "timestamp": "2026-10-21T14:15:50",
+    "acao": "api_Claude",
+    "status": "indisponivel",
+    "detalhes": "Claude (400/sem_creditos): Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+    "provedor": "Claude"
+  },
+  {
+    "timestamp": "2026-10-21T14:16:04",
+    "acao": "diagnostico_seguro",
+    "status": "executado",
+    "detalhes": "sem alertas básicos",
+    "provedor": "local"
+  }
+]

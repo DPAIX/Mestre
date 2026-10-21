@@ -1,0 +1,29 @@
+[
+  {
+    "data": "2026-10-19 17:16:27",
+    "pedido": "Comando de Voz",
+    "acoes": [
+      {
+        "acao": "excluir_macro",
+        "nome": "📋 Limpar Clipboard"
+      },
+      {
+        "acao": "auto_aperfeicoar",
+        "instrucao": "Remover do código-fonte assistente_pc.py a função e o botão 'Limpar Clipboard' e criar no seu lugar a função 'Gerenciador de Tarefas' que executa o comando 'taskmgr'."
+      }
+    ]
+  },
+  {
+    "data": "2026-10-19 17:40:25",
+    "pedido": "Meu saldo atual é de 2731,23",
+    "acoes": [
+      {
+        "acao": "registrar_financeiro",
+        "tipo": "entrada",
+        "valor": 2731.23,
+        "descricao": "Atualização de Saldo Inicial",
+        "categoria": "Saldo"
+      }
+    ]
+  }
+]

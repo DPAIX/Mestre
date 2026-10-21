@@ -1,0 +1,14 @@
+{
+  "Gemini": {
+    "ate": 1792603007.9110093,
+    "categoria": "servidor_ocupado"
+  },
+  "OpenAI": {
+    "ate": 1792689349.500907,
+    "categoria": "sem_creditos"
+  },
+  "Claude": {
+    "ate": 1792689350.0782332,
+    "categoria": "sem_creditos"
+  }
+}

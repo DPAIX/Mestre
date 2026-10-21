@@ -1,0 +1,173 @@
+{
+  "ultimo_chat_id": null,
+  "rotina": [
+    {
+      "id": "r1",
+      "horario": "08:30",
+      "fim": "11:30",
+      "dia": "Seg/Ter",
+      "atividade": "Estudo Focado - Cálculo II / Mecânica Geral",
+      "local": "Casa / FURG",
+      "categoria": "Estudos",
+      "prioridade": "Urgente e Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r2",
+      "horario": "12:00",
+      "fim": "13:00",
+      "dia": "Segunda",
+      "atividade": "Reunião semanal @Home",
+      "local": "Sala de reunião 105",
+      "categoria": "Robótica & Projetos",
+      "prioridade": "Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r3",
+      "horario": "13:00",
+      "fim": "16:00",
+      "dia": "Seg/Ter",
+      "atividade": "OpenRob (Bolsa)",
+      "local": "FURG",
+      "categoria": "Bolsa & Pesquisa",
+      "prioridade": "Urgente e Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r4",
+      "horario": "13:30",
+      "fim": "15:30",
+      "dia": "Segunda",
+      "atividade": "Estudo Focado - Cálculo II (Tarde)",
+      "local": "FURG",
+      "categoria": "Estudos",
+      "prioridade": "Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r5",
+      "horario": "14:20",
+      "fim": "18:00",
+      "dia": "Terça",
+      "atividade": "Gerenciamento de Projetos (04432-A)",
+      "local": "Sala 2205, FURG",
+      "categoria": "Aula FURG",
+      "prioridade": "Urgente e Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r6",
+      "horario": "16:00",
+      "fim": "18:00",
+      "dia": "Segunda",
+      "atividade": "Colete de Assistência",
+      "local": "FURG",
+      "categoria": "Extensão / Equipa",
+      "prioridade": "Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r7",
+      "horario": "18:00",
+      "fim": "20:00",
+      "dia": "Terça",
+      "atividade": "LEP - Engenharia de Produção",
+      "local": "Laboratório de Engenharia de Produção - LEP",
+      "categoria": "Laboratório",
+      "prioridade": "Importante",
+      "status": "Pendente"
+    },
+    {
+      "id": "r8",
+      "horario": "18:00",
+      "fim": "21:00",
+      "dia": "Segunda",
+      "atividade": "Estudo Focado - Mecânica Geral",
+      "local": "Casa",
+      "categoria": "Estudos",
+      "prioridade": "Importante",
+      "status": "Pendente"
+    }
+  ],
+  "habitos_saude": {
+    "Agua_Copos": {
+      "valor": 0,
+      "meta": 8,
+      "unidade": "copos"
+    },
+    "Horas_Sono": {
+      "valor": 0,
+      "meta": 8,
+      "unidade": "horas"
+    },
+    "Exercicio_Minutos": {
+      "valor": 0,
+      "meta": 45,
+      "unidade": "min"
+    },
+    "Pausa_Mental_Foco": {
+      "valor": "Normal",
+      "meta": "Equilibrado",
+      "unidade": "estado"
+    }
+  },
+  "financeiro": {
+    "saldo": 2731.23,
+    "movimentacoes": [
+      {
+        "data": "19/10 17:40",
+        "tipo": "entrada",
+        "valor": 2731.23,
+        "descricao": "Atualização de Saldo Inicial",
+        "categoria": "Saldo"
+      }
+    ]
+  },
+  "necessidades_dinamicas": {
+    "Projetos_e_Prazos": [],
+    "Compras_e_Pendencias": [],
+    "Metas_Pessoais": []
+  },
+  "alertas_ativos": true,
+  "intervalo_alerta_agua_min": 90,
+  "urls_ics_google": [],
+  "kanban": {
+    "A_Fazer": [
+      "Revisar exercícios de Cálculo II e Mecânica Geral",
+      "Organizar tarefas da semana no LEP e OpenRob",
+      "Otimizar requisições à API Gemini com cache local e rotação de chamadas para evitar estouro da cota diária",
+      "Integrar consulta do portal de serviços e calendário acadêmico da FURG ao painel principal",
+      "Mapear datas de pagamento de mensalidades/material didático da FURG",
+      "Desenvolver relatório mensal automatizado baseado no saldo de R$ 2731,23",
+      "Criar integração via web scraping para consultar o cardápio do RU FURG automaticamente",
+      "Implementar middleware de cache de requisições idênticas e tratamento com exponential backoff para a API Gemini e parceiras",
+      "Refatorar conector da API da Anthropic (Claude) para alinhar parâmetros de mensagem com a especificação OpenAPI oficial e evitar HTTP 400 Bad Request.",
+      "Avaliar recarga de créditos nas APIs da OpenAI e Anthropic utilizando o saldo disponível (R$ 2731.23) ou desativar rotas pagas temporariamente.",
+      "Implementar checagem prévia de disponibilidade de rotas de API para prevenir erros 404 por descontinuação de modelos",
+      "Implementar cache local de auto-análises para reduzir chamadas repetitivas à API em acionamentos frequentes",
+      "Avaliar recarga de saldos nas APIs OpenAI e Anthropic utilizando o saldo disponível (R$ 2731.23) ou manter fluxo puramente gratuito."
+    ],
+    "Em_Andamento": [
+      "Automação integrada PC + Celular + Agenda Google"
+    ],
+    "Concluido": [
+      "Configuração base do Assistente no Telegram"
+    ]
+  },
+  "sugestoes_pendentes": [],
+  "funcoes_autonomas_criadas": [
+    "⚡ Sanitizador de URLs e Gestor de Rate Limit"
+  ],
+  "contador_interacoes": 0,
+  "autocorrecoes_realizadas": 36,
+  "scripts_robotask_gerados": [
+    "ponte_robotask.py"
+  ],
+  "evolucoes_autonomas": [
+    {
+      "data": "19/10 20:42",
+      "melhoria": "Implementada higienização de URLs via expressão regular para prevenir falhas no Telegram API e criado fallback automático com backoff exponencial para requisições do Gemini."
+    }
+  ]
+}

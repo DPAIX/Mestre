@@ -1,0 +1,32 @@
+{
+  "data_scan": "21/10/2026 10:55:37",
+  "python_version": "3.14.0",
+  "espaco_livre_mb": 1213,
+  "vscode_extensoes": [
+    "Colab v0.9.7",
+    "Data Wrangler",
+    "Gemini Code Assist",
+    "Jupyter",
+    "Jupyter Notebook Renderers v1.3.0",
+    "Pylance",
+    "Python 3.14",
+    "ESLint",
+    "npm Intellisense"
+  ],
+  "clis_detectadas": {
+    "node": true,
+    "npm": true,
+    "git": false,
+    "powershell": true,
+    "code": true
+  },
+  "chaves_gemini_no_pool": 1,
+  "plataformas_ia_ativas": {
+    "Gemini (3.5-flash / 2.5-flash)": "Ativo",
+    "Exa AI (Search & Answer)": "Ativo (100% Operacional)",
+    "ChatGPT (OpenAI)": "Configurado",
+    "Claude (Anthropic)": "Configurado",
+    "Motor Interpretativo Local": "Ativo"
+  },
+  "robotask_tarefas": 56
+}

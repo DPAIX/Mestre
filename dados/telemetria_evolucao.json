@@ -1,0 +1,302 @@
+[
+  {
+    "horario": "21/10 11:00:02",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:00:02",
+    "tipo": "Auto-Análise Local: Otimização local executada",
+    "detalhe": "Disco: 1214MB | 429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:03",
+    "tipo": "Passo Executado: executar_auto_analise",
+    "detalhe": "Ciclo de auto-aprendizado concluído (4871ms)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:03",
+    "tipo": "Acionamento Botão: 🧠 Auto-Análise & Evolução",
+    "detalhe": "Em Execução",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:03",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:00:04",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:00:05",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:00:05",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:00:06",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:00:06",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:00:06",
+    "tipo": "Auto-Análise Local: Otimização local executada",
+    "detalhe": "Disco: 1214MB | 429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:07",
+    "tipo": "Passo Executado: executar_auto_analise",
+    "detalhe": "Ciclo de auto-aprendizado concluído (5056ms)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:07",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:00:07",
+    "tipo": "Acionamento Botão: 🧠 Auto-Análise & Evolução",
+    "detalhe": "Em Execução",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:08",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:00:08",
+    "tipo": "Auto-Análise Local: Otimização local executada",
+    "detalhe": "Disco: 1214MB | 429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:09",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:00:09",
+    "tipo": "Passo Executado: executar_auto_analise",
+    "detalhe": "Ciclo de auto-aprendizado concluído (5574ms)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:09",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:00:09",
+    "tipo": "Acionamento Botão: 🧠 Auto-Análise & Evolução",
+    "detalhe": "Em Execução",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:10",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:00:11",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:00:11",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:00:11",
+    "tipo": "Auto-Análise Local: Otimização local executada",
+    "detalhe": "Disco: 1214MB | 429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:12",
+    "tipo": "Passo Executado: executar_auto_analise",
+    "detalhe": "Ciclo de auto-aprendizado concluído (4488ms)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:12",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:00:12",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:00:14",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:00:14",
+    "tipo": "Auto-Análise Local: Otimização local executada",
+    "detalhe": "Disco: 1214MB | 429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:00:14",
+    "tipo": "Passo Executado: executar_auto_analise",
+    "detalhe": "Ciclo de auto-aprendizado concluído (5107ms)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:04:36",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:04:36",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:04:37",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:04:39",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:04:39",
+    "tipo": "Acionamento Interpretador Híbrido: me de um aqruivo .md desse bot completo",
+    "detalhe": "Ativo",
+    "solucao": "429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)"
+  },
+  {
+    "horario": "21/10 11:04:42",
+    "tipo": "Resposta Exa Answer: me de um aqruivo .md desse bot completo",
+    "detalhe": "Como o bot OpenPCBot é um projeto modular e complexo [1], não existe um único arquivo.md que contenha a implementação completa (o código é composto por múltiplos arquivos TypeScript/Node.js) [1]. No e",
+    "solucao": "IA: Exa AI"
+  },
+  {
+    "horario": "21/10 11:15:02",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:15:03",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:15:04",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:15:06",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:15:06",
+    "tipo": "Acionamento Interpretador Híbrido: https://help.openai.com/en/articles/20001493-chatgpt-back-to-school-offer-for-students",
+    "detalhe": "Ativo",
+    "solucao": "429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)"
+  },
+  {
+    "horario": "21/10 11:15:10",
+    "tipo": "Resposta Exa Answer: https://help.openai.com/en/articles/20001493-chatgpt-back-to-school-offer-for-st",
+    "detalhe": "The 2026 Back to School offer provides eligible U.S. college and graduate students with four free monthly billing periods of ChatGPT Plus [1][2]. To qualify, you must be a full-time or part-time stude",
+    "solucao": "IA: Exa AI"
+  },
+  {
+    "horario": "21/10 11:24:55",
+    "tipo": "Aviso Gemini: Falha em gemini-2.5-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash fo"
+  },
+  {
+    "horario": "21/10 11:24:56",
+    "tipo": "Aviso Gemini: Falha em gemini-2.0-flash",
+    "detalhe": "Tentando próximo modelo",
+    "solucao": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.8-flash for the latest "
+  },
+  {
+    "horario": "21/10 11:24:58",
+    "tipo": "Aviso ChatGPT: Fallback OpenAI",
+    "detalhe": "Tentando Claude",
+    "solucao": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.\",\n        \"type\": \"in"
+  },
+  {
+    "horario": "21/10 11:24:59",
+    "tipo": "Aviso Claude: Fallback Anthropic",
+    "detalhe": "Tentando Exa AI / Motor Local",
+    "solucao": "HTTP 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},"
+  },
+  {
+    "horario": "21/10 11:24:59",
+    "tipo": "Acionamento Interpretador Híbrido: https://chatgpt.com/checkout/openai_llc/oaics_ae119cbd205844f8b8d0cab51057c69d?source=chatgpt_web_merged&promo_campaign=",
+    "detalhe": "Ativo",
+    "solucao": "429_ALL_PROVIDERS_BUSY | Liberação Gemini 3.5-flash às 04:00:02 (em 61437s)"
+  },
+  {
+    "horario": "21/10 11:24:59",
+    "tipo": "Motor Interpretativo Local: https://chatgpt.com/checkout/openai_llc/oaics_ae119cbd205844",
+    "detalhe": "Atalho Ctrl+Alt+F8 (NesTask) acionado!",
+    "solucao": "IA: Motor Local + Exa"
+  },
+  {
+    "horario": "21/10 11:25:00",
+    "tipo": "Ponte RoboTask F8: Acionamento NesTask Ctrl+Alt+F8",
+    "detalhe": "ponte_robotask.py executado e Ctrl+Alt+F8 acionado.",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  },
+  {
+    "horario": "21/10 11:25:00",
+    "tipo": "Passo Executado: acionar_nestask_f8",
+    "detalhe": "Ponte RoboTask e Ctrl+Alt+F8 acionados (565ms)",
+    "solucao": "IA: Exa AI (Answer Engine)"
+  }
+]

@@ -1,0 +1,67 @@
+2026-10-21 12:40:46,245 INFO Migrado arquivo: gestao_vida.json
+2026-10-21 12:40:46,254 INFO Migrado arquivo: minhas_macros.json
+2026-10-21 12:40:46,275 INFO Migrado arquivo: base_auto_aprendizado.json
+2026-10-21 12:40:46,290 INFO Migrado arquivo: memoria_aprendizado.json
+2026-10-21 12:40:46,311 INFO Migrado arquivo: robotask_conhecimento.json
+2026-10-21 12:40:46,327 INFO Migrado arquivo: ecossistema_suporte.json
+2026-10-21 12:40:46,351 INFO Migrado arquivo: telemetria_evolucao.json
+2026-10-21 12:47:39,440 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 12:47:40,092 INFO mapear_robotask [sucesso] 
+2026-10-21 12:48:04,792 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 12:48:04,859 INFO mapear_robotask [sucesso] 
+2026-10-21 12:48:19,213 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 12:48:19,290 INFO mapear_robotask [sucesso] 
+2026-10-21 12:56:17,967 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 12:56:18,037 INFO mapear_robotask [sucesso] 
+2026-10-21 12:59:59,623 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 12:59:59,705 INFO mapear_robotask [sucesso] 
+2026-10-21 13:00:57,189 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 13:00:57,265 INFO mapear_robotask [sucesso] 
+2026-10-21 13:01:14,364 INFO auto_analise [executado] 0 falhas analisadas
+2026-10-21 13:01:49,859 INFO exportar_notebook [sucesso] 
+2026-10-21 13:02:37,403 INFO exportar_logs [sucesso] 
+2026-10-21 13:02:49,845 INFO diagnostico_seguro [executado] sem alertas básicos
+2026-10-21 13:22:14,976 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 13:22:15,061 INFO mapear_robotask [sucesso] 
+2026-10-21 13:22:20,305 INFO auto_analise [executado] 0 alertas; 0 falhas recentes
+2026-10-21 13:24:18,927 INFO api_Gemini [indisponivel] Gemini (503/servidor_ocupado): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 
+2026-10-21 13:24:21,627 INFO api_OpenAI [indisponivel] OpenAI (429/sem_creditos): You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.
+2026-10-21 13:24:22,157 INFO api_Claude [indisponivel] Claude (400/sem_creditos): Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.
+2026-10-21 13:25:46,389 INFO diagnostico_seguro [executado] sem alertas básicos
+2026-10-21 13:26:12,268 INFO auto_analise [executado] 1 alertas; 3 falhas recentes
+2026-10-21 13:26:25,042 INFO exportar_notebook [sucesso] 
+2026-10-21 13:26:25,105 INFO mapear_robotask [sucesso] 
+2026-10-21 13:26:25,132 INFO melhorias_seguras [executado] backup, notebook, robotask
+2026-10-21 13:26:32,997 INFO auto_analise [executado] 1 alertas; 3 falhas recentes
+2026-10-21 13:26:37,443 INFO exportar_notebook [sucesso] 
+2026-10-21 13:26:37,511 INFO mapear_robotask [sucesso] 
+2026-10-21 13:26:37,532 INFO melhorias_seguras [executado] backup, notebook, robotask
+2026-10-21 13:26:47,466 INFO exportar_notebook [sucesso] 
+2026-10-21 13:26:47,525 INFO mapear_robotask [sucesso] 
+2026-10-21 13:26:47,542 INFO melhorias_seguras [executado] backup, notebook, robotask
+2026-10-21 13:27:04,236 INFO diagnostico_seguro [executado] sem alertas básicos
+2026-10-21 13:42:51,823 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 13:42:51,894 INFO mapear_robotask [sucesso] 
+2026-10-21 13:42:57,190 INFO auto_analise [executado] 0 alertas; 0 falhas ativas; 3 no histórico
+2026-10-21 13:43:19,372 INFO diagnostico_seguro [executado] sem alertas básicos
+2026-10-21 13:43:32,830 INFO pc_f9 [executado] Atalho enviado: Ctrl+Alt+F9
+2026-10-21 13:43:50,797 INFO comando [falha] name 'chat' is not defined
+2026-10-21 13:43:55,269 INFO exportar_logs [sucesso] 
+2026-10-21 13:44:21,368 INFO auto_analise [executado] 1 alertas; 1 falhas ativas; 4 no histórico
+2026-10-21 13:44:26,211 INFO exportar_notebook [sucesso] 
+2026-10-21 13:44:26,285 INFO mapear_robotask [sucesso] 
+2026-10-21 13:44:26,323 INFO melhorias_seguras [executado] backup, notebook, robotask
+2026-10-21 13:44:35,314 INFO auto_analise [executado] 1 alertas; 1 falhas ativas; 4 no histórico
+2026-10-21 13:45:09,899 INFO diagnostico_seguro [executado] sem alertas básicos
+2026-10-21 14:13:06,780 INFO painel [iniciado] http://127.0.0.1:8765
+2026-10-21 14:13:06,894 INFO mapear_robotask [sucesso] 
+2026-10-21 14:13:12,098 INFO auto_analise [executado] 0 alertas; 0 falhas ativas; 4 no histórico
+2026-10-21 14:13:47,889 INFO auto_analise [executado] 0 alertas; 0 falhas ativas; 4 no histórico
+2026-10-21 14:14:04,561 INFO exportar_notebook [sucesso] 
+2026-10-21 14:14:04,632 INFO mapear_robotask [sucesso] 
+2026-10-21 14:14:04,667 INFO melhorias_seguras [executado] backup, notebook, robotask
+2026-10-21 14:14:10,467 INFO auto_analise [executado] 0 alertas; 0 falhas ativas; 4 no histórico
+2026-10-21 14:15:47,920 INFO api_Gemini [indisponivel] Gemini (503/servidor_ocupado): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 
+2026-10-21 14:15:49,524 INFO api_OpenAI [indisponivel] OpenAI (429/sem_creditos): You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.
+2026-10-21 14:15:50,100 INFO api_Claude [indisponivel] Claude (400/sem_creditos): Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.
+2026-10-21 14:16:04,113 INFO diagnostico_seguro [executado] sem alertas básicos

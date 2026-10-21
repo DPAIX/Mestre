@@ -1,0 +1,65 @@
+{
+  "🎛️ Centro de Comando": [
+    {
+      "acao": "menu_interativo_celular"
+    }
+  ],
+  "📊 Painel Visual PC": [
+    {
+      "acao": "abrir_tabela_pc"
+    }
+  ],
+  "🛠️ Auto-Reparar Bot": [
+    {
+      "acao": "auto_reparar_bot"
+    }
+  ],
+  "📤 Exportar Logs p/ Chat": [
+    {
+      "acao": "exportar_logs_chat"
+    }
+  ],
+  "🤖 Central RoboTask & F8": [
+    {
+      "acao": "hub_robotask_interativo"
+    }
+  ],
+  "🎓 FURG, RU & Finanças": [
+    {
+      "acao": "hub_furg_financas"
+    }
+  ],
+  "🌐 Multi-IA, Exa & Logs": [
+    {
+      "acao": "hub_google_apis"
+    }
+  ],
+  "💻 Ferramentas do PC": [
+    {
+      "acao": "hub_ferramentas_pc"
+    }
+  ],
+  "📓 VS Code, Colab & Dados": [
+    {
+      "acao": "hub_vscode_colab"
+    }
+  ],
+  "🧠 Auto-Análise & Evolução": [
+    {
+      "acao": "executar_auto_analise"
+    }
+  ],
+  "🍅 Foco Pomodoro (25m)": [
+    {
+      "acao": "iniciar_pomodoro",
+      "minutos_foco": 25,
+      "minutos_pausa": 5,
+      "tarefa": "Bloco de Alta Concentração"
+    }
+  ],
+  "⚡ Reiniciar Bot": [
+    {
+      "acao": "reiniciar"
+    }
+  ]
+}
