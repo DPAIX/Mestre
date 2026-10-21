@@ -3,3 +3,5 @@ google-genai>=1.0,<3
 pyautogui>=0.9.54,<1
 Pillow>=10.0,<13
 psutil>=6.0,<8
+
+tzdata>=2024.1,<2027; sys_platform == "win32"

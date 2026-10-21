@@ -11,7 +11,7 @@ const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const estado={vida:{rotina:[],kanban:{},habitos_saude:{},financeiro:{}},resumo:{},provedores:{},logs:[],robotask:[]};
 const resposta=(body,status=200)=>({ok:status<400,status,json:async()=>body});
 function elemento(id=''){
- return {id,disabled:false,textContent:'',style:{},dataset:{},children:[],eventos:{},classList:{toggle(){}},
+ return {value:'',reportValidity(){return true},id,disabled:false,textContent:'',style:{},dataset:{},children:[],eventos:{},classList:{toggle(){}},
   setAttribute(){},addEventListener(nome,fn){this.eventos[nome]=fn},
   append(...filhos){this.children.push(...filhos)},replaceChildren(){this.children=[]},
   set innerHTML(_valor){throw Error('HTML dinâmico não permitido neste teste')}};
@@ -190,4 +190,35 @@ test('relatório ausente ou parcial usa mensagens compatíveis sem undefined',as
  const texto=p.obter('resumo-analise').textContent;
  assert.match(texto,/Resultado salvo \(formato anterior\): não informado/);
  assert.doesNotMatch(texto,/undefined|falhas ativas/);
+});
+
+
+test('central renderiza chats e propostas como texto e seleciona a conversa',async()=>{
+ const p=await painel();
+ p.contexto.centro={chats:[{id:'chat_a',titulo:'<script>texto</script>',provedor:'Ollama'}],
+  chat_ativo:{id:'chat_a',titulo:'A',provedor:'Ollama',mensagens:[{role:'user',content:'<img onerror=x>'}]},
+  tarefas:[],contribuicoes:[{id:'p1',origem:'Chat web',titulo:'Proposta',texto:'__import__("os")',status:'rascunho'}]};
+ p.executar('renderColaboracao(centro)');
+ assert.match(p.obter('lista-chats').children[0].textContent,/<script>texto<\/script>/);
+ assert.equal(p.obter('historico-chat').children[0].children[1].textContent,'<img onerror=x>');
+ let enviado; p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST')enviado=JSON.parse(opt.body);return resposta(opt.method==='POST'?{mensagem:'Selecionado'}:estado)};
+ p.obter('lista-chats').children[0].eventos.click();await new Promise(setImmediate);
+ assert.equal(enviado.acao,'chat_selecionar');assert.equal(enviado.id,'chat_a');
+});
+
+test('formulário cria chat com o provedor escolhido',async()=>{
+ const p=await painel();let enviado;
+ p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST')enviado=JSON.parse(opt.body);return resposta(opt.method==='POST'?{mensagem:'Criado'}:estado)};
+ p.obter('chat-novo-titulo').value='Implementação';p.obter('chat-novo-provedor').value='Ollama';
+ await p.obter('form-chat').eventos.submit({preventDefault(){}});
+ assert.equal(enviado.acao,'chat_criar');assert.equal(enviado.provedor,'Ollama');assert.equal(enviado.titulo,'Implementação');
+});
+
+test('equipe só envia consulta após ação explícita com confirmação',async()=>{
+ const p=await painel();let enviado;
+ p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST')enviado=JSON.parse(opt.body);return resposta(opt.method==='POST'?{mensagem:'Proposta salva'}:estado)};
+ p.obter('equipe-objetivo').value='Revisar implementação';
+ await p.obter('consultar-equipe').eventos.click();
+ assert.equal(enviado.acao,'equipe_ia');assert.equal(enviado.confirmacao,'CONSULTAR EQUIPE');assert.equal(enviado.texto,'Revisar implementação');
+ assert.equal(p.obter('equipe-resposta').textContent,'Proposta salva');
 });

@@ -22,10 +22,11 @@ import nucleo
 
 _ANALISE_LOCK = threading.RLock()
 FONTES = ('assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
+          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py',
           'agenda_google.py','evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')
 DADOS_CRITICOS = ('gestao_vida.json','minhas_macros.json','base_auto_aprendizado.json')
 BACKUP_SEGURO = DADOS_CRITICOS + ('robotask_conhecimento.json','ecossistema_suporte.json')
-PROVEDORES = ('Gemini','OpenAI','Claude','Exa')
+PROVEDORES = ('Gemini','OpenAI','Claude','Exa','Ollama')
 STATUS_FALHA = ('erro','falha','indisponivel')
 
 
@@ -61,7 +62,7 @@ def _categoria_evento(evento):
     elif codigo==402 or any(x in detalhe for x in ('sem_creditos','sem créditos','insufficient_quota','credit balance','no credits')):categoria='sem_creditos'
     elif codigo==429:categoria='limite_temporario'
     else:
-        categoria=next((x for x in ('servidor_ocupado','autenticacao','modelo_indisponivel','limite_temporario','rede','resposta_invalida','requisicao_invalida') if x in detalhe),'temporario')
+        categoria=next((x for x in ('servidor_ocupado','cota_temporaria','autenticacao','modelo_indisponivel','limite_temporario','rede','resposta_invalida','requisicao_invalida') if x in detalhe),'temporario')
     return categoria,codigo
 
 
@@ -69,6 +70,7 @@ def _orientacao_provedor(provedor,categoria):
     consulta='/pesquisar' if provedor=='Exa' else '/ia'
     orientacoes={
         'servidor_ocupado':f'O provedor informou alta demanda ou indisponibilidade temporária. Aguarde e repita uma consulta explícita com {consulta}.',
+        'cota_temporaria':f'O provedor informou cota temporária esgotada. Aguarde o prazo indicado e repita uma consulta explícita com {consulta}.',
         'limite_temporario':f'Aguarde o prazo do provedor e repita uma consulta explícita com {consulta}, sem tentativas automáticas.',
         'sem_creditos':f'A última falha indica falta de créditos. Confira o saldo na plataforma; depois, libere a pausa local com /reativar_ias e faça uma consulta explícita com {consulta}.',
         'autenticacao':'Revise a credencial no .env local e as permissões da conta; não compartilhe chaves. Depois use /reativar_ias e uma consulta explícita.',
@@ -137,6 +139,7 @@ def _diagnosticar_provedores(eventos,estado_provedores,agora):
             descricao={
                 'servidor_ocupado':'Alta demanda ou indisponibilidade temporária do provedor',
                 'limite_temporario':'Limite temporário de consultas',
+                'cota_temporaria':'Cota temporária esgotada',
                 'sem_creditos':'Créditos insuficientes na última tentativa',
                 'autenticacao':'Credencial ou permissão rejeitada',
                 'modelo_indisponivel':'Modelo ou rota não acessível',

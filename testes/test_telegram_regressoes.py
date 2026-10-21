@@ -1,5 +1,7 @@
 """Callbacks e confirmações simulados, sem conexão ao Telegram ou Windows."""
 import os
+import tempfile
+import nucleo
 from pathlib import Path
 import sys
 import time
@@ -13,6 +15,9 @@ import assistente_pc as app
 
 class TelegramConfirmacoes(unittest.TestCase):
     def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.data_patch=patch.object(nucleo,'DADOS',Path(self.tmp.name));self.data_patch.start();self.addCleanup(self.data_patch.stop)
+        nucleo.gravar_json('gestao_vida.json',{'rotina':[],'financeiro':{'saldo':0},'habitos_saude':{}})
         self.bot=MagicMock()
         self.bot.message_handler.side_effect=lambda **kwargs:lambda fn:fn
         def registrar_callback(**kwargs):
@@ -84,6 +89,44 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertNotIn(1,app.CONFIRMACOES_WINDOWS)
             app.tratar_pedido(mensagem)
             reiniciar.assert_called_once_with()
+
+
+    def mensagem(self,texto,usuario=1,chat=10,topico=None):
+        return SimpleNamespace(chat=SimpleNamespace(id=chat),from_user=SimpleNamespace(id=usuario),text=texto,message_thread_id=topico)
+
+    def test_chats_telegram_continuos_e_topicos_isolados(self):
+        app.tratar_pedido(self.mensagem('/chat novo Projeto',topico=4))
+        app.tratar_pedido(self.mensagem('/chat provedor Ollama',topico=4))
+        app.tratar_pedido(self.mensagem('/chat modo on',topico=4))
+        with patch.object(app.ROTEADOR,'responder',return_value=('Resposta simulada','Ollama')) as responder:
+            app.tratar_pedido(self.mensagem('Minha pergunta',topico=4))
+            self.assertEqual(responder.call_args.kwargs['provedor'],'Ollama')
+            self.assertEqual(responder.call_args.kwargs['historico'],[])
+            app.tratar_pedido(self.mensagem('Continuação',topico=4))
+            self.assertEqual(len(responder.call_args.kwargs['historico']),2)
+            app.tratar_pedido(self.mensagem('/ia Outro tópico',topico=5))
+            self.assertEqual(responder.call_args.kwargs['historico'],[])
+
+    def test_novo_chat_nao_autorizado_nao_grava(self):
+        app.tratar_pedido(self.mensagem('/chat novo Invasor',usuario=3))
+        self.assertFalse((Path(self.tmp.name)/'colaboracao_chats.json').exists())
+
+    def test_equipe_telegram_aguarda_confirmacao_e_nao_repete(self):
+        with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao',return_value='Propostas registradas') as executar:
+            app.tratar_pedido(self.mensagem('/equipe Revisar função'))
+            executar.assert_not_called()
+            token=next(iter(app.PENDENTES))
+            chamada=self.chamada();chamada.data='ok:'+token
+            self.callback(chamada);self.callback(chamada)
+            executar.assert_called_once()
+            self.assertEqual(executar.call_args.args[0],'equipe_ia')
+            self.assertEqual(executar.call_args.args[1]['confirmacao'],'CONSULTAR EQUIPE')
+
+    def test_documento_nao_autorizado_nao_baixa(self):
+        mensagem=self.mensagem('',usuario=3)
+        mensagem.document=SimpleNamespace(file_name='proposta.md',file_size=10,file_id='id')
+        app.importar_documento(mensagem)
+        self.bot.download_file.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

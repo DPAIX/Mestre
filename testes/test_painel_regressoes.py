@@ -60,7 +60,7 @@ class PainelRegressoes(unittest.TestCase):
         self.assertEqual(status,403)
 
     def test_comprimento_invalido_recebe_400(self):
-        for valor in ('abc','-1','0','8193'):
+        for valor in ('abc','-1','0','131073'):
             with self.subTest(valor=valor):
                 status,_=self.request(headers={'Content-Length':valor})
                 self.assertEqual(status,400)

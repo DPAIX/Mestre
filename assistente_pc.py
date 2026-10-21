@@ -22,6 +22,8 @@ from multi_ia import Roteador,FalhaAPI,DESCRICOES_FALHA
 from automacao_pc import executar,captura,ATALHOS
 from evolucao_segura import analisar as autoanalisar, melhorar as aplicar_melhorias, executar_agendador
 from reinicio_seguro import preparar_reinicio_assistente, reiniciar_windows, cancelar_reinicio_windows
+import colaboracao_chats as CENTRAL
+import servicos_chat as SERVICOS
 
 ROTEADOR=Roteador()
 BOT=None
@@ -52,12 +54,13 @@ def texto_relatorio(relatorio):
         linhas.append(f"⚠️ {x['alvo']}: {x['detalhe']}")
     if externos:
         linhas.append('🌐 APIs: última situação observada, sem nova consulta:')
-        for x in externos[:4]:
+        for x in externos[:5]:
             linhas.append(f"• {x.get('provedor',x['alvo'])}: {x['detalhe']}")
             if x.get('orientacao'):linhas.append('  '+x['orientacao'])
     linhas.append(f"🕓 Logs: {relatorio['falhas_recentes']} ocorrência(s) nos últimos 10 min; "
                   f"{relatorio.get('falhas_historicas',0)} anteriores. Contagem de registros, não teste de disponibilidade.")
-    linhas.extend('• '+s for s in relatorio['sugestoes'][:4])
+    repetidas={x.get('provedor','')+': '+x.get('orientacao','') for x in externos}
+    linhas.extend('• '+s for s in relatorio['sugestoes'] if s not in repetidas)
     linhas.append('Backup, CSV e catálogo cuidam dos arquivos locais; não corrigem falhas das APIs.')
     return '\n'.join(linhas)
 
@@ -77,6 +80,7 @@ MENU_BOTOES=[
     '🌐 Multi-IA, Exa & Logs','💻 Ferramentas do PC','📓 VS Code, Colab & Dados',
     '🧠 Auto-Análise & Evolução','🍅 Foco Pomodoro (25m)',
     '🛠️ Melhorias Seguras','🔄 Reiniciar Assistente','🖥️ Reiniciar Windows'
+    ,'💬 Chats e projeto','🔌 Testar conexões IA'
 ]
 
 def donos():
@@ -143,7 +147,7 @@ def mostrar_status():
             f"🧠 Comandos registrados: {s['comandos']}\n🌐 APIs: "+', '.join(k+' '+v for k,v in r.items())+
             '\nStatus não verificado = nenhuma consulta em tempo real foi feita.')
 
-def interpretar_comando(texto):
+def interpretar_comando(texto,contexto=None):
     """Usado também no painel local; não executa shell nem mudanças de código."""
     entrada=texto.strip()
     if not entrada:return 'Digite uma mensagem.'
@@ -163,6 +167,7 @@ def interpretar_comando(texto):
         try:return '🌐 Exa:\n'+ROTEADOR.responder(pergunta,pesquisa=True)[0]
         except FalhaAPI as e:return '⚠️ '+str(e)
     try:
+        if contexto is not None:return SERVICOS.conversar(entrada,contexto,ROTEADOR)
         resposta,prov=ROTEADOR.responder(entrada)
         return f'🤖 {prov}:\n'+resposta
     except FalhaAPI as e:
@@ -170,12 +175,15 @@ def interpretar_comando(texto):
                 '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.2.3\n'
+    return ('🤖 MeuControlePC v2.3.0\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
             '/robotask /pc /print /reparar /logs /exportar\n'
             '/ia pergunta | /pesquisar assunto | /modelos\n'
+            '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
+            '/chat modo on|off /projeto /contexto /contribuir /equipe objetivo /conexoes\n'
+            '/atividade Dia | HH:MM | Atividade /lembretes on|off\n'
             '/agenda /furg /notebook /painel /id /macros /ecossistema /evoluir\n'
             '/verificar (configuração local, sem gastar créditos)\n'
             '/reativar_ias (retestar após recarga de créditos)\n'
@@ -186,7 +194,7 @@ def rejeitar_constante_json(valor):
     raise ValueError('Número JSON inválido: '+valor)
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.2.3'
+    server_version='MeuControlePC/2.3.0'
     def log_message(self,*args):pass
     def _headers(self,codigo,tipo):
         self.send_response(codigo)
@@ -226,10 +234,24 @@ class PainelHandler(BaseHTTPRequestHandler):
                          'provedores':ROTEADOR.status(),
                          'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
                          'robotask':ler_json('robotask_conhecimento.json',{}).get('tarefas',[])[:100],
-                         'autoanalise':ler_json('ultima_autoanalise.json',{})}
+                         'autoanalise':ler_json('ultima_autoanalise.json',{}),
+                         'colaboracao':CENTRAL.estado_central('painel')}
             except (ValueError,OSError,TypeError,AttributeError):
                 return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
             self._json(estado)
+        elif caminho=='/api/contexto':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            try:
+                arquivo=CENTRAL.exportar_contexto('painel')
+                conteudo=arquivo.read_bytes()
+            except (ValueError,OSError):return self._json({'erro':'Não foi possível gerar o contexto.'},503)
+            self.send_response(200)
+            self.send_header('Content-Type','application/zip')
+            self.send_header('Content-Disposition','attachment; filename="contexto_assistente.zip"')
+            self.send_header('Content-Length',str(len(conteudo)))
+            self.send_header('Cache-Control','no-store')
+            self.send_header('X-Content-Type-Options','nosniff')
+            self.end_headers();self.wfile.write(conteudo)
         else:self._json({'erro':'não encontrado'},404)
     def do_POST(self):
         if not self._host_local():return self._json({'erro':'host não permitido'},403)
@@ -242,12 +264,13 @@ class PainelHandler(BaseHTTPRequestHandler):
             comprimentos=self.headers.get_all('Content-Length',[])
             if len(comprimentos)!=1 or not comprimentos[0].isdecimal():raise ValueError('Tamanho inválido.')
             tamanho=int(comprimentos[0])
-            if not 0<tamanho<=8192:raise ValueError('Tamanho inválido.')
+            if not 0<tamanho<=131072:raise ValueError('Tamanho inválido.')
             if self.headers.get('Transfer-Encoding'):raise ValueError('Transferência não suportada.')
             obj=json.loads(self.rfile.read(tamanho),parse_constant=rejeitar_constante_json)
             if not isinstance(obj,dict):raise ValueError('O pedido deve ser um objeto JSON.')
             acao=obj.get('acao')
-            if acao=='agua':r=registrar_agua(); resultado=f'Água: {r[0]}/{r[1]}'
+            if acao in SERVICOS.ACOES_CENTRAL:resultado=SERVICOS.executar_acao(acao,obj,'painel',ROTEADOR)
+            elif acao=='agua':r=registrar_agua(); resultado=f'Água: {r[0]}/{r[1]}'
             elif acao=='concluir':resultado='Tarefa: '+concluir_tarefa(str(obj.get('id','')))
             elif acao=='notebook':gerar_notebook();resultado='CSV e Notebook gerados na pasta dados.'
             elif acao=='diagnostico':resultado='Diagnóstico: '+json.dumps(reparo_seguro(),ensure_ascii=False)
@@ -274,7 +297,10 @@ class PainelHandler(BaseHTTPRequestHandler):
                 quantidade=obj.get('quantidade',0)
                 if isinstance(quantidade,bool) or not isinstance(quantidade,int):raise ValueError('Informe uma quantidade inteira de refeições.')
                 resultado='Simulação RU: custo R$ %.2f; saldo projetado R$ %.2f'%simular_ru(quantidade)
-            elif acao=='pergunta':resultado=interpretar_comando(str(obj.get('texto',''))[:1000])
+            elif acao=='pergunta':
+                texto=obj.get('texto','')
+                if not isinstance(texto,str):raise ValueError('A pergunta deve ser texto.')
+                resultado=interpretar_comando(texto[:12000],contexto='painel')
             elif acao=='pc' and obj.get('comando') in ('f8','f9','f10','desktop','taskmgr','furg','agenda','colab'):
                 # Requer confirmação no próprio HTML antes da chamada.
                 resultado=executar(obj['comando'])
@@ -306,13 +332,13 @@ def inline(*itens):
     markup.add(*(InlineKeyboardButton(texto,callback_data=chave) for texto,chave in itens))
     return markup
 
-def confirmar(chat_id,user_id,acao,rotulo):
+def confirmar(chat_id,user_id,acao,rotulo,dados=None):
     token=secrets.token_urlsafe(9)
     with PEND_LOCK:
         agora=time.monotonic()
         for k,v in list(PENDENTES.items()):
             if agora>v['expira']:del PENDENTES[k]
-        PENDENTES[token]={'chat':chat_id,'user':user_id,'acao':acao,'expira':agora+90}
+        PENDENTES[token]={'chat':chat_id,'user':user_id,'acao':acao,'expira':agora+90,'dados':dados or {}}
     BOT.send_message(chat_id,'Confirma a ação no seu computador?\n'+rotulo,reply_markup=inline(('✅ Executar','ok:'+token),('❌ Cancelar','cancelar:'+token)))
 
 def menu_secundario(chat_id,botao,user_id):
@@ -332,6 +358,8 @@ def menu_secundario(chat_id,botao,user_id):
     elif botao==MENU_BOTOES[11]:confirmar(chat_id,user_id,'melhorias','Fazer backup, gerar notebook/CSV e atualizar catálogo RoboTask? Nenhum código será reescrito.')
     elif botao==MENU_BOTOES[12]:confirmar(chat_id,user_id,'reiniciar','Reiniciar somente o MeuControlePC, incluindo Telegram e painel?')
     elif botao==MENU_BOTOES[13]:confirmar(chat_id,user_id,'reiniciar_windows','ATENÇÃO: reiniciar o Windows encerra aplicativos e pode FECHAR aplicativos à força e perder dados não salvos. Exigirá confirmação por código; reinício terá aviso de 60 segundos ou mais.')
+    elif botao==MENU_BOTOES[14]:enviar_texto_grande(chat_id,SERVICOS.resumo_chats(f'{user_id}:{chat_id}:0')+'\n\n'+SERVICOS.resumo_projeto(f'{user_id}:{chat_id}:0'))
+    elif botao==MENU_BOTOES[15]:confirmar(chat_id,user_id,'conexoes_ia','Fazer uma consulta real por provedor configurado? Pode consumir cota/créditos.',{'confirmacao':'TESTAR CONEXOES'})
 
 def mostrar_robotask():
     r=ler_json('robotask_conhecimento.json',{})
@@ -366,8 +394,102 @@ def enviar_texto_grande(chat,texto):
         BOT.send_message(chat,texto[i:i+3500])
 
 
+def contexto_mensagem(m):
+    return f'{m.from_user.id}:{m.chat.id}:{getattr(m,"message_thread_id",None) or 0}'
+
+
+def tratar_comandos_novos(m,chave,args,contexto):
+    chat=m.chat.id;usuario=m.from_user.id
+    if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/chat':
+        sub,_,valor=args.partition(' ');sub=sub.casefold();valor=valor.strip()
+        if sub=='novo':resultado=SERVICOS.executar_acao('chat_criar',{'titulo':valor},contexto,ROTEADOR)
+        elif sub=='usar':resultado=SERVICOS.executar_acao('chat_selecionar',{'id':valor},contexto,ROTEADOR)
+        elif sub=='provedor':resultado=SERVICOS.executar_acao('chat_provedor',{'provedor':valor},contexto,ROTEADOR)
+        elif sub=='modo' and valor in ('on','off'):
+            resultado=SERVICOS.executar_acao('chat_modo',{'ativo':valor=='on'},contexto,ROTEADOR)
+        else:resultado=SERVICOS.resumo_chats(contexto)
+        enviar_texto_grande(chat,resultado)
+    elif chave=='/projeto':
+        sub,_,valor=args.partition(' ')
+        if sub=='tarefa':
+            partes=[p.strip() for p in valor.split('|',2)]
+            obj={'titulo':partes[0],'descricao':partes[1] if len(partes)>1 else '', 'papel':partes[2] if len(partes)>2 else 'geral'}
+            resultado=SERVICOS.executar_acao('tarefa_projeto',obj,contexto,ROTEADOR)
+        elif sub=='status':
+            partes=valor.split()
+            if len(partes)!=2:raise ValueError('Use /projeto status ID em_andamento, pendente, concluida ou cancelada.')
+            resultado=SERVICOS.executar_acao('tarefa_status',{'id':partes[0],'status':partes[1]},contexto,ROTEADOR)
+        else:resultado=SERVICOS.resumo_projeto(contexto)
+        enviar_texto_grande(chat,resultado)
+    elif chave=='/contexto':
+        arquivo=CENTRAL.exportar_contexto(contexto)
+        with arquivo.open('rb') as fp:BOT.send_document(chat,fp,caption='Contexto com fontes, tarefas e prompts. Anexe em seus outros chats; traga a resposta com /contribuir ou envie um .md/.txt/.json.')
+    elif chave=='/contribuir':
+        partes=[p.strip() for p in args.split('|',2)]
+        if len(partes)!=3:raise ValueError('Use /contribuir Origem | Título | Texto, ou envie um arquivo .md/.txt/.json.')
+        resultado=SERVICOS.executar_acao('contribuicao_importar',dict(zip(('origem','titulo','texto'),partes)),contexto,ROTEADOR)
+        BOT.send_message(chat,resultado)
+    elif chave=='/contribuicao':
+        partes=args.split()
+        if len(partes)!=2:raise ValueError('Use /contribuicao ID aceita|rejeitada. Aceitar registra a seleção; não aplica código.')
+        BOT.send_message(chat,SERVICOS.executar_acao('contribuicao_status',{'id':partes[0],'status':partes[1]},contexto,ROTEADOR))
+    elif chave=='/conexoes':
+        confirmar(chat,usuario,'conexoes_ia','Testar os provedores agora com uma consulta real por provedor? Pode consumir créditos/cota.',
+                  {'confirmacao':'TESTAR CONEXOES','provedor':args or 'todos','contexto':contexto})
+    elif chave=='/equipe':
+        if not args:raise ValueError('Use /equipe Objetivo para consultar as IAs disponíveis e registrar propostas no projeto.')
+        if len(args)>8000:raise ValueError('Objetivo muito longo; limite de 8000 caracteres.')
+        confirmar(chat,usuario,'equipe_ia','Consultar uma vez cada IA configurada e disponível? Pode consumir créditos; as respostas serão propostas para revisão.',
+                  {'confirmacao':'CONSULTAR EQUIPE','texto':args,'contexto':contexto})
+    elif chave=='/atividade':
+        partes=[p.strip() for p in args.split('|',4)]
+        if len(partes)<3:raise ValueError('Use /atividade Segunda ou AAAA-MM-DD | HH:MM | Atividade | HH:MM fim (opcional) | Local (opcional).')
+        obj={'dia':partes[0],'horario':partes[1],'atividade':partes[2], 'fim':partes[3] if len(partes)>3 else '', 'local':partes[4] if len(partes)>4 else ''}
+        BOT.send_message(chat,SERVICOS.executar_acao('rotina_criar',obj,contexto,ROTEADOR))
+    elif chave=='/mover':
+        partes=args.split()
+        if len(partes)!=3:raise ValueError('Use /mover A_Fazer 0 Em_Andamento (índices começam em zero).')
+        BOT.send_message(chat,SERVICOS.executar_acao('kanban_mover',{'origem':partes[0],'indice':int(partes[1]),'destino':partes[2]},contexto,ROTEADOR))
+    elif chave=='/lembretes':
+        from rotina_ativa import configurar_lembretes,estado_lembretes
+        partes=args.split()
+        if partes and partes[0] in ('on','off'):
+            intervalo=int(partes[1]) if len(partes)>1 else 60
+            estado=configurar_lembretes(partes[0]=='on',intervalo,chat_id=chat,user_id=usuario)
+        else:estado=estado_lembretes()
+        BOT.send_message(chat,'Lembretes '+('ativados' if estado.get('ativo') else 'desativados')+'. /lembretes on 60 ativa avisos da rotina e água a cada 60 minutos enquanto o assistente estiver aberto. /lembretes off desativa.')
+    else:return False
+    return True
+
+
+def importar_documento(m):
+    if not autenticado(m.from_user.id):return
+    try:
+        doc=m.document
+        nome=str(doc.file_name or '')
+        if Path(nome).suffix.lower() not in ('.md','.txt','.json'):raise ValueError('Envie uma contribuição .md, .txt ou .json.')
+        if (doc.file_size or 0)>120000:raise ValueError('Arquivo excede 120 KB.')
+        info=BOT.get_file(doc.file_id);conteudo=BOT.download_file(info.file_path)
+        if len(conteudo)>120000:raise ValueError('Arquivo excede 120 KB.')
+        texto=conteudo.decode('utf-8-sig')
+        obj={'origem':'Documento Telegram','titulo':Path(nome).stem[:150],'texto':texto}
+        hashes=None
+        if nome.lower().endswith('.json'):
+            dados=json.loads(texto)
+            if not isinstance(dados,dict) or not isinstance(dados.get('texto'),str):raise ValueError('JSON deve seguir template_contribuicao.json com campo texto.')
+            obj.update({k:dados[k] for k in ('origem','titulo','texto','tarefa_id') if k in dados})
+            hashes=dados.get('base_hashes')
+        proposta=CENTRAL.importar_contribuicao(obj['origem'],obj['titulo'],obj['texto'],tarefa_id=obj.get('tarefa_id'),base_hashes=hashes)
+        BOT.send_message(m.chat.id,'Contribuição registrada: '+proposta['id']+'. Conteúdo guardado para revisão; nenhum código executado.')
+    except (ValueError,RuntimeError,UnicodeError) as exc:BOT.reply_to(m,str(redigir(exc)))
+    except Exception as exc:
+        registrar('importar_contribuicao','falha',str(exc));BOT.reply_to(m,'Não foi possível importar o arquivo; confira o formato e os logs.')
+
+
 def tratar_pedido(m):
     chat=m.chat.id; usuario=m.from_user.id
+    contexto=contexto_mensagem(m)
     texto=(m.text or '').strip()
     if texto.startswith('/id'):
         BOT.reply_to(m,f'Seu ID de usuário Telegram é {usuario}. Acrescente esse número a TELEGRAM_ALLOWED_USER_IDS no .env.')
@@ -375,6 +497,7 @@ def tratar_pedido(m):
     if not autenticado(usuario):
         BOT.reply_to(m,'⛔ Acesso negado. Use /id e configure o seu identificador no .env do computador.')
         return
+    if texto==MENU_BOTOES[14]:return enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto)+'\n\n'+SERVICOS.resumo_projeto(contexto))
     if texto in MENU_BOTOES:return menu_secundario(chat,texto,usuario)
     t=texto.casefold()
     if t in ('reinicie o windows','reiniciar windows','reinicie o pc','reiniciar o pc','reinicie o sistema por completo'):
@@ -386,6 +509,7 @@ def tratar_pedido(m):
     cmd,*resto=texto.split(' ',1)
     args=resto[0].strip() if resto else ''
     chave=cmd.split('@',1)[0].casefold()
+    if tratar_comandos_novos(m,chave,args,contexto):return
     if chave in ('/start','/menu','/ajuda'):BOT.send_message(chat,mensagem_ajuda(),reply_markup=teclado_principal())
     elif chave in ('/status','/sistema'):BOT.send_message(chat,mostrar_status())
     elif chave=='/modelos':BOT.send_message(chat,mostrar_ias())
@@ -461,11 +585,13 @@ def tratar_pedido(m):
         with nb.open('rb') as fp:BOT.send_document(chat,fp,caption='Notebook para VS Code/Jupyter/Colab')
     elif chave=='/agenda':BOT.send_message(chat,mostrar_agenda())
     elif chave=='/furg':BOT.send_message(chat,'🎓 https://sistemas.furg.br\n'+mostrar_rotina())
-    elif chave in ('/ia','/perguntar'):enviar_texto_grande(chat,interpretar_comando(args))
+    elif chave in ('/ia','/perguntar'):enviar_texto_grande(chat,interpretar_comando(args,contexto=contexto) if args else 'Use /ia sua pergunta. /chats lista conversas; /chat modo on permite conversar por mensagens comuns.')
     elif chave in ('/pesquisar','/exa'):enviar_texto_grande(chat,interpretar_comando('pesquise '+args))
     elif chave=='/scanrt':BOT.send_message(chat,f'🤖 {len(catalogo_robotask())} tarefas catalogadas.')
     else:
-        if classificar_texto(texto)=='conversa':
+        if classificar_texto(texto)=='conversa' and CENTRAL.obter_chat_ativo(contexto).get('modo_conversa'):
+            enviar_texto_grande(chat,interpretar_comando(texto,contexto=contexto))
+        elif classificar_texto(texto)=='conversa':
             BOT.send_message(chat,'💬 Para consultar uma IA, use /ia sua pergunta; para pesquisar, /pesquisar assunto. Comandos locais: /menu. Isso evita cobranças ou chamadas de API acidentais.')
         else:enviar_texto_grande(chat,interpretar_comando(texto))
 
@@ -481,6 +607,8 @@ def configurar_bot():
     try:import telebot
     except ImportError:raise RuntimeError('Instale as dependências: pip install -r requirements.txt') from None
     BOT=telebot.TeleBot(chave,threaded=True,num_threads=4)
+    @BOT.message_handler(content_types=['document'])
+    def documento(m):importar_documento(m)
     @BOT.message_handler(content_types=['voice','audio'])
     def voz(m):
         if not autenticado(m.from_user.id):return
@@ -529,6 +657,11 @@ def configurar_bot():
                     BOT.answer_callback_query(c.id,'Solicitação expirada ou não autorizada.');return
                 if tipo=='cancelar':BOT.answer_callback_query(c.id,'Cancelado');return
                 acao=pend['acao']
+                if acao in ('conexoes_ia','equipe_ia'):
+                    dados=pend.get('dados',{})
+                    BOT.answer_callback_query(c.id,'Consulta iniciada; aguarde o resultado.')
+                    enviar_texto_grande(c.message.chat.id,SERVICOS.executar_acao(acao,dados,dados.get('contexto',f'{c.from_user.id}:{c.message.chat.id}:0'),ROTEADOR))
+                    return
                 if acao=='print':
                     foto=captura();BOT.send_photo(c.message.chat.id,foto)
                 elif acao=='reiniciar':
@@ -592,6 +725,8 @@ def main():
                 if os.name=='nt':catalogo_robotask()
             except Exception as e:registrar('robotask','aviso',str(e))
             bot=configurar_bot()
+            from rotina_ativa import executar_agendador as agendar_lembretes
+            threading.Thread(target=agendar_lembretes,args=(monitor_parada,bot.send_message),kwargs={'autorizar':autenticado},daemon=True).start()
             print('Bot configurado; aguardando comandos de proprietários autorizados.')
             bot.infinity_polling(timeout=20,long_polling_timeout=15,skip_pending=True)
     finally:
