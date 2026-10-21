@@ -1,4 +1,6 @@
-> **v2.3.0:** [Guia dos três modos de chats e IA local](GUIA_MULTIPLOS_CHATS.md) · [Relatório da implementação](REVISAO_V2_3_0.md).
+> **v2.3.1:** [Guia dos modelos por conversa e colaboração com Manus](GUIA_MULTIPLOS_CHATS.md) · [Relatório e reversão](REVISAO_V2_3_1.md).
+
+> **v2.3.0:** [Relatório da implementação dos três modos de chats](REVISAO_V2_3_0.md).
 
 > **Revisão v2.2.3:** veja [REVISAO_V2_2_3.md](REVISAO_V2_2_3.md). Diagnóstico local separado dos serviços de IA, orientação específica para 503 e testes sem os avisos de recursos abertos no Python 3.14.
 
@@ -9,6 +11,8 @@
 > **Atualização v2.2:** veja [GUIA_ATUALIZACAO_V2_2.md](GUIA_ATUALIZACAO_V2_2.md). O desligamento do computador não está disponível; o reinício do Windows permanece opcional.
 
 # MeuControlePC v2 — bot Telegram e painel local
+
+**Atualização v2.3.1:** escolha modelos Ollama por conversa, consulte uma equipe com vários modelos e leve o contexto para Manus e agentes de código. Se já tem modelos, use `configurar_ia_local.bat --listar` e `configurar_ia_local.bat --modelo qwen3.5:4b` com o nome do seu catálogo. Veja [o guia](GUIA_MULTIPLOS_CHATS.md) e [o relatório de testes e reversão](REVISAO_V2_3_1.md).
 
 Revisão do projeto legado `assistente_pc.py`, destinada ao Windows. Código Python separado em núcleo, roteador de IA, controles locais e painel HTTP. **Não foram incorporadas as chaves originais; elas estavam expostas nos arquivos antigos e precisam ser revogadas e substituídas.** O projeto foi testado em ambiente isolado; o funcionamento real no seu computador depende da instalação e das novas credenciais.
 

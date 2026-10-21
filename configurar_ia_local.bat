@@ -27,5 +27,5 @@ set "RESULTADO_IA_LOCAL=%ERRORLEVEL%"
 
 :finalizar
 if not "%RESULTADO_IA_LOCAL%"=="0" echo Consulte as instrucoes acima e tente novamente.
-pause
+if "%~1"=="" pause
 exit /b %RESULTADO_IA_LOCAL%

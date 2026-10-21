@@ -24,6 +24,10 @@ from equipe_ia import consultar_equipe
 class OllamaSimulado(BaseHTTPRequestHandler):
     pedidos=[]
     def log_message(self,*args):pass
+    def do_GET(self):
+        corpo=json.dumps({'models':[{'name':'qwen3.5:4b'},{'name':'gemma4:31b-cloud'}]}).encode()
+        self.send_response(200);self.send_header('Content-Type','application/json')
+        self.send_header('Content-Length',str(len(corpo)));self.end_headers();self.wfile.write(corpo)
     def do_POST(self):
         obj=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         self.pedidos.append(obj)
@@ -97,6 +101,53 @@ class FluxosColaboracao(unittest.TestCase):
         self.assertEqual(status,200,res)
         self.assertEqual(len(OllamaSimulado.pedidos),1)
         self.assertIn('não representa medição do saldo',res['mensagem'])
+
+    def test_catalogo_autenticado_nao_gera_respostas(self):
+        with patch.object(app.ROTEADOR,'catalogo_ollama',wraps=app.ROTEADOR.catalogo_ollama) as catalogo:
+            self.assertEqual(self.req(path='/api/modelos_ollama',token=False)[0],403)
+            catalogo.assert_not_called()
+            status,res=self.req(path='/api/modelos_ollama')
+        self.assertEqual(status,200,res)
+        self.assertEqual(res['modelos'],[{'nome':'qwen3.5:4b','nuvem':False},
+                                        {'nome':'gemma4:31b-cloud','nuvem':True}])
+        self.assertEqual(OllamaSimulado.pedidos,[])
+
+    def test_modelo_por_conversa_e_historico_sem_mudar_padrao(self):
+        a=central.criar_chat('painel','Código')
+        status,res=self.req({'acao':'chat_modelo','id':a['id'],'modelo':'qwen3.5:4b'})
+        self.assertEqual(status,200,res)
+        self.assertEqual(self.req({'acao':'pergunta','texto':'Plano local'})[0],200)
+        self.assertEqual(OllamaSimulado.pedidos[-1]['model'],'qwen3.5:4b')
+        b=central.criar_chat('painel','Revisão')
+        self.assertEqual(self.req({'acao':'chat_modelo','id':b['id'],'modelo':'gemma4:31b-cloud'})[0],200)
+        self.req({'acao':'pergunta','texto':'Revisar proposta'})
+        self.assertEqual(OllamaSimulado.pedidos[-1]['model'],'gemma4:31b-cloud')
+        self.assertFalse(any(m['content']=='Plano local' for m in OllamaSimulado.pedidos[-1]['messages']))
+        self.req({'acao':'chat_selecionar','id':a['id']})
+        self.req({'acao':'pergunta','texto':'Continue'})
+        self.assertEqual(OllamaSimulado.pedidos[-1]['model'],'qwen3.5:4b')
+        self.assertTrue(any(m['content']=='Plano local' for m in OllamaSimulado.pedidos[-1]['messages']))
+        self.assertEqual(central.obter_chat_ativo('painel')['mensagens'][-1]['modelo_ollama'],'qwen3.5:4b')
+        self.assertNotEqual(os.environ.get('OLLAMA_MODEL'),'qwen3.5:4b')
+
+    def test_modelo_ausente_ou_chat_alheio_nao_altera_chat(self):
+        ativo=central.obter_chat_ativo('painel')
+        self.assertEqual(self.req({'acao':'chat_modelo','modelo':'ausente:4b'})[0],400)
+        self.assertEqual(central.obter_chat_ativo('painel'),ativo)
+        outro=central.criar_chat('telegram:outro','Privado')
+        with patch.object(app.ROTEADOR,'catalogo_ollama') as catalogo:
+            self.assertEqual(self.req({'acao':'chat_modelo','id':outro['id'],'modelo':'qwen3.5:4b'})[0],400)
+            catalogo.assert_not_called()
+        self.assertEqual(OllamaSimulado.pedidos,[])
+
+    def test_equipe_dois_modelos_ollama_uma_chamada_cada(self):
+        status,res=self.req({'acao':'equipe_ia','texto':'Revisar atividade','provedores':['Ollama'],
+                             'modelos_ollama':['qwen3.5:4b','gemma4:31b-cloud'],
+                             'confirmacao':'CONSULTAR EQUIPE'})
+        self.assertEqual(status,200,res)
+        self.assertEqual(sorted(p['model'] for p in OllamaSimulado.pedidos),['gemma4:31b-cloud','qwen3.5:4b'])
+        origens={p['origem'] for p in central.estado_central('painel')['contribuicoes']}
+        self.assertEqual(origens,{'Ollama / qwen3.5:4b','Ollama / gemma4:31b-cloud'})
 
     def test_contribuicao_e_tarefa_funcionam_sem_ia(self):
         self.assertEqual(self.req({'acao':'tarefa_projeto','titulo':'Teste','descricao':'Revisar rota','papel':'revisao'})[0],200)

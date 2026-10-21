@@ -7,7 +7,7 @@ import colaboracao_chats as central
 _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modo','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -38,9 +38,13 @@ def conversar(texto,contexto,roteador):
         raise RuntimeError('Esta conversa já está respondendo. Aguarde antes de enviar outra pergunta.')
     try:
         historico=central.historico_chat(contexto,chat_id=chat['id'])
-        resposta,provedor=roteador.responder(texto.strip(),historico=historico,provedor=chat.get('provedor','auto'))
-        central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'])
-        return f'🤖 {provedor} · {chat["titulo"]}:\n'+resposta
+        opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
+        modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
+        if modelo:opcoes['modelo_ollama']=modelo
+        resposta,provedor=roteador.responder(texto.strip(),**opcoes)
+        central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo)
+        rotulo=provedor+(' / '+modelo if modelo else '')
+        return f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta
     finally:trava.release()
 
 
@@ -50,8 +54,10 @@ def resumo_chats(contexto):
     linhas=['💬 Conversas deste chat/tópico:']
     for chat in estado['chats'][:30]:
         marca='▶' if chat['id']==ativo['id'] else '•'
-        linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}')
+        modelo=(' / '+chat['modelo_ollama']) if chat.get('modelo_ollama') and chat['provedor']=='Ollama' else ''
+        linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
     linhas.extend(['/chat novo Nome | /chat usar ID | /chat provedor Ollama',
+                   '/modelos ollama lista o catálogo; /chat modelo NOME seleciona por conversa; /chat modelo padrao usa a configuração geral.',
                    '/chat modo on ativa conversa por mensagens comuns; /chat modo off desativa.',
                    '/ia pergunta usa o histórico da conversa selecionada. /contexto gera um pacote para outros chats.'])
     return '\n'.join(linhas)
@@ -67,7 +73,7 @@ def resumo_projeto(contexto):
     linhas.extend(['/projeto tarefa Título | Descrição | Papel',
                    '/projeto status ID pendente|em_andamento|concluida|cancelada',
                    '/contribuir Origem | Título | Texto (ou envie .md/.txt/.json)',
-                   '/contexto exporta fontes, tarefas e prompts para ChatGPT/Gemini/Claude.',
+                   '/contexto exporta fontes, tarefas e prompts para ChatGPT/Gemini/Claude/Manus e agentes de código.',
                    '/equipe Objetivo consulta as IAs configuradas após confirmação.'])
     return '\n'.join(linhas)
 
@@ -85,9 +91,10 @@ def texto_conexoes(resultado):
 def texto_equipe(resultado):
     linhas=['👥 Equipe de IAs — contribuições para revisão']
     for item in resultado.get('resultados',[]):
+        nome=item.get('provedor','IA')+(' / '+item['modelo'] if item.get('modelo') else '')
         if item.get('ok'):
-            linhas.append(f'✅ {item["provedor"]} · {item.get("papel","contribuição")}: '+str(item.get('contribuicao_id','registrada')))
-        else:linhas.append(f'⚠️ {item.get("provedor","IA")}: '+str(item.get('erro') or item.get('mensagem') or 'indisponível'))
+            linhas.append(f'✅ {nome} · {item.get("papel","contribuição")}: '+str(item.get('contribuicao_id','registrada')))
+        else:linhas.append(f'⚠️ {nome}: '+str(item.get('erro') or item.get('mensagem') or 'indisponível'))
     if not resultado.get('resultados'):linhas.append('Nenhum provedor disponível. Use /contexto para colaborar pelos chats web ou configure Ollama.')
     linhas.append(str(resultado.get('resumo') or 'Veja as propostas na aba Chats e projeto. Nenhum código foi aplicado.'))
     return str(nucleo.redigir('\n'.join(linhas)))
@@ -103,6 +110,24 @@ def executar_acao(acao,obj,contexto,roteador):
         chat_id=obj.get('id') or central.obter_chat_ativo(contexto)['id']
         central.configurar_chat(contexto,chat_id,provedor=campo_texto(obj,'provedor',30))
         return 'Provedor da conversa atualizado.'
+    if acao=='chat_modelo':
+        from configurar_ia_local import validar_modelo,modelo_instalado,modelo_em_nuvem
+        modelo=campo_texto(obj,'modelo',200,False)
+        nuvem=modelo_em_nuvem(modelo)
+        chat_id=obj.get('id') or central.obter_chat_ativo(contexto)['id']
+        # Verifica a propriedade do chat antes de consultar o serviço do PC.
+        if chat_id not in {c['id'] for c in central.listar_chats(contexto)}:
+            raise ValueError('Conversa não encontrada neste contexto.')
+        if modelo:
+            validar_modelo(modelo)
+            catalogo=roteador.catalogo_ollama()
+            encontrado=modelo_instalado(modelo,[item['nome'] for item in catalogo['modelos']])
+            if not encontrado:raise ValueError('Modelo ausente do catálogo Ollama. Atualize a lista; registre o modelo no Ollama antes de selecioná-lo.')
+            modelo=encontrado
+            nuvem=any(item['nome']==modelo and item.get('nuvem') for item in catalogo['modelos'])
+        central.configurar_chat(contexto,chat_id,provedor='Ollama',modelo_ollama=modelo)
+        aviso=' Modelos em nuvem dependem de conta, internet e cota.' if modelo and nuvem else ''
+        return 'Modelo da conversa atualizado: '+(modelo or 'padrão da configuração geral')+'.'+aviso
     if acao=='chat_modo':
         if not isinstance(obj.get('ativo'),bool):raise ValueError('O modo de conversa deve ser verdadeiro ou falso.')
         chat_id=obj.get('id') or central.obter_chat_ativo(contexto)['id']
@@ -124,7 +149,7 @@ def executar_acao(acao,obj,contexto,roteador):
         return texto_conexoes(roteador.verificar_conexoes(provedor=obj.get('provedor','todos')))
     if acao=='equipe_ia':
         from equipe_ia import consultar_equipe
-        resultado=consultar_equipe(campo_texto(obj,'texto',8000),roteador,provedores=obj.get('provedores'),tarefa_id=obj.get('tarefa_id') or None,confirmacao=obj.get('confirmacao',''))
+        resultado=consultar_equipe(campo_texto(obj,'texto',8000),roteador,provedores=obj.get('provedores'),tarefa_id=obj.get('tarefa_id') or None,confirmacao=obj.get('confirmacao',''),modelos_ollama=obj.get('modelos_ollama'))
         return texto_equipe(resultado)
     if acao=='rotina_criar':
         from rotina_ativa import cadastrar_tarefa

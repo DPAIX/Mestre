@@ -345,12 +345,24 @@ class Roteador:
         if not textos or any(not isinstance(x,str) for x in textos) or not ''.join(textos).strip():
             raise FalhaAPI('Claude',0,'Resposta sem conteúdo textual.','resposta_invalida')
         return ''.join(textos).strip()
-    def ollama(self,pergunta,historico=None):
+    def catalogo_ollama(self):
+        """Leitura explícita do serviço no PC; não gera respostas nem baixa modelos."""
+        from configurar_ia_local import listar_catalogo, FalhaConfiguracao
+        base=endpoint_ollama().removesuffix('/api/chat')
+        try:modelos=listar_catalogo(base)
+        except FalhaConfiguracao as exc:
+            raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
+        return {'modelos':modelos,'padrao':os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip(),
+                'habilitado':os.getenv('OLLAMA_HABILITADO')=='1'}
+
+    def ollama(self,pergunta,historico=None,modelo=None):
         if os.getenv('OLLAMA_HABILITADO')!='1':
             raise FalhaAPI('Ollama',0,'Integração local desabilitada. Configure Ollama e habilite OLLAMA_HABILITADO=1.','configuracao')
         endpoint=endpoint_ollama()
-        modelo=os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip()
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}',modelo):
+        from configurar_ia_local import validar_modelo
+        modelo=os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip() if modelo is None else modelo
+        try:modelo=validar_modelo(modelo)
+        except ValueError:
             raise FalhaAPI('Ollama',0,'OLLAMA_MODEL inválido; informe o nome de um modelo instalado.','configuracao')
         try:timeout=float(os.getenv('OLLAMA_TIMEOUT','90'))
         except ValueError:timeout=90
@@ -428,11 +440,28 @@ class Roteador:
                     'verificado_em':time.time()}
         return resultado
 
-    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto'):
+    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None):
         escolhido=self._selecionar_provedor(provedor)
+        if modelo_ollama is not None:
+            from configurar_ia_local import validar_modelo
+            modelo_ollama=validar_modelo(modelo_ollama)
+            if escolhido!='Ollama' or pesquisa:
+                raise ValueError('Selecione Ollama para escolher um modelo dessa integração.')
         mensagens=preparar_mensagens(pergunta,historico)
         pergunta=mensagens[-1]['content']
         if historico is not None:historico=mensagens[:-1]
+        if modelo_ollama is not None:
+            # Uma consulta explícita ao modelo escolhido. Falhas de um modelo
+            # cloud não pausam outro modelo nem alteram o estado do padrão.
+            try:
+                texto=self.ollama(pergunta,historico=historico,modelo=modelo_ollama)
+                self.ultimo_provedor='Ollama'
+                registrar('pergunta','sucesso','Modelo '+modelo_ollama+'; '+pergunta[:120],'Ollama')
+                return texto,'Ollama'
+            except FalhaAPI as exc:
+                registrar('api_Ollama','indisponivel','Modelo '+modelo_ollama+'; '+str(exc),'Ollama')
+                raise FalhaAPI('Ollama',exc.codigo,'Modelo '+modelo_ollama+': '+exc.detalhe,
+                               exc.categoria,exc.retry_after) from None
         if pesquisa:
             if escolhido not in ('auto','Exa'):raise ValueError('Pesquisa usa Exa; escolha auto ou Exa.')
             prov='Exa'

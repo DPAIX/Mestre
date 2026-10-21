@@ -175,13 +175,14 @@ def interpretar_comando(texto,contexto=None):
                 '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.3.0\n'
+    return ('🤖 MeuControlePC v2.3.1\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
             '/robotask /pc /print /reparar /logs /exportar\n'
             '/ia pergunta | /pesquisar assunto | /modelos\n'
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
+            '/chat modelo qwen3.5:4b | /modelos ollama\n'
             '/chat modo on|off /projeto /contexto /contribuir /equipe objetivo /conexoes\n'
             '/atividade Dia | HH:MM | Atividade /lembretes on|off\n'
             '/agenda /furg /notebook /painel /id /macros /ecossistema /evoluir\n'
@@ -239,6 +240,11 @@ class PainelHandler(BaseHTTPRequestHandler):
             except (ValueError,OSError,TypeError,AttributeError):
                 return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
             self._json(estado)
+        elif caminho=='/api/modelos_ollama':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            try:return self._json(ROTEADOR.catalogo_ollama())
+            except (FalhaAPI,ValueError) as exc:
+                return self._json({'erro':str(redigir(exc))},503)
         elif caminho=='/api/contexto':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             try:
@@ -306,7 +312,7 @@ class PainelHandler(BaseHTTPRequestHandler):
                 resultado=executar(obj['comando'])
             else:return self._json({'erro':'ação não permitida'},400)
             self._json({'ok':True,'mensagem':resultado})
-        except (ValueError,RuntimeError,KeyError,UnicodeError,TypeError,OverflowError) as e:self._json({'erro':str(redigir(e))},400)
+        except (ValueError,RuntimeError,KeyError,UnicodeError,TypeError,OverflowError,FalhaAPI) as e:self._json({'erro':str(redigir(e))},400)
         except Exception as e:
             registrar('painel','falha',str(e))
             self._json({'erro':'Falha inesperada; consulte o log.'},500)
@@ -401,11 +407,22 @@ def contexto_mensagem(m):
 def tratar_comandos_novos(m,chave,args,contexto):
     chat=m.chat.id;usuario=m.from_user.id
     if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/modelos' and args.casefold()=='ollama':
+        catalogo=ROTEADOR.catalogo_ollama()
+        linhas=['🦙 Modelos registrados no serviço Ollama do PC:']
+        for item in catalogo['modelos'][:60]:
+            linhas.append('• '+item['nome']+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
+        if not catalogo['modelos']:linhas.append('Nenhum modelo registrado. Confira ollama list no PC.')
+        linhas.append('Padrão: '+catalogo['padrao']+'. Integração '+('habilitada.' if catalogo['habilitado'] else 'desabilitada; execute configurar_ia_local.bat.'))
+        linhas.extend(['/chat modelo NOME seleciona para esta conversa.',
+                       'Somente catálogo consultado; a geração de respostas não foi testada.'])
+        enviar_texto_grande(chat,'\n'.join(linhas))
     elif chave=='/chat':
         sub,_,valor=args.partition(' ');sub=sub.casefold();valor=valor.strip()
         if sub=='novo':resultado=SERVICOS.executar_acao('chat_criar',{'titulo':valor},contexto,ROTEADOR)
         elif sub=='usar':resultado=SERVICOS.executar_acao('chat_selecionar',{'id':valor},contexto,ROTEADOR)
         elif sub=='provedor':resultado=SERVICOS.executar_acao('chat_provedor',{'provedor':valor},contexto,ROTEADOR)
+        elif sub=='modelo':resultado=SERVICOS.executar_acao('chat_modelo',{'modelo':'' if valor.casefold() in ('padrao','padrão') else valor},contexto,ROTEADOR)
         elif sub=='modo' and valor in ('on','off'):
             resultado=SERVICOS.executar_acao('chat_modo',{'ativo':valor=='on'},contexto,ROTEADOR)
         else:resultado=SERVICOS.resumo_chats(contexto)
@@ -424,7 +441,7 @@ def tratar_comandos_novos(m,chave,args,contexto):
         enviar_texto_grande(chat,resultado)
     elif chave=='/contexto':
         arquivo=CENTRAL.exportar_contexto(contexto)
-        with arquivo.open('rb') as fp:BOT.send_document(chat,fp,caption='Contexto com fontes, tarefas e prompts. Anexe em seus outros chats; traga a resposta com /contribuir ou envie um .md/.txt/.json.')
+        with arquivo.open('rb') as fp:BOT.send_document(chat,fp,caption='Contexto com fontes, tarefas e prompts para ChatGPT, Gemini, Claude, Manus e agentes de código. Anexe no serviço escolhido e traga a resposta com /contribuir ou um .md/.txt/.json.')
     elif chave=='/contribuir':
         partes=[p.strip() for p in args.split('|',2)]
         if len(partes)!=3:raise ValueError('Use /contribuir Origem | Título | Texto, ou envie um arquivo .md/.txt/.json.')
@@ -440,8 +457,17 @@ def tratar_comandos_novos(m,chave,args,contexto):
     elif chave=='/equipe':
         if not args:raise ValueError('Use /equipe Objetivo para consultar as IAs disponíveis e registrar propostas no projeto.')
         if len(args)>8000:raise ValueError('Objetivo muito longo; limite de 8000 caracteres.')
-        confirmar(chat,usuario,'equipe_ia','Consultar uma vez cada IA configurada e disponível? Pode consumir créditos; as respostas serão propostas para revisão.',
-                  {'confirmacao':'CONSULTAR EQUIPE','texto':args,'contexto':contexto})
+        dados={'confirmacao':'CONSULTAR EQUIPE','texto':args,'contexto':contexto}
+        rotulo='Consultar uma vez cada IA configurada e disponível? Pode consumir créditos; as respostas serão propostas para revisão.'
+        if args.casefold().startswith('modelos '):
+            from configurar_ia_local import validar_modelo
+            nomes,separador,objetivo=args[8:].partition('|')
+            modelos=[validar_modelo(n.strip()) for n in nomes.split(',')]
+            if not separador or not objetivo.strip() or not 1<=len(modelos)<=4:
+                raise ValueError('Use /equipe modelos nome:tag,outro:tag | Objetivo (até quatro modelos).')
+            dados.update({'texto':objetivo.strip(),'provedores':['Ollama'],'modelos_ollama':modelos})
+            rotulo='Consultar uma vez cada modelo Ollama: '+', '.join(modelos)+'? Modelos cloud usam internet e cota; as respostas ficam como propostas.'
+        confirmar(chat,usuario,'equipe_ia',rotulo,dados)
     elif chave=='/atividade':
         partes=[p.strip() for p in args.split('|',4)]
         if len(partes)<3:raise ValueError('Use /atividade Segunda ou AAAA-MM-DD | HH:MM | Atividade | HH:MM fim (opcional) | Local (opcional).')
@@ -639,7 +665,7 @@ def configurar_bot():
     @BOT.message_handler(content_types=['text'])
     def texto(m):
         try:tratar_pedido(m)
-        except (ValueError,RuntimeError) as e:
+        except (ValueError,RuntimeError,FalhaAPI) as e:
             registrar('comando','falha',str(e));BOT.reply_to(m,'⚠️ '+str(redigir(e)))
         except Exception as e:
             registrar('comando','falha',str(e));BOT.reply_to(m,'⚠️ Erro inesperado; confira os logs.')
@@ -688,6 +714,9 @@ def configurar_bot():
                            'agua':lambda:'💧 %d/%d'%registrar_agua(),'scanrt':lambda:f'{len(catalogo_robotask())} tarefas catalogadas.'}
                 BOT.send_message(c.message.chat.id,respostas[valor]());BOT.answer_callback_query(c.id)
             else:BOT.answer_callback_query(c.id,'Comando desconhecido')
+        except (FalhaAPI,ValueError,RuntimeError) as e:
+            registrar('callback','falha',str(e))
+            BOT.send_message(c.message.chat.id,'⚠️ Solicitação não concluída: '+str(redigir(e))[:1200])
         except Exception as e:
             registrar('callback','falha',str(e));BOT.answer_callback_query(c.id,'Falha. Consulte logs.')
     return BOT

@@ -222,3 +222,63 @@ test('equipe só envia consulta após ação explícita com confirmação',async
  assert.equal(enviado.acao,'equipe_ia');assert.equal(enviado.confirmacao,'CONSULTAR EQUIPE');assert.equal(enviado.texto,'Revisar implementação');
  assert.equal(p.obter('equipe-resposta').textContent,'Proposta salva');
 });
+
+test('lista Ollama consulta somente ao clicar, autentica e distingue modelos cloud',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,opt});return resposta({padrao:'qwen3.5:4b',habilitado:true,modelos:[{nome:'qwen3.5:4b',nuvem:false},{nome:'gemma4:31b-cloud',nuvem:true}]})};
+ p.contexto.centro={chats:[],chat_ativo:{id:'chat_local',titulo:'Local',provedor:'Ollama',modelo_ollama:'qwen3.5:4b'},tarefas:[],contribuicoes:[]};
+ p.executar('renderColaboracao(centro)');
+ assert.equal(chamadas.length,0);
+ await p.obter('atualizar-modelos-ollama').eventos.click();
+ assert.equal(chamadas.length,1);assert.equal(chamadas[0].url,'/api/modelos_ollama');
+ assert.equal(chamadas[0].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(chamadas[0].opt.method,undefined);
+ const opcoes=p.obter('chat-modelo-ollama').children;
+ assert.equal(opcoes[1].value,'qwen3.5:4b');assert.match(opcoes[1].textContent,/local/);
+ assert.match(opcoes[2].textContent,/nuvem \(conta, internet e cota\)/);
+ assert.match(p.obter('modelos-ollama-status').textContent,/não testa geração nem acesso à nuvem/);
+ assert.equal(p.obter('equipe-modelos-ollama').children[1].children[0].checked,false);
+});
+
+test('modelo salvo acompanha a conversa e mudar seletor não escreve automaticamente',async()=>{
+ const p=await painel();let enviado,posts=0;
+ p.contexto.centro={chats:[],chat_ativo:{id:'chat_a',titulo:'Local',provedor:'Ollama',modelo_ollama:'qwen3.5:4b',mensagens:[{role:'assistant',content:'Anterior',modelo_ollama:'qwen2.5:3b'}]},tarefas:[],contribuicoes:[]};
+ p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-modelo-ollama').value,'qwen3.5:4b');
+ assert.match(p.obter('chat-modelo-ollama').children[1].textContent,/tipo a verificar/);assert.match(p.obter('chat-modelo-aviso').textContent,/alias também pode apontar/);
+ assert.match(p.obter('historico-chat').children[0].children[0].textContent,/qwen2.5:3b/);
+ p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST'){posts++;enviado=JSON.parse(opt.body)}return resposta(opt.method==='POST'?{mensagem:'Modelo salvo'}:estado)};
+ p.obter('chat-modelo-ollama').value='gemma4:31b-cloud';p.obter('chat-modelo-ollama').eventos.change();
+ assert.equal(posts,0);assert.match(p.obter('chat-modelo-aviso').textContent,/conta Ollama.*internet e cota/);
+ p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-modelo-ollama').value,'gemma4:31b-cloud');
+ await p.obter('chat-salvar-modelo').eventos.click();
+ assert.equal(posts,1);assert.equal(enviado.acao,'chat_modelo');assert.equal(enviado.id,'chat_a');assert.equal(enviado.modelo,'gemma4:31b-cloud');
+ p.contexto.centro.chat_ativo={id:'chat_b',titulo:'Nuvem',provedor:'Ollama',modelo_ollama:'gemma4:31b-cloud'};
+ p.executar('renderColaboracao(centro)');assert.equal(p.obter('chat-modelo-ollama').value,'gemma4:31b-cloud');assert.match(p.obter('chat-provedor').textContent,/gemma4:31b-cloud/);
+ p.contexto.centro.chat_ativo={id:'chat_a',titulo:'Local',provedor:'Ollama',modelo_ollama:'qwen3.5:4b'};
+ p.executar('renderColaboracao(centro)');assert.equal(p.obter('chat-modelo-ollama').value,'qwen3.5:4b');
+});
+
+test('equipe envia duas tags Ollama após confirmar os modelos e o uso cloud',async()=>{
+ const p=await painel();let enviado,confirmacao;
+ const seletorAnterior=p.contexto.document.querySelectorAll;
+ p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-modelos-ollama input:checked'?[{value:'qwen3.5:4b'},{value:'gemma4:31b-cloud'}]:seletorAnterior(seletor);
+ p.contexto.confirm=texto=>{confirmacao=texto;return true};
+ p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST')enviado=JSON.parse(opt.body);return resposta(opt.method==='POST'?{mensagem:'Duas propostas salvas'}:estado)};
+ p.executar("catalogoOllama={padrao:'qwen3.5:4b',modelos:[{nome:'qwen3.5:4b',nuvem:false},{nome:'gemma4:31b-cloud',nuvem:true}]}");
+ p.obter('equipe-objetivo').value='Propor melhorias';
+ await p.obter('consultar-equipe').eventos.click();
+ assert.deepEqual(enviado.provedores,['Ollama']);assert.deepEqual(enviado.modelos_ollama,['qwen3.5:4b','gemma4:31b-cloud']);
+ assert.equal(enviado.confirmacao,'CONSULTAR EQUIPE');assert.match(confirmacao,/qwen3.5:4b · local/);assert.match(confirmacao,/gemma4:31b-cloud · nuvem \(conta, internet e cota\)/);
+ assert.equal(p.obter('equipe-resposta').textContent,'Duas propostas salvas');
+});
+
+test('equipe recusa mais de quatro participantes antes de consultar',async()=>{
+ const p=await painel();let chamadas=0;
+ const seletorAnterior=p.contexto.document.querySelectorAll;
+ p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-modelos-ollama input:checked'?[{value:'qwen3.5:4b'},{value:'gemma4:31b-cloud'}]:seletor==='#equipe-provedores input:checked'?[{value:'Gemini'},{value:'OpenAI'},{value:'Claude'}]:seletorAnterior(seletor);
+ p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
+ p.obter('equipe-objetivo').value='Propor melhorias';await p.obter('consultar-equipe').eventos.click();
+ assert.equal(chamadas,0);assert.match(p.obter('aviso').textContent,/no máximo quatro participantes/);
+});

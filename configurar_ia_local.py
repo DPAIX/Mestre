@@ -1,7 +1,8 @@
-"""Configura Ollama no próprio PC, sem chaves ou créditos de APIs cloud.
+"""Configura modelos no serviço Ollama do próprio PC.
 
 Instale e abra o Ollama em https://ollama.com/download. Este assistente não
-instala programas nem baixa modelos sem --baixar-modelo explícito.
+instala programas nem baixa modelos sem --baixar-modelo explícito. Modelos
+cloud são remotos e dependem da conexão, conta e limites do Ollama.
 """
 from __future__ import annotations
 
@@ -63,12 +64,22 @@ def validar_modelo(modelo):
     return modelo
 
 
+def modelo_em_nuvem(modelo):
+    """Reconhece os sufixos cloud; aliases também exigem metadados do catálogo."""
+    return isinstance(modelo, str) and modelo.lower().endswith(('-cloud', ':cloud'))
+
+
 class SemRedirecionamento(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
 
-def listar_modelos(url=URL_PADRAO):
+def listar_catalogo(url=URL_PADRAO):
+    """Consulta /api/tags sem inferência; retorna nome e indicação de nuvem.
+
+    Não retorna hosts remotos nem outros metadados fornecidos pelo serviço.
+    Não segue redirecionamentos e nunca consulta uma URL remota do catálogo.
+    """
     url = validar_url(url)
     cliente = urllib.request.build_opener(urllib.request.ProxyHandler({}), SemRedirecionamento())
     pedido = urllib.request.Request(url + '/api/tags', headers={'Accept': 'application/json'})
@@ -91,15 +102,24 @@ def listar_modelos(url=URL_PADRAO):
         itens = dados['models']
         if not isinstance(itens, list):
             raise ValueError
-        modelos = []
+        modelos = {}
         for item in itens:
             nome = item.get('name') or item.get('model')
             nome = validar_modelo(nome)
-            if nome not in modelos:
-                modelos.append(nome)
-        return modelos
+            detalhes = item.get('details')
+            detalhes = detalhes if isinstance(detalhes, dict) else {}
+            remoto = any(isinstance(dados.get(chave), str) and dados[chave].strip()
+                         for dados in (item, detalhes) for chave in ('remote_model', 'remote_host'))
+            nuvem = bool(modelo_em_nuvem(nome) or remoto)
+            modelos[nome] = bool(modelos.get(nome, False) or nuvem)
+        return [{'nome': nome, 'nuvem': nuvem} for nome, nuvem in modelos.items()]
     except (ValueError, UnicodeError, KeyError, TypeError, AttributeError):
         raise FalhaConfiguracao('O serviço local retornou uma lista de modelos inválida.') from None
+
+
+def listar_modelos(url=URL_PADRAO):
+    """Compatibilidade para configuração por nome e verificações existentes."""
+    return [item['nome'] for item in listar_catalogo(url)]
 
 
 def modelo_instalado(modelo, modelos):
@@ -162,21 +182,38 @@ def atualizar_env(modelo, url=URL_PADRAO, caminho=ENV):
 
 def instrucoes(modelo=MODELO_PADRAO):
     print('Instale e abra o Ollama: https://ollama.com/download')
-    print(f'Para baixar este modelo, execute: ollama pull {validar_modelo(modelo)}')
+    print(f'Para registrar ou baixar este modelo, execute: ollama pull {validar_modelo(modelo)}')
     print(f'Ou execute: configurar_ia_local.bat --baixar-modelo {modelo}')
-    print('O download pode ocupar vários GB; a execução usa a RAM/CPU/GPU do seu PC.')
-    print('Nenhum crédito de Gemini, OpenAI, Claude ou Exa é necessário para a IA local.')
+    if modelo_em_nuvem(modelo):
+        print('Este é um modelo cloud: as respostas dependem de internet, conta e cota do Ollama.')
+    else:
+        print('Para modelos locais, o download pode ocupar vários GB e a execução usa a RAM/CPU/GPU do PC.')
+        print('Modelos locais não usam créditos de Gemini, OpenAI, Claude ou Exa.')
+    print('Use configurar_ia_local.bat --listar para ver os modelos já registrados, sem baixar outro.')
+
+
+def mostrar_catalogo(catalogo):
+    print('Modelos registrados no serviço Ollama:')
+    for item in catalogo[:100]:
+        tipo = 'cloud — internet, conta e cota do Ollama' if item['nuvem'] else 'local'
+        print(f'  {item["nome"]} — {tipo}')
+    if not catalogo:
+        print('  nenhum.')
+    print('A presença no catálogo não testa a geração nem a disponibilidade da conta cloud.')
 
 
 def verificar(modelo=MODELO_PADRAO, url=URL_PADRAO):
-    modelos = listar_modelos(url)
+    catalogo = listar_catalogo(url)
+    modelos = [item['nome'] for item in catalogo]
     encontrado = modelo_instalado(modelo, modelos)
     print('Serviço Ollama: respondeu à consulta local /api/tags.')
-    print('Modelos instalados: ' + (', '.join(modelos[:20]) if modelos else 'nenhum.'))
+    mostrar_catalogo(catalogo)
     if encontrado:
-        print(f'Modelo disponível no disco: {encontrado}. Geração de respostas ainda não testada.')
+        item = next(item for item in catalogo if item['nome'] == encontrado)
+        tipo = 'cloud, com execução remota' if item['nuvem'] else 'local'
+        print(f'Modelo registrado: {encontrado} ({tipo}). Geração de respostas ainda não testada.')
         return True
-    print(f'O modelo {modelo} ainda não consta entre os instalados.')
+    print(f'O modelo {modelo} ainda não consta no catálogo.')
     instrucoes(modelo)
     return False
 
@@ -186,9 +223,25 @@ def configurar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
     url = validar_url(url)
     encontrado = modelo_instalado(modelo, listar_modelos(url))
     if encontrado is None:
-        raise FalhaConfiguracao(f'O modelo {modelo} não está instalado. Execute ollama pull {modelo} antes de ativá-lo.')
+        raise FalhaConfiguracao(f'O modelo {modelo} não consta no catálogo. Execute ollama pull {modelo} antes de ativá-lo.')
     atualizar_env(encontrado, url, caminho)
     return encontrado
+
+
+def usar_existente(url=URL_PADRAO, caminho=ENV, preferido=MODELO_PADRAO):
+    """Reaproveita um modelo local sem pull; nunca escolhe cloud automaticamente."""
+    url = validar_url(url)
+    catalogo = listar_catalogo(url)
+    locais = [item['nome'] for item in catalogo if not item['nuvem']]
+    if not locais:
+        mostrar_catalogo(catalogo)
+        print('Nenhum modelo local foi encontrado. Nenhuma configuração foi alterada.')
+        if catalogo:
+            print('Para selecionar cloud explicitamente, use --modelo NOME; isso depende da conta Ollama.')
+        return None
+    escolhido = modelo_instalado(preferido, locais) or modelo_instalado(MODELO_PADRAO, locais) or locais[0]
+    atualizar_env(escolhido, url, caminho)
+    return escolhido
 
 
 def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
@@ -200,7 +253,10 @@ def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
         executavel = shutil.which('ollama')
         if not executavel:
             raise FalhaConfiguracao('O comando ollama não foi encontrado. Instale e abra o Ollama e reabra este terminal.')
-        print(f'Download solicitado: {modelo}. Pode ocupar vários GB; aguarde o progresso abaixo.', flush=True)
+        if modelo_em_nuvem(modelo):
+            print(f'Registro cloud solicitado: {modelo}. O uso depende de internet, conta e cota do Ollama.', flush=True)
+        else:
+            print(f'Download solicitado: {modelo}. Pode ocupar vários GB; aguarde o progresso abaixo.', flush=True)
         ambiente = dict(os.environ)
         ambiente['OLLAMA_HOST'] = url
         try:
@@ -223,15 +279,22 @@ def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
 
 
 def assistente(url=URL_PADRAO, caminho=ENV, modelo=MODELO_PADRAO):
-    print('=== IA local com Ollama ===')
-    instrucoes(modelo)
-    modelos = listar_modelos(url)
-    print('Modelos instalados: ' + (', '.join(modelos[:20]) if modelos else 'nenhum.'))
+    print('=== Modelos Ollama ===')
+    catalogo = listar_catalogo(url)
+    modelos = [item['nome'] for item in catalogo]
+    mostrar_catalogo(catalogo)
     if not modelos:
+        instrucoes(modelo)
         return 2
-    escolhido = input(f'Modelo instalado para ativar [{modelo}] (Enter mantém a opção): ').strip() or modelo
+    locais = [item['nome'] for item in catalogo if not item['nuvem']]
+    padrao = modelo_instalado(modelo, locais) or modelo_instalado(MODELO_PADRAO, locais) or (locais[0] if locais else '')
+    if not padrao:
+        print('Só há modelos cloud. Digite um nome explicitamente para selecionar; Enter cancela.')
+    escolhido = input(f'Modelo para ativar [{padrao}] (Enter aceita o modelo local): ').strip() or padrao
+    if not escolhido:
+        return 2
     encontrado = configurar_modelo(escolhido, url, caminho)
-    print(f'IA local configurada: {encontrado}. Reinicie o MeuControlePC e teste uma pergunta.')
+    print(f'Modelo Ollama configurado: {encontrado}. Reinicie o MeuControlePC e teste uma pergunta.')
     print('Serviço e presença do modelo foram verificados; a geração de respostas ainda não foi testada.')
     return 0
 
@@ -239,22 +302,34 @@ def assistente(url=URL_PADRAO, caminho=ENV, modelo=MODELO_PADRAO):
 def main(argv=None, caminho=ENV):
     parser = argparse.ArgumentParser(description=__doc__)
     grupo = parser.add_mutually_exclusive_group()
-    grupo.add_argument('--verificar', action='store_true', help='Consulta somente a lista de modelos instalados.')
-    grupo.add_argument('--modelo', help='Ativa somente um modelo já instalado.')
-    grupo.add_argument('--baixar-modelo', metavar='NOME', help='Baixa explicitamente um modelo e o ativa após verificar sua presença.')
+    grupo.add_argument('--listar', action='store_true', help='Lista modelos locais/cloud registrados, sem alterar configuração.')
+    grupo.add_argument('--usar-existente', action='store_true', help='Ativa um modelo local já registrado, sem download; retorna 3 se nenhum existir.')
+    grupo.add_argument('--verificar', action='store_true', help='Verifica a presença do modelo configurado no catálogo, sem inferência.')
+    grupo.add_argument('--modelo', help='Ativa somente um modelo já registrado no catálogo local ou cloud.')
+    grupo.add_argument('--baixar-modelo', metavar='NOME', help='Registra ou baixa explicitamente um modelo e o ativa após verificar sua presença.')
     parser.add_argument('--url', help='Endereço HTTP local por IP literal; padrão http://127.0.0.1:11434.')
     args = parser.parse_args(argv)
     try:
         atuais = valores_env(caminho)
         url = validar_url(args.url or os.getenv('OLLAMA_URL') or atuais.get('OLLAMA_URL') or URL_PADRAO)
+        if args.listar:
+            mostrar_catalogo(listar_catalogo(url))
+            return 0
         modelo = validar_modelo(args.modelo or args.baixar_modelo or os.getenv('OLLAMA_MODEL') or atuais.get('OLLAMA_MODEL') or MODELO_PADRAO)
+        if args.usar_existente:
+            encontrado = usar_existente(url, caminho, modelo)
+            if encontrado is None:
+                return 3
+            print(f'Modelo local existente ativado: {encontrado}. Nenhum modelo adicional foi baixado.')
+            print('Reinicie o MeuControlePC e teste uma pergunta. Geração de respostas ainda não testada.')
+            return 0
         if args.verificar:
             return 0 if verificar(modelo, url) else 2
         if args.modelo or args.baixar_modelo:
             acao = baixar_modelo if args.baixar_modelo else configurar_modelo
             encontrado = acao(modelo, url, caminho)
-            print(f'IA local configurada: {encontrado}. Reinicie o MeuControlePC e teste uma pergunta.')
-            print('Geração de respostas ainda não testada. Nenhuma API cloud foi consultada.')
+            print(f'Modelo Ollama configurado: {encontrado}. Reinicie o MeuControlePC e teste uma pergunta.')
+            print('Geração de respostas ainda não testada. Modelos cloud precisam de internet, conta e cota do Ollama.')
             return 0
         return assistente(url, caminho, modelo)
     except (ValueError, FalhaConfiguracao) as erro:

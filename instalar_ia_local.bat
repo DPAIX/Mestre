@@ -2,8 +2,10 @@
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-echo Este instalador usa Ollama local. O modelo qwen2.5:3b baixa alguns GB.
+echo Este instalador usa Ollama local e reaproveita um modelo local ja instalado.
+echo Se nao existir modelo local, sera baixado qwen2.5:3b, que ocupa alguns GB.
 echo O processamento usa a memoria e o processador do seu PC, sem credito de API.
+echo Modelos cloud sao remotos e nao serao selecionados automaticamente.
 set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
 where ollama >nul 2>nul
 if not errorlevel 1 goto iniciar_servico
@@ -18,9 +20,16 @@ if errorlevel 1 goto instalacao_manual
 :iniciar_servico
 start "" /b ollama serve >nul 2>nul
 timeout /t 3 /nobreak >nul
+call configurar_ia_local.bat --usar-existente
+if errorlevel 3 goto baixar_modelo
+if errorlevel 1 goto falha
+goto sucesso
+:baixar_modelo
 call configurar_ia_local.bat --baixar-modelo qwen2.5:3b
 if errorlevel 1 goto falha
+:sucesso
 echo Reinicie somente o assistente para carregar a configuracao da IA local.
+pause
 exit /b 0
 :instalacao_manual
 echo Instale Ollama em https://ollama.com/download e execute novamente este arquivo.

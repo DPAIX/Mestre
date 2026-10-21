@@ -106,14 +106,14 @@ class ConfiguracaoIALocal(unittest.TestCase):
 
     def test_verificar_nao_escreve_nem_promete_inferencia(self):
         antes = self.env.read_bytes()
-        with patch.object(local, 'listar_modelos', return_value=[local.MODELO_PADRAO]), patch.object(local.subprocess, 'run') as baixar:
+        with patch.object(local, 'listar_catalogo', return_value=[{'nome': local.MODELO_PADRAO, 'nuvem': False}]), patch.object(local.subprocess, 'run') as baixar:
             self.assertEqual(local.main(['--verificar'], self.env), 0)
             baixar.assert_not_called()
         self.assertEqual(self.env.read_bytes(), antes)
         self.assertIn('ainda não testada', self.saida.getvalue())
 
     def test_verificar_modelo_ausente_indica_como_baixar(self):
-        with patch.object(local, 'listar_modelos', return_value=[]), patch.object(local.subprocess, 'run') as baixar:
+        with patch.object(local, 'listar_catalogo', return_value=[]), patch.object(local.subprocess, 'run') as baixar:
             self.assertEqual(local.main(['--verificar'], self.env), 2)
             baixar.assert_not_called()
         self.assertIn('ollama pull qwen2.5:3b', self.saida.getvalue())
@@ -185,6 +185,95 @@ class ConfiguracaoIALocal(unittest.TestCase):
                 patch.object(local.subprocess, 'run', return_value=MagicMock(returncode=0)):
             with self.assertRaises(local.FalhaConfiguracao):
                 local.baixar_modelo(local.MODELO_PADRAO, caminho=self.env)
+        self.assertEqual(self.env.read_bytes(), antes)
+
+    def test_catalogo_classifica_nuvem_por_sufixo_ou_metadados_e_remove_duplicatas(self):
+        dados = {'models': [
+            {'name': 'qwen3.5:4b'},
+            {'name': 'gemma4:31b-cloud'},
+            {'name': 'outro:cloud'},
+            {'name': 'alias:latest', 'remote_model': 'gemma4:31b'},
+            {'name': 'segundo:latest', 'details': {'remote_host': 'https://nao-consultar.example'}},
+            {'name': 'alias:latest'},
+        ]}
+        cliente = MagicMock()
+        cliente.open.return_value = io.BytesIO(json.dumps(dados).encode())
+        with patch.object(local.urllib.request, 'build_opener', return_value=cliente):
+            catalogo = local.listar_catalogo()
+        self.assertEqual(catalogo, [
+            {'nome': 'qwen3.5:4b', 'nuvem': False},
+            {'nome': 'gemma4:31b-cloud', 'nuvem': True},
+            {'nome': 'outro:cloud', 'nuvem': True},
+            {'nome': 'alias:latest', 'nuvem': True},
+            {'nome': 'segundo:latest', 'nuvem': True},
+        ])
+        self.assertEqual(cliente.open.call_count, 1)
+        self.assertNotIn('nao-consultar.example', repr(catalogo))
+        self.assertTrue(local.modelo_em_nuvem('MODELO:CLOUD'))
+        self.assertFalse(local.modelo_em_nuvem('cloud/local:4b'))
+
+    def test_listar_nao_altera_env_nem_baixa_e_informa_cloud(self):
+        antes = self.env.read_bytes()
+        catalogo = [{'nome': 'qwen3.5:4b', 'nuvem': False}, {'nome': 'gemma4:31b-cloud', 'nuvem': True}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo), patch.object(local.subprocess, 'run') as baixar:
+            self.assertEqual(local.main(['--listar'], self.env), 0)
+            baixar.assert_not_called()
+        self.assertEqual(self.env.read_bytes(), antes)
+        self.assertIn('qwen3.5:4b — local', self.saida.getvalue())
+        self.assertIn('internet, conta e cota', self.saida.getvalue())
+        self.assertNotIn('disponível no disco', self.saida.getvalue())
+
+    def test_verificar_cloud_nao_promete_modelo_no_disco_nem_inferencia(self):
+        catalogo = [{'nome': 'gemma4:31b-cloud', 'nuvem': True}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo):
+            self.assertTrue(local.verificar('gemma4:31b-cloud'))
+        self.assertIn('cloud, com execução remota', self.saida.getvalue())
+        self.assertIn('ainda não testada', self.saida.getvalue())
+        self.assertNotIn('no disco', self.saida.getvalue())
+
+    def test_usar_existente_reaproveita_local_sem_pull_nem_cloud_automatico(self):
+        catalogo = [{'nome': 'gemma4:31b-cloud', 'nuvem': True}, {'nome': 'qwen3.5:4b', 'nuvem': False}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo), patch.object(local.subprocess, 'run') as baixar:
+            self.assertEqual(local.main(['--usar-existente'], self.env), 0)
+            baixar.assert_not_called()
+        self.assertEqual(local.valores_env(self.env)['OLLAMA_MODEL'], 'qwen3.5:4b')
+        self.assertIn('Nenhum modelo adicional foi baixado', self.saida.getvalue())
+
+    def test_usar_existente_preserva_modelo_local_configurado(self):
+        self.env.write_text('OLLAMA_MODEL=qwen3.5:4b\n', encoding='utf-8')
+        catalogo = [{'nome': local.MODELO_PADRAO, 'nuvem': False}, {'nome': 'qwen3.5:4b', 'nuvem': False}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo):
+            self.assertEqual(local.main(['--usar-existente'], self.env), 0)
+        self.assertEqual(local.valores_env(self.env)['OLLAMA_MODEL'], 'qwen3.5:4b')
+
+    def test_usar_existente_so_cloud_nao_grava_configuracao_nem_baixa(self):
+        antes = self.env.read_bytes()
+        catalogo = [{'nome': 'alias:latest', 'nuvem': True}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo), patch.object(local.subprocess, 'run') as baixar:
+            self.assertEqual(local.main(['--usar-existente'], self.env), 3)
+            baixar.assert_not_called()
+        self.assertEqual(self.env.read_bytes(), antes)
+        self.assertIn('Nenhum modelo local', self.saida.getvalue())
+
+    def test_cloud_so_e_ativado_por_nome_explicito(self):
+        with patch.object(local, 'listar_modelos', return_value=['gemma4:31b-cloud']), patch.object(local.subprocess, 'run') as baixar:
+            self.assertEqual(local.main(['--modelo', 'gemma4:31b-cloud'], self.env), 0)
+            baixar.assert_not_called()
+        self.assertEqual(local.valores_env(self.env)['OLLAMA_MODEL'], 'gemma4:31b-cloud')
+        self.assertIn('precisam de internet, conta e cota', self.saida.getvalue())
+
+    def test_interativo_prefere_local_presente_em_vez_de_modelo_padrao_ausente(self):
+        catalogo = [{'nome': 'gemma4:31b-cloud', 'nuvem': True}, {'nome': 'qwen3.5:4b', 'nuvem': False}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo), patch('builtins.input', return_value='') as entrada:
+            self.assertEqual(local.main([], self.env), 0)
+        self.assertIn('[qwen3.5:4b]', entrada.call_args.args[0])
+        self.assertEqual(local.valores_env(self.env)['OLLAMA_MODEL'], 'qwen3.5:4b')
+
+    def test_interativo_so_cloud_enter_cancela_sem_alterar_configuracao(self):
+        antes = self.env.read_bytes()
+        catalogo = [{'nome': 'gemma4:31b-cloud', 'nuvem': True}]
+        with patch.object(local, 'listar_catalogo', return_value=catalogo), patch('builtins.input', return_value=''):
+            self.assertEqual(local.main([], self.env), 2)
         self.assertEqual(self.env.read_bytes(), antes)
 
 

@@ -170,7 +170,8 @@ class ColaboracaoChats(unittest.TestCase):
             nomes=set(pacote.namelist())
             self.assertTrue({
                 'RESUMO.md','manifesto.json','prompts/chatgpt.md','prompts/gemini.md',
-                'prompts/claude.md','template_contribuicao.json','tarefas.json','fontes/nucleo.py'
+                'prompts/claude.md','prompts/manus.md','prompts/claude_code.md','prompts/opencode.md',
+                'prompts/cline.md','template_contribuicao.json','tarefas.json','fontes/nucleo.py'
             }.issubset(nomes))
             manifesto=json.loads(pacote.read('manifesto.json'))
             sanitizado=pacote.read('fontes/nucleo.py')

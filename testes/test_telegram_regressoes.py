@@ -111,6 +111,36 @@ class TelegramConfirmacoes(unittest.TestCase):
         app.tratar_pedido(self.mensagem('/chat novo Invasor',usuario=3))
         self.assertFalse((Path(self.tmp.name)/'colaboracao_chats.json').exists())
 
+    def test_modelos_ollama_listagem_selecao_e_envio(self):
+        catalogo={'modelos':[{'nome':'qwen3.5:4b','nuvem':False},
+                             {'nome':'gemma4:31b-cloud','nuvem':True}],
+                  'padrao':'qwen2.5:3b','habilitado':True}
+        with patch.object(app.ROTEADOR,'catalogo_ollama',return_value=catalogo) as listar,\
+                patch.object(app.ROTEADOR,'responder',return_value=('Resposta','Ollama')) as responder:
+            app.tratar_pedido(self.mensagem('/modelos ollama',usuario=3))
+            listar.assert_not_called()
+            app.tratar_pedido(self.mensagem('/modelos ollama'))
+            self.assertIn('gemma4:31b-cloud',self.bot.send_message.call_args.args[1])
+            responder.assert_not_called()
+            app.tratar_pedido(self.mensagem('/chat modelo qwen3.5:4b'))
+            app.tratar_pedido(self.mensagem('/ia Explique o projeto'))
+            self.assertEqual(responder.call_args.kwargs['modelo_ollama'],'qwen3.5:4b')
+            app.tratar_pedido(self.mensagem('/chat modelo padrao'))
+            app.tratar_pedido(self.mensagem('/ia Pergunta padrão'))
+            self.assertNotIn('modelo_ollama',responder.call_args.kwargs)
+
+    def test_equipe_modelos_telegram_confirma_nomes_e_objetivo(self):
+        with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao',return_value='Propostas') as executar:
+            app.tratar_pedido(self.mensagem('/equipe modelos qwen3.5:4b,gemma4:31b-cloud | Revisar rotina'))
+            executar.assert_not_called()
+            token=next(iter(app.PENDENTES))
+            chamada=self.chamada();chamada.data='ok:'+token
+            self.callback(chamada)
+            dados=executar.call_args.args[1]
+            self.assertEqual(dados['modelos_ollama'],['qwen3.5:4b','gemma4:31b-cloud'])
+            self.assertEqual(dados['provedores'],['Ollama'])
+            self.assertEqual(dados['texto'],'Revisar rotina')
+
     def test_equipe_telegram_aguarda_confirmacao_e_nao_repete(self):
         with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao',return_value='Propostas registradas') as executar:
             app.tratar_pedido(self.mensagem('/equipe Revisar função'))

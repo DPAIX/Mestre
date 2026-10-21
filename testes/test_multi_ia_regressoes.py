@@ -346,6 +346,39 @@ class MultiIARegressoes(unittest.TestCase):
                 patch('multi_ia.postar',return_value={'message':{'content':'local'}}):
             self.assertEqual(ia.Roteador().responder('teste'),('local','Ollama'))
 
+    def test_modelo_explicito_nao_muda_ambiente_nem_usa_outro_provedor(self):
+        with patch.dict(os.environ,{'OLLAMA_HABILITADO':'1','OLLAMA_MODEL':'qwen2.5:3b'}),\
+                patch('multi_ia.postar',return_value={'message':{'content':'resposta'}}) as req:
+            roteador=ia.Roteador()
+            resultado=roteador.responder('Explique',provedor='Ollama',modelo_ollama='qwen3.5:4b',
+                                         historico=[{'role':'user','content':'Anterior'}])
+            self.assertEqual(resultado,('resposta','Ollama'))
+            req.assert_called_once()
+            self.assertEqual(req.call_args.args[2]['model'],'qwen3.5:4b')
+            self.assertIn({'role':'user','content':'Anterior'},req.call_args.args[2]['messages'])
+            self.assertEqual(os.environ['OLLAMA_MODEL'],'qwen2.5:3b')
+            with self.assertRaises(ValueError):
+                roteador.responder('Explique',provedor='OpenAI',modelo_ollama='qwen3.5:4b')
+            with self.assertRaises(ValueError):
+                roteador.responder('Explique',provedor='Ollama',modelo_ollama='modelo;comando')
+            self.assertEqual(req.call_count,1)
+
+    def test_falha_modelo_cloud_nao_pausa_local_ou_reativa_padrao(self):
+        with patch.dict(os.environ,{'OLLAMA_HABILITADO':'1'}):
+            roteador=ia.Roteador()
+            roteador.bloqueados['Ollama']=ia.time.time()+3600
+            padrao=roteador.bloqueados.copy()
+            with patch('multi_ia.postar',side_effect=ia.FalhaAPI('Ollama',401,'Autentique sua conta','autenticacao')) as req:
+                with self.assertRaises(ia.FalhaAPI) as erro:
+                    roteador.responder('Teste',provedor='Ollama',modelo_ollama='gemma4:31b-cloud')
+                self.assertIn('gemma4:31b-cloud',str(erro.exception))
+                req.assert_called_once()
+            self.assertEqual(roteador.bloqueados,padrao)
+            with patch('multi_ia.postar',return_value={'message':{'content':'local responde'}}) as req:
+                self.assertEqual(roteador.responder('Teste local',provedor='Ollama',modelo_ollama='qwen3.5:4b'),('local responde','Ollama'))
+                req.assert_called_once()
+            self.assertEqual(roteador.bloqueados,padrao)
+
     def test_sondagem_explicita_no_maximo_uma_chamada_sem_fallback(self):
         roteador=ia.Roteador()
         with patch.object(roteador,'openai',return_value='OK') as openai,\
