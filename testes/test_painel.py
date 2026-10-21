@@ -38,7 +38,7 @@ class PainelTeste(unittest.TestCase):
             self.assertNotIn('sk-proj-',html)
     def test_sem_token_bloqueado(self):
         with self.assertRaises(HTTPError) as exc:urlopen(self.url+'/api/estado')
-        self.assertEqual(exc.exception.code,403)
+        with exc.exception as resposta:self.assertEqual(resposta.code,403)
     def test_estado_autorizado(self):
         req=Request(self.url+'/api/estado',headers={'X-Painel-Token':app.TOKEN_PAINEL})
         with urlopen(req) as resposta:
@@ -47,7 +47,7 @@ class PainelTeste(unittest.TestCase):
     def test_post_origem_obrigatoria(self):
         req=Request(self.url+'/api/acao',data=b'{"acao":"agua"}',headers={'X-Painel-Token':app.TOKEN_PAINEL,'Content-Type':'application/json'},method='POST')
         with self.assertRaises(HTTPError) as exc:urlopen(req)
-        self.assertEqual(exc.exception.code,403)
+        with exc.exception as resposta:self.assertEqual(resposta.code,403)
     def test_post_real(self):
         req=Request(self.url+'/api/acao',data=b'{"acao":"agua"}',
             headers={'X-Painel-Token':app.TOKEN_PAINEL,'Content-Type':'application/json','Origin':self.url},method='POST')
@@ -83,11 +83,11 @@ class PainelEvolucaoTeste(unittest.TestCase):
     def test_reinicio_win_nao_habilitado(self):
         with patch.dict(os.environ,{'REINICIO_WINDOWS_HABILITADO':'0'}),patch('reinicio_seguro.os.name','nt'),patch('reinicio_seguro.subprocess.run') as run:
             with self.assertRaises(HTTPError) as e:self.post({'acao':'reiniciar_windows','confirmacao':'REINICIAR WINDOWS'})
-            self.assertEqual(e.exception.code,400)
+            with e.exception as resposta:self.assertEqual(resposta.code,400)
             run.assert_not_called()
     def test_reinicio_win_sem_frase(self):
         with self.assertRaises(HTTPError) as e:self.post({'acao':'reiniciar_windows','confirmacao':'sim'})
-        self.assertEqual(e.exception.code,400)
+        with e.exception as resposta:self.assertEqual(resposta.code,400)
     def test_melhorias_sem_frase(self):
         with self.assertRaises(HTTPError) as e:self.post({'acao':'melhorias','confirmacao':'sim'})
-        self.assertEqual(e.exception.code,400)
+        with e.exception as resposta:self.assertEqual(resposta.code,400)

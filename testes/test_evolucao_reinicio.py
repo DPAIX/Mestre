@@ -46,9 +46,11 @@ class AutoMelhoriaTeste(unittest.TestCase):
         self.assertFalse((nucleo.DADOS/'backups').exists())
     def test_detecta_json_invalido_e_nao_aplica(self):
         (nucleo.DADOS/'gestao_vida.json').write_text('{erro',encoding='utf-8')
-        r=evol.analisar()
+        with self.assertLogs(nucleo._LOG,level='ERROR') as logs:
+            r=evol.analisar()
         self.assertTrue(any(x['alvo']=='gestao_vida.json' for x in r['problemas']))
-        with self.assertRaises(RuntimeError):evol.melhorar()
+        self.assertTrue(any('gestao_vida.json' in item for item in logs.output))
+        with self.assertLogs(nucleo._LOG,level='ERROR'),self.assertRaises(RuntimeError):evol.melhorar()
     def test_pedidos_naturais(self):
         self.assertEqual(nucleo.classificar_texto('arrume e melhore'),'pedido_melhoria')
         self.assertEqual(nucleo.classificar_texto('reinicie o windows'),'pedido_reinicio_windows')

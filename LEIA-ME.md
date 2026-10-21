@@ -1,3 +1,5 @@
+> **Revisão v2.2.3:** veja [REVISAO_V2_2_3.md](REVISAO_V2_2_3.md). Diagnóstico local separado dos serviços de IA, orientação específica para 503 e testes sem os avisos de recursos abertos no Python 3.14.
+
 > **Revisão v2.2.2:** consulte [REVISAO_V2_2_2.md](REVISAO_V2_2_2.md) para correções, testes, atualização e reversão.
 
 > **Correção v2.2.1:** consulte [GUIA_CORRECAO_V2_2_1.md](GUIA_CORRECAO_V2_2_1.md). Corrige o botão Multi-IA, amplia a auditoria de código e melhora o bloqueio de desligamento remoto.

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.2.2 · Centro de comando</title>
+<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.2.3 · Centro de comando</title>
 <style>
 :root{color-scheme:dark;--bg:#090f1c;--panel:#151f31;--inner:#0e1727;--border:#29384c;--text:#eaf1fa;--muted:#95a9c1;--accent:#5caafc;--success:#6dd8b3;--warn:#e0ba69}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,'Segoe UI',sans-serif}
@@ -12,7 +12,7 @@ input{padding:11px;border-radius:9px;border:1px solid #31415a;background:#0d1828
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-size:12px}td button{padding:5px 9px}.scroll{overflow:auto}.status{border-left:3px solid var(--accent);background:var(--inner);border-radius:8px;padding:10px;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere} .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.flex{flex:1;min-width:160px}.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kcol{min-width:0;background:var(--inner);border:1px solid var(--border);border-radius:12px;padding:14px}.item{background:#1d2b40;padding:9px;margin-bottom:8px;border-radius:8px;overflow-wrap:anywhere}.pill{font-size:11px;padding:4px 7px;background:#264564;border-radius:20px;white-space:nowrap}#aviso{white-space:pre-wrap;position:sticky;bottom:12px;background:#11304e;border:1px solid #4f83b7;border-radius:9px;padding:12px;max-width:700px;display:none;margin:10px auto}
 @media(max-width:800px){main{padding:12px}header{padding:15px}.duo{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}table{min-width:700px}} 
 </style></head>
-<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.2.2</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
+<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.2.3</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
 <main>
 <div class="grid"><div class="tile">Rotina concluída<strong id="progresso">—</strong></div><div class="tile">Saldo registrado<strong id="saldo">—</strong></div><div class="tile">Ações aprendidas<strong id="aprendizado">—</strong></div><div class="tile">Disco livre<strong id="disco">—</strong></div></div>
 <nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
@@ -22,10 +22,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;
 <section class="section" id="robotask"><div class="duo"><div class="panel"><h2>Ferramentas do PC</h2><p class="muted">Essas ações afetam apenas a sessão atual do Windows e solicitam confirmação.</p><div class="row"><button data-pc="f8">⚡ NesTask · F8</button><button data-pc="f9">🔑 RoboTask · F9</button><button data-pc="f10">📱 Celular · F10</button><button data-pc="desktop">🖥️ Mostrar desktop</button><button data-pc="taskmgr">📊 Gerenciador de Tarefas</button></div><button data-acao="diagnostico">🛠️ Diagnóstico seguro</button><button data-acao="notebook">📓 Exportar CSV / Notebook</button></div><div class="panel"><h2>Catálogo RoboTask</h2><div id="tarefas-robotask" class="scroll"></div></div></div></section>
 <section class="section" id="ias"><div class="duo"><div class="panel"><h2>Perguntas e pesquisa</h2><p class="muted">Perguntas usam IA configurada; para pesquisa na web escreva «pesquise ...». Nada aqui executa código sugerido pela IA.</p><div class="row"><input class="flex" type="text" id="pergunta" maxlength="1000" aria-label="Pergunta ou pesquisa" placeholder="Pergunte algo ou pesquise robótica ..."><button id="consultar">Perguntar</button></div><div id="resposta" class="status" role="status">Aguardando pergunta.</div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. Falhas de cota não serão tratadas como sucesso.</p><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div></div></section>
 <section class="section" id="evolucao"><div class="duo">
-<div class="panel"><h2>🧠 Auditoria e melhorias controladas</h2>
-<p class="muted">Análise periódica local (padrão: 360 minutos). Inspeciona código, JSON, disco e logs, e diferencia falhas históricas de falhas ativas, sem consultar APIs. Não altera código-fonte.</p>
-<div class="row"><button id="rodar-analise">🔍 Analisar agora</button><button id="melhorar-seguro">🛠️ Aplicar melhorias seguras</button></div>
-<p class="muted">Melhorias autorizadas: backup, CSV/Jupyter e índice RoboTask, evitando repetir uma atualização sem mudanças. Não executa tarefas do RoboTask nem modifica programas.</p>
+<div class="panel"><h2>🧠 Auditoria local e serviços externos</h2>
+<p class="muted">Análise periódica local (padrão: 360 minutos). Inspeciona código, JSON, disco e logs. O resultado local e os avisos de serviços externos aparecem separados. Os logs registram consultas anteriores; esta análise não consulta as APIs nem confirma a disponibilidade atual dos provedores.</p>
+<div class="row"><button id="rodar-analise">🔍 Analisar agora</button><button id="melhorar-seguro">🗂️ Backup e arquivos locais</button></div>
+<p class="muted">Atualiza backup, CSV/Jupyter e catálogo RoboTask quando há mudanças nos dados. Essas operações locais não corrigem respostas de erro das APIs. Nenhuma tarefa do RoboTask é executada e nenhum programa é modificado.</p>
 <div class="status" id="resumo-analise">Nenhuma análise realizada nesta sessão.</div>
 </div><div class="panel"><h2>🔄 Controle de reinicialização</h2>
 <p>Reiniciar o assistente fecha e reabre o processo do Telegram e o painel; não reinicia o Windows.</p>
@@ -73,8 +73,37 @@ async function enviarAcao(acao,campos={}){
  finally{pedidosAtivos.delete(chave);atualizarBotoes()}
 }
 async function agir(acao,campos={}){try{const d=await enviarAcao(acao,campos);if(!d)return;aviso(d.mensagem||'Executado')}catch(e){aviso('⚠️ '+e.message)}}
+function textoAutoanalise(a){
+ if(!a||typeof a!=='object'||!Object.keys(a).length)return 'Nenhuma análise registrada ainda.';
+ const novo='estado_local' in a||Array.isArray(a.problemas_locais)||Array.isArray(a.avisos_externos);
+ const linhas=[String(a.quando||'Data da análise não informada')];
+ if(!novo){
+  linhas.push(`Resultado salvo (formato anterior): ${a.estado??'não informado'} | ${a.verificacoes_ok??0} verificações OK`,
+   `Ocorrências registradas: ${a.falhas_recentes??0} nos últimos 10 min; ${a.falhas_historicas??0} anteriores.`,
+   'Este relatório antigo não separa problemas locais de falhas externas. Execute «Analisar agora» para atualizar. A disponibilidade atual das APIs não foi verificada.');
+  for(const x of a.problemas||[])linhas.push(`Registro anterior — ${x.alvo||'alvo não informado'}: ${x.detalhe||''}`);
+  return linhas.join('\n');
+ }
+ linhas.push(`Estado local: ${a.estado_local??'não informado'} | ${a.verificacoes_ok??0} verificações OK`,
+  `Ocorrências nos últimos 10 min: ${a.falhas_locais_recentes??0} locais; ${a.falhas_externas_recentes??0} externas. Registros anteriores: ${a.falhas_historicas??0}.`);
+ for(const x of a.problemas_locais||[])linhas.push(`Problema local — ${x.alvo||'alvo não informado'}: ${x.detalhe||''}`);
+ const avisos=Array.isArray(a.avisos_externos)?a.avisos_externos:[];
+ linhas.push('',`Serviços externos: ${a.falhas_externas_pendentes??avisos.length} aviso(s) pendente(s) neste relatório.`,
+  'Ocorrências recentes são registros de consultas anteriores. A disponibilidade atual das APIs não foi verificada.');
+ for(const x of avisos){
+  const codigo=x.codigo?` · HTTP ${x.codigo}`:'';
+  linhas.push(`• ${x.provedor||x.alvo||'Serviço externo'}${codigo}: ${x.detalhe||'Falha registrada na última consulta.'}`);
+  if(x.em_pausa===true)linhas.push('Pausa local de novas consultas em vigor.');
+  if(x.em_pausa===false)linhas.push('Sem pausa local em vigor; uma nova consulta depende de solicitação do usuário.');
+  const orientacao=x.orientacao||(Number(x.codigo)===503?'O provedor registrou alta demanda ou sobrecarga temporária (503). Aguarde antes de solicitar outra consulta. Esse código não indica falta de créditos.':'Verifique a orientação do provedor para a falha registrada.');
+  linhas.push(orientacao);
+ }
+ if(avisos.length)linhas.push('Backup e arquivos locais não corrigem erros retornados pelos provedores.');
+ if(Array.isArray(a.sugestoes)&&a.sugestoes.length)linhas.push('','Orientações:',...a.sugestoes.map(String));
+ return linhas.join('\n');
+}
 function render(s){const {vida:v,resumo:r,provedores:p,logs,robotask,autoanalise}=s;
- const a=$('resumo-analise');if(a)text(a,autoanalise?.quando?`${autoanalise.quando} | ${autoanalise.estado} | ${autoanalise.verificacoes_ok} verificações OK | ${autoanalise.falhas_recentes} falhas ativas (10 min) | ${autoanalise.falhas_historicas??0} históricas\n${(autoanalise.problemas||[]).map(x=>x.alvo+': '+x.detalhe).join('\n')}\n${(autoanalise.sugestoes||[]).join('\n')}`:'Nenhuma análise registrada ainda.');
+ const a=$('resumo-analise');if(a)text(a,textoAutoanalise(autoanalise));
  text($('rede'),'Painel local • dados sincronizados com Telegram (quando disponível)');text($('progresso'),`${r.concluidas}/${r.total_tarefas}`);text($('saldo'),money(r.saldo));text($('aprendizado'),r.comandos);text($('disco'),r.disco_livre_mb+' MiB');
  const t=$('tabela-rotina');t.replaceChildren();for(const item of v.rotina||[]){const tr=el('tr');const td=el('td');const b=el('button',item.status==='Concluído'?'✅':'⬜');b.setAttribute('aria-label',(item.status==='Concluído'?'Reabrir: ':'Concluir: ')+(item.atividade||item.id));b.disabled=pedidosAtivos.size>0;b.addEventListener('click',()=>agir('concluir',{id:item.id}));td.append(b);tr.append(td);for(const val of [item.dia,(item.horario||'')+' – '+(item.fim||''),item.atividade,item.local,item.prioridade])tr.append(el('td',val));t.append(tr)}
  const k=$('colunas');k.replaceChildren();for(const [campo,nome] of [['A_Fazer','A fazer'],['Em_Andamento','Em andamento'],['Concluido','Concluído']]){const col=el('div',undefined,'kcol');col.append(el('h3',nome));for(const x of (v.kanban||{})[campo]||[])col.append(el('div',x,'item'));k.append(col)}
@@ -90,7 +119,7 @@ document.querySelectorAll('[data-pc]').forEach(b=>b.addEventListener('click',()=
 $('rodar-analise').addEventListener('click',()=>agir('autoanalise'));
 $('reativar-ias').addEventListener('click',()=>{if(confirm('Limpar as pausas locais? Não há recarga de créditos; a próxima consulta paga poderá consumir saldo.'))agir('reativar_ias',{confirmacao:'REVER BLOQUEIOS'})});
 $('melhorar-seguro').addEventListener('click',()=>{
-  if(confirm('Aplicar SOMENTE backup dos dados, exportar CSV/Notebook e atualizar catálogo RoboTask? Nenhum código será editado.'))
+  if(confirm('Atualizar backup dos dados, CSV/Notebook e catálogo RoboTask? Essas operações locais não corrigem erros das APIs. Nenhum código será editado.'))
     agir('melhorias',{confirmacao:'APLICAR MELHORIAS'});
 });
 $('reiniciar-bot').addEventListener('click',()=>{

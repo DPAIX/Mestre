@@ -3,6 +3,7 @@ Limites e créditos são distinguidos. Provedores sem créditos ficam suspensos 
 """
 from __future__ import annotations
 import json
+import math
 import os
 import re
 import threading
@@ -13,6 +14,13 @@ from dataclasses import dataclass
 from nucleo import registrar,redigir,gravar_json,ler_json
 
 LIMITE_RESPOSTA=2_000_000
+DESCRICOES_FALHA={
+    'sem_creditos':'sem créditos','autenticacao':'credencial rejeitada',
+    'modelo_indisponivel':'modelo não acessível','limite_temporario':'limite temporário',
+    'servidor_ocupado':'servidor ocupado','requisicao_invalida':'requisição inválida',
+    'rede':'problema de rede','resposta_invalida':'resposta inválida',
+    'configuracao':'configuração incompleta','temporario':'falha temporária',
+}
 
 def detalhe_seguro(texto,chave=''):
     """Erros de provedores podem repetir a chave, inclusive sem prefixo conhecido."""
@@ -38,10 +46,10 @@ def analisar_erro(provedor,codigo,corpo):
     low=(tipo+' '+msg).lower()
     if codigo==404: cat='modelo_indisponivel'
     elif codigo==401 or codigo==403: cat='autenticacao'
+    elif codigo in (500,502,503,504,529):cat='servidor_ocupado'
     elif codigo==402 or any(x in low for x in ('no credits','credit balance','insufficient_quota','billing','purchase credits','saldo insuficiente','credits remaining','usage_limit','credit_balance_exhausted')):
         cat='sem_creditos'
     elif codigo==429: cat='limite_temporario'
-    elif codigo in (500,502,503,504,529):cat='servidor_ocupado'
     elif codigo==400:cat='requisicao_invalida'
     else:cat='temporario'
     return FalhaAPI(provedor,codigo,str(redigir(msg))[:250],cat)
@@ -75,6 +83,8 @@ class Roteador:
     def __init__(self):
         self.bloqueados={}
         self.motivos={}
+        self.falhas={}
+        self.sucessos={}
         self.ultimo_provedor='local'
         self.mutex=threading.RLock()
         self._recuperar_bloqueios()
@@ -88,14 +98,22 @@ class Roteador:
                 try:limite=float(item.get('ate',0))
                 except (ValueError,TypeError):continue
                 categoria=str(item.get('categoria','temporario'))
+                if categoria not in DESCRICOES_FALHA:categoria='temporario'
                 if time.time()<limite<time.time()+86460:
                     self.bloqueados[nome]=limite
                     self.motivos[nome]=categoria
+                    codigo=item.get('codigo')
+                    if not isinstance(codigo,int) or not 0<=codigo<=599:codigo=None
+                    quando=item.get('falha_em')
+                    if not isinstance(quando,(int,float)) or not 0<quando<=time.time()+60:quando=None
+                    self.falhas[nome]={'categoria':categoria,'codigo':codigo,'falha_em':quando}
         except (ValueError,TypeError,OSError):pass
 
     def _salvar_bloqueios(self):
         try:
-            gravar_json('estado_ia.json',{nome:{'ate':ate,'categoria':self.motivos.get(nome,'temporario')}
+            gravar_json('estado_ia.json',{nome:{'ate':ate,'categoria':self.motivos.get(nome,'temporario'),
+                                             'codigo':self.falhas.get(nome,{}).get('codigo'),
+                                             'falha_em':self.falhas.get(nome,{}).get('falha_em')}
                          for nome,ate in self.bloqueados.items() if ate>time.time()})
         except (OSError,ValueError):pass
 
@@ -103,6 +121,7 @@ class Roteador:
         with self.mutex:
             self.bloqueados.pop(provedor,None)
             self.motivos.pop(provedor,None)
+            self.sucessos[provedor]=time.time()
             self._salvar_bloqueios()
 
     def reativar(self):
@@ -123,15 +142,67 @@ class Roteador:
         duracao={'sem_creditos':24*3600,'autenticacao':24*3600,'modelo_indisponivel':24*3600,
                  'requisicao_invalida':3600,'limite_temporario':120,'servidor_ocupado':60,'rede':60}.get(erro.categoria,90)
         with self.mutex:
-            self.bloqueados[erro.provedor]=time.time()+duracao
+            agora=time.time()
+            self.bloqueados[erro.provedor]=agora+duracao
             self.motivos[erro.provedor]=erro.categoria
+            self.falhas[erro.provedor]={'categoria':erro.categoria,'codigo':erro.codigo,'falha_em':agora}
             self._salvar_bloqueios()
         registrar('api_'+erro.provedor,'indisponivel',str(erro),erro.provedor)
-    def status(self):
-        config={'Gemini':bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
+    def _configurados(self):
+        return {'Gemini':bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
                 'OpenAI':bool(os.getenv('OPENAI_API_KEY')),
                 'Claude':bool(os.getenv('ANTHROPIC_API_KEY')),
                 'Exa':bool(os.getenv('EXA_API_KEY'))}
+
+    def estado_local(self):
+        """Snapshot sem rede, chaves ou mensagens: épocas em segundos UTC.
+
+        A pausa pode expirar sem nova consulta. Apenas sucesso_em registra uma
+        resposta válida nesta sessão; compare-o com falha_em para a cronologia.
+        """
+        config=self._configurados()
+        agora=time.time()
+        with self.mutex:
+            estados={}
+            for nome,configurado in config.items():
+                falha=self.falhas.get(nome,{})
+                ate=self.bloqueados.get(nome,0)
+                espera=max(0,math.ceil(ate-agora))
+                estados[nome]={'configurado':configurado,'em_pausa':espera>0,
+                    'categoria':falha.get('categoria'),'codigo':falha.get('codigo'),
+                    'falha_em':falha.get('falha_em'),'pausa_ate':ate or None,
+                    'espera_segundos':espera,'sucesso_em':self.sucessos.get(nome)}
+            return estados
+
+    def _explicar_indisponibilidade(self,nome,estado):
+        if not estado['configurado']:
+            return nome+': sem chave configurada.'
+        categoria=estado['categoria'] or 'temporario'
+        causa=DESCRICOES_FALHA.get(categoria,'falha temporária')
+        codigo=estado['codigo']
+        if codigo:causa+=f' (HTTP {codigo})'
+        espera=estado['espera_segundos']
+        if espera:
+            minutos=math.ceil(espera/60)
+            tempo=f'{espera} s' if espera<60 else f'{minutos} min'
+            if minutos>=60:tempo=f'{minutos//60} h {minutos%60} min'
+            causa+=f'; pausa local por mais {tempo}'
+        if categoria=='sem_creditos':
+            orientacao='Confira saldo/faturamento desse provedor; após corrigir, use /reativar_ias.'
+        elif categoria=='autenticacao':
+            orientacao='Confira a credencial desse provedor; após corrigir, use /reativar_ias.'
+        elif categoria=='modelo_indisponivel':
+            orientacao='Confira o nome e o acesso ao modelo; após corrigir, use /reativar_ias.'
+        elif categoria=='configuracao':
+            orientacao='Use /verificar para conferir a configuração local.'
+        elif espera:
+            orientacao='Aguarde essa pausa e envie uma nova solicitação.'
+        else:
+            orientacao='A última falha ainda não foi verificada por uma nova resposta.'
+        return f'{nome}: {causa}. {orientacao}'
+
+    def status(self):
+        config=self._configurados()
         with self.mutex:
             result={}
             for nome,habilitado in config.items():
@@ -140,10 +211,8 @@ class Roteador:
                 limite=self.bloqueados.get(nome,0)
                 if limite>time.time():
                     cat=self.motivos.get(nome,'temporario')
-                    descricao={'sem_creditos':'sem créditos','autenticacao':'credencial rejeitada',
-                               'modelo_indisponivel':'modelo não acessível','limite_temporario':'limite temporário',
-                               'servidor_ocupado':'servidor ocupado','requisicao_invalida':'requisição inválida',
-                               'rede':'problema de rede','resposta_invalida':'resposta inválida'}.get(cat,'temporariamente indisponível')
+                    descricao=(DESCRICOES_FALHA.get(cat,'temporariamente indisponível')
+                               if cat not in ('temporario','configuracao') else 'temporariamente indisponível')
                     espera=max(1,int((limite-time.time()+59)//60))
                     result[nome]=f'{descricao} — pausa local (~{espera} min)'
                 else:result[nome]='configurado; não testado'
@@ -215,7 +284,9 @@ class Roteador:
     def responder(self,pergunta,pesquisa=False):
         if pesquisa:
             prov='Exa'
-            if not self.disponivel(prov):raise FalhaAPI(prov,0,'Pesquisa temporariamente suspensa.','suspenso')
+            if not self.disponivel(prov):
+                estado=self.estado_local()[prov]
+                raise FalhaAPI(prov,estado['codigo'] or 0,self._explicar_indisponibilidade(prov,estado),'suspenso')
             try:
                 texto=self.pesquisa_exa(pergunta)
                 self.ultimo_provedor=prov
@@ -225,7 +296,6 @@ class Roteador:
             except FalhaAPI as e:
                 if e.categoria!='configuracao':self.registrar_falha(e)
                 raise
-        falhas=[]
         for prov,fn,chave in [('Gemini',self.gemini,'GEMINI_API_KEY'),('OpenAI',self.openai,'OPENAI_API_KEY'),('Claude',self.claude,'ANTHROPIC_API_KEY')]:
             if prov=='Gemini' and not (os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')):continue
             if prov!='Gemini' and not os.environ.get(chave):continue
@@ -239,9 +309,11 @@ class Roteador:
                 return texto,prov
             except FalhaAPI as e:
                 self.registrar_falha(e)
-                falhas.append(f'{prov}: {e.categoria}')
             except Exception as e:
                 self.registrar_falha(FalhaAPI(prov,0,str(redigir(e))[:180]))
-                falhas.append(f'{prov}: falha inesperada')
-        explicacao=', '.join(falhas) if falhas else 'sem provedores habilitados ou todos em pausa local'
-        raise FalhaAPI('Multi-IA',0,'Nenhuma API de resposta disponível: '+explicacao+'. Confira /verificar e créditos; comandos locais continuam funcionando.','indisponivel')
+        estados=self.estado_local()
+        explicacao='\n'.join(self._explicar_indisponibilidade(nome,estados[nome]) for nome in ('Gemini','OpenAI','Claude'))
+        if estados['Exa']['configurado']:
+            explicacao+='\nExa atende apenas /pesquisar; não substitui as APIs de resposta.'
+        raise FalhaAPI('Multi-IA',0,'Nenhuma API de resposta disponível.\n'+explicacao+
+            '\nNenhuma nova tentativa foi agendada. Os comandos locais continuam disponíveis.','indisponivel')

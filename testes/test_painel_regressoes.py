@@ -87,9 +87,11 @@ class PainelRegressoes(unittest.TestCase):
         original=arquivo.read_bytes()
         try:
             arquivo.write_bytes(b'{quebrado')
-            status,res=self.request('/api/estado',body=None,method='GET')
+            with self.assertLogs(nucleo._LOG,level='ERROR') as logs:
+                status,res=self.request('/api/estado',body=None,method='GET')
             self.assertEqual(status,503)
             self.assertIn('JSON',res['erro'])
+            self.assertIn('gestao_vida.json',logs.output[0])
             self.assertEqual(arquivo.read_bytes(),b'{quebrado')
         finally:arquivo.write_bytes(original)
 

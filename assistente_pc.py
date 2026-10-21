@@ -18,7 +18,7 @@ from nucleo import (BASE,DADOS,adicionar_kanban,aprender,analisar_evolucao,detec
     concluir_tarefa,diagnostico,exportacao_segura,gerar_notebook,inicializar,ler_env,
     ler_json,movimentar,redigir,registrar,registrar_agua,registrar_pomodoro,reparo_seguro,
     resumo_status,simular_ru,vida)
-from multi_ia import Roteador,FalhaAPI
+from multi_ia import Roteador,FalhaAPI,DESCRICOES_FALHA
 from automacao_pc import executar,captura,ATALHOS
 from evolucao_segura import analisar as autoanalisar, melhorar as aplicar_melhorias, executar_agendador
 from reinicio_seguro import preparar_reinicio_assistente, reiniciar_windows, cancelar_reinicio_windows
@@ -44,17 +44,31 @@ def encerrar_para_reiniciar():
 
 
 def texto_relatorio(relatorio):
-    linhas=[f"🧠 Autoanálise: {relatorio['estado']} | {relatorio['verificacoes_ok']} verificações OK | {relatorio['falhas_recentes']} falhas ativas (10 min) | {relatorio.get('falhas_historicas',0)} falhas anteriores nos logs"]
-    for x in relatorio['problemas'][:10]:
+    locais=relatorio.get('problemas_locais',relatorio.get('problemas',[]))
+    externos=relatorio.get('avisos_externos',[])
+    linhas=[f"🧠 Autoanálise local: {relatorio.get('estado_local',relatorio['estado'])}",
+            f"{relatorio['verificacoes_ok']} verificações OK | {len(locais)} aviso(s) local(is)"]
+    for x in locais[:5]:
         linhas.append(f"⚠️ {x['alvo']}: {x['detalhe']}")
+    if externos:
+        linhas.append('🌐 APIs: última situação observada, sem nova consulta:')
+        for x in externos[:4]:
+            linhas.append(f"• {x.get('provedor',x['alvo'])}: {x['detalhe']}")
+            if x.get('orientacao'):linhas.append('  '+x['orientacao'])
+    linhas.append(f"🕓 Logs: {relatorio['falhas_recentes']} ocorrência(s) nos últimos 10 min; "
+                  f"{relatorio.get('falhas_historicas',0)} anteriores. Contagem de registros, não teste de disponibilidade.")
     linhas.extend('• '+s for s in relatorio['sugestoes'][:4])
-    linhas.append('Nenhum arquivo de código foi reescrito.')
+    linhas.append('Backup, CSV e catálogo cuidam dos arquivos locais; não corrigem falhas das APIs.')
     return '\n'.join(linhas)
 
 
+def analisar_sessao():
+    return autoanalisar(estado_provedores=ROTEADOR.estado_local())
+
+
 def texto_melhorias(resultado):
-    titulo='🛠️ Atualização já verificada:' if resultado.get('sem_alteracoes') else '🛠️ Melhorias controladas:'
-    return titulo+'\n'+'\n'.join('• '+i['acao']+': '+i['resultado']+' — '+i.get('detalhes',i.get('destino','')) for i in resultado['acoes'])+'\nCódigo-fonte preservado.'
+    titulo='📦 Arquivos locais já atualizados:' if resultado.get('sem_alteracoes') else '📦 Atualização dos arquivos locais:'
+    return titulo+'\n'+'\n'.join('• '+i['acao']+': '+i['resultado']+' — '+i.get('detalhes',i.get('destino','')) for i in resultado['acoes'])+'\nCódigo-fonte preservado. Backups e catálogo não alteram a disponibilidade das APIs.'
 
 
 MENU_BOTOES=[
@@ -103,8 +117,20 @@ def mostrar_kanban():
 
 def mostrar_ias():
     status=ROTEADOR.status()
+    estados=ROTEADOR.estado_local()
     linhas=['🌐 Provedores (estado local, sem consulta remota):']
-    linhas += ['• '+nome+': '+estado for nome,estado in status.items()]
+    for nome,estado in status.items():
+        observado=estados[nome]
+        falha=observado.get('falha_em')
+        sucesso=observado.get('sucesso_em')
+        if observado['configurado'] and not observado['em_pausa']:
+            if sucesso and (not falha or sucesso>falha):
+                estado='respondeu na última consulta desta sessão; disponibilidade atual não verificada'
+            elif observado.get('categoria'):
+                causa=DESCRICOES_FALHA.get(observado['categoria'],'falha temporária')
+                codigo=observado.get('codigo')
+                estado=f'última tentativa: {causa}'+(f' (HTTP {codigo})' if codigo else '')+'; nova consulta liberada, recuperação ainda não verificada'
+        linhas.append('• '+nome+': '+estado)
     linhas += ['Modelo Gemini configurado: '+os.getenv('GEMINI_MODEL','gemini-3.8-flash'),
                'Use /ia para uma pergunta e /pesquisar para pesquisa web.',
                '«Não testado» não confirma conectividade ou saldo. /verificar examina dependências sem gastar créditos.']
@@ -123,7 +149,7 @@ def interpretar_comando(texto):
     if not entrada:return 'Digite uma mensagem.'
     tipo=classificar_texto(entrada)
     if tipo=='desligamento_bloqueado':return '⛔ O MeuControlePC não oferece desligamento remoto do computador. Use o menu do Windows localmente.'
-    if tipo=='pedido_melhoria':return texto_relatorio(autoanalisar())+'\nPara aplicar melhorias seguras, use /melhorar e confirme.'
+    if tipo=='pedido_melhoria':return texto_relatorio(analisar_sessao())+'\nPara aplicar melhorias seguras, use /melhorar e confirme.'
     if tipo=='pedido_reinicio_windows':return 'Reiniciar Windows não é desligar o PC. O reinício só ocorre com /reiniciar_windows, ativação prévia no .env e duas confirmações. Salve o trabalho antes.'
     if tipo=='pedido_reinicio_bot':return 'Use /reiniciar para reiniciar apenas o MeuControlePC e confirme.'
     if tipo=='reparo':
@@ -144,7 +170,7 @@ def interpretar_comando(texto):
                 '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.2.2\n'
+    return ('🤖 MeuControlePC v2.2.3\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
@@ -160,7 +186,7 @@ def rejeitar_constante_json(valor):
     raise ValueError('Número JSON inválido: '+valor)
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.2.2'
+    server_version='MeuControlePC/2.2.3'
     def log_message(self,*args):pass
     def _headers(self,codigo,tipo):
         self.send_response(codigo)
@@ -225,7 +251,7 @@ class PainelHandler(BaseHTTPRequestHandler):
             elif acao=='concluir':resultado='Tarefa: '+concluir_tarefa(str(obj.get('id','')))
             elif acao=='notebook':gerar_notebook();resultado='CSV e Notebook gerados na pasta dados.'
             elif acao=='diagnostico':resultado='Diagnóstico: '+json.dumps(reparo_seguro(),ensure_ascii=False)
-            elif acao=='autoanalise':resultado=texto_relatorio(autoanalisar())
+            elif acao=='autoanalise':resultado=texto_relatorio(analisar_sessao())
             elif acao=='verificar':
                 from verificacao_ambiente import verificar
                 resultado=verificar()['texto']
@@ -301,7 +327,7 @@ def menu_secundario(chat_id,botao,user_id):
     elif botao==MENU_BOTOES[7]:BOT.send_message(chat_id,'Ferramentas PC',reply_markup=inline(('📸 Capturar tela','pedir:print'),('🖥️ Desktop','pedir:desktop'),('📂 Task Manager','pedir:taskmgr'),('↵ Enter','pedir:enter'),('📁 Explorer','pedir:explorer'),('🧑‍💻 VS Code','pedir:vscode_pc')))
     elif botao==MENU_BOTOES[8]:
         gerar_notebook();BOT.send_message(chat_id,'📓 CSV e Notebook gerados em dados/. Abra o VS Code/Jupyter ou acesse Colab.',reply_markup=inline(('Abrir Colab no PC','pedir:colab'),('Abrir FURG no PC','pedir:furg')))
-    elif botao==MENU_BOTOES[9]:BOT.send_message(chat_id,texto_relatorio(autoanalisar()),reply_markup=inline(('🛠️ Aplicar melhorias seguras','pedir:melhorias')))
+    elif botao==MENU_BOTOES[9]:BOT.send_message(chat_id,texto_relatorio(analisar_sessao()),reply_markup=inline(('📦 Backup e arquivos locais','pedir:melhorias')))
     elif botao==MENU_BOTOES[10]:iniciar_pomodoro(chat_id,25,5)
     elif botao==MENU_BOTOES[11]:confirmar(chat_id,user_id,'melhorias','Fazer backup, gerar notebook/CSV e atualizar catálogo RoboTask? Nenhum código será reescrito.')
     elif botao==MENU_BOTOES[12]:confirmar(chat_id,user_id,'reiniciar','Reiniciar somente o MeuControlePC, incluindo Telegram e painel?')
@@ -356,7 +382,7 @@ def tratar_pedido(m):
     if t in ('reinicie o assistente','reiniciar assistente','reinicie o bot','reiniciar bot'):
         return confirmar(chat,usuario,'reiniciar','Reiniciar o MeuControlePC, mantendo dados?')
     if t in ('melhore','arrume e melhore','arrume e melhore o bot','analise e melhore'):
-        BOT.send_message(chat,texto_relatorio(autoanalisar()),reply_markup=inline(('Aplicar melhorias seguras','pedir:melhorias')));return
+        BOT.send_message(chat,texto_relatorio(analisar_sessao()),reply_markup=inline(('📦 Backup e arquivos locais','pedir:melhorias')));return
     cmd,*resto=texto.split(' ',1)
     args=resto[0].strip() if resto else ''
     chave=cmd.split('@',1)[0].casefold()
@@ -381,7 +407,7 @@ def tratar_pedido(m):
     elif chave=='/kanban':BOT.send_message(chat,mostrar_kanban())
     elif chave=='/tarefa':adicionar_kanban('A_Fazer',args);BOT.send_message(chat,'✅ Tarefa incluída no Kanban.')
     elif chave=='/pomodoro':iniciar_pomodoro(chat,25,5)
-    elif chave in ('/evoluir','/evolucao','/autoanalise'):BOT.send_message(chat,texto_relatorio(autoanalisar()),reply_markup=inline(('🛠️ Aplicar melhorias seguras','pedir:melhorias')))
+    elif chave in ('/evoluir','/evolucao','/autoanalise'):BOT.send_message(chat,texto_relatorio(analisar_sessao()),reply_markup=inline(('📦 Backup e arquivos locais','pedir:melhorias')))
     elif chave=='/melhorar':confirmar(chat,usuario,'melhorias','Gerar backup dos dados e atualizar CSV/Jupyter e o índice RoboTask? Sem alterar código.')
     elif chave=='/ecossistema':BOT.send_message(chat,json.dumps(detectar_ecossistema(),ensure_ascii=False,indent=2))
     elif chave=='/macros':
@@ -556,7 +582,7 @@ def main():
     print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
     try:
         monitor_parada=threading.Event()
-        threading.Thread(target=executar_agendador,args=(monitor_parada,),daemon=True).start()
+        threading.Thread(target=executar_agendador,args=(monitor_parada,),kwargs={'obter_estado_provedores':ROTEADOR.estado_local},daemon=True).start()
         if opt.somente_painel:
             print('Modo painel local, sem Telegram.')
             while True:time.sleep(3600)

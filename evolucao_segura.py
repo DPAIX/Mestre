@@ -9,8 +9,10 @@ import symtable
 import hashlib
 import datetime as dt
 import json
+import math
 import os
 from pathlib import Path
+import re
 import threading
 import time
 import uuid
@@ -23,6 +25,130 @@ FONTES = ('assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
           'agenda_google.py','evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')
 DADOS_CRITICOS = ('gestao_vida.json','minhas_macros.json','base_auto_aprendizado.json')
 BACKUP_SEGURO = DADOS_CRITICOS + ('robotask_conhecimento.json','ecossistema_suporte.json')
+PROVEDORES = ('Gemini','OpenAI','Claude','Exa')
+STATUS_FALHA = ('erro','falha','indisponivel')
+
+
+def _instante(valor):
+    if isinstance(valor,bool):return None
+    try:numero=float(valor)
+    except (ValueError,TypeError,OverflowError):return None
+    return numero if math.isfinite(numero) and numero>0 else None
+
+
+def _horario_evento(evento):
+    try:
+        carimbo=dt.datetime.fromisoformat(str(evento.get('timestamp','')))
+        if carimbo.tzinfo is None:carimbo=carimbo.astimezone()
+        return carimbo.timestamp()
+    except (TypeError,ValueError,OverflowError,OSError):return None
+
+
+def _provedor_evento(evento):
+    acao=str(evento.get('acao',''))
+    if acao.startswith('api_') and acao[4:] in PROVEDORES:return acao[4:]
+    provedor=evento.get('provedor')
+    return provedor if provedor in PROVEDORES else None
+
+
+def _categoria_evento(evento):
+    detalhe=str(evento.get('detalhes','')).lower()
+    codigo=re.search(r'\b(400|401|402|403|404|429|500|502|503|504|529)\b',detalhe)
+    codigo=int(codigo.group()) if codigo else None
+    if codigo in (500,502,503,504,529):categoria='servidor_ocupado'
+    elif codigo in (401,403):categoria='autenticacao'
+    elif codigo==404:categoria='modelo_indisponivel'
+    elif codigo==402 or any(x in detalhe for x in ('sem_creditos','sem créditos','insufficient_quota','credit balance','no credits')):categoria='sem_creditos'
+    elif codigo==429:categoria='limite_temporario'
+    else:
+        categoria=next((x for x in ('servidor_ocupado','autenticacao','modelo_indisponivel','limite_temporario','rede','resposta_invalida','requisicao_invalida') if x in detalhe),'temporario')
+    return categoria,codigo
+
+
+def _orientacao_provedor(provedor,categoria):
+    consulta='/pesquisar' if provedor=='Exa' else '/ia'
+    orientacoes={
+        'servidor_ocupado':f'O provedor informou alta demanda ou indisponibilidade temporária. Aguarde e repita uma consulta explícita com {consulta}.',
+        'limite_temporario':f'Aguarde o prazo do provedor e repita uma consulta explícita com {consulta}, sem tentativas automáticas.',
+        'sem_creditos':f'A última falha indica falta de créditos. Confira o saldo na plataforma; depois, libere a pausa local com /reativar_ias e faça uma consulta explícita com {consulta}.',
+        'autenticacao':'Revise a credencial no .env local e as permissões da conta; não compartilhe chaves. Depois use /reativar_ias e uma consulta explícita.',
+        'modelo_indisponivel':'Confira o modelo configurado e o acesso da sua conta. Depois use /reativar_ias e uma consulta explícita.',
+        'rede':f'Confira a conexão e repita uma consulta explícita com {consulta}.',
+    }
+    return orientacoes.get(categoria,f'Confira /verificar e os logs; uma nova consulta explícita com {consulta} é necessária para verificar o provedor.')
+
+
+def _diagnosticar_provedores(eventos,estado_provedores,agora):
+    """Consolida evidência local; fim de uma pausa não prova recuperação remota."""
+    ultimo_erro={};ultimo_sucesso={}
+    for indice,evento in enumerate(eventos):
+        if not isinstance(evento,dict):continue
+        provedor=_provedor_evento(evento)
+        instante=_horario_evento(evento)
+        if not provedor or instante is None:continue
+        status=str(evento.get('status','')).lower()
+        destino=ultimo_erro if status in STATUS_FALHA else ultimo_sucesso if status=='sucesso' else None
+        if destino is None:continue
+        anterior=destino.get(provedor)
+        if anterior is None or (instante,indice)>(anterior[0],anterior[1]):destino[provedor]=(instante,indice,evento)
+    snapshot=estado_provedores if isinstance(estado_provedores,dict) else {}
+    evidencias={};avisos=[]
+    for provedor in PROVEDORES:
+        meta=snapshot.get(provedor,{})
+        if not isinstance(meta,dict):meta={}
+        configurado=meta.get('configurado')
+        falha=ultimo_erro.get(provedor)
+        sucesso=ultimo_sucesso.get(provedor)
+        falha_em=falha[0] if falha else None
+        sucesso_em=sucesso[0] if sucesso else None
+        categoria,codigo=_categoria_evento(falha[2]) if falha else (None,None)
+        falha_router=_instante(meta.get('falha_em'))
+        sucesso_router=_instante(meta.get('sucesso_em'))
+        evidencia_router=bool(meta.get('categoria') or falha_router is not None)
+        origem_router=False
+        # O log usa segundos e é emitido após persistir o estado: seu carimbo pode
+        # ser posterior ao epoch da mesma falha, sem invalidar a evidência do roteador.
+        if falha_router is not None and (falha_em is None or falha_router>=falha_em-0.000001):
+            falha_em=falha_router;categoria=meta.get('categoria') or categoria
+            codigo=meta.get('codigo') if meta.get('codigo') is not None else codigo
+            origem_router=True
+        elif falha_em is None and meta.get('categoria'):
+            categoria=meta['categoria'];codigo=meta.get('codigo');origem_router=True
+        if sucesso_router is not None and (sucesso_em is None or sucesso_router>sucesso_em):sucesso_em=sucesso_router
+        superada=bool(falha_em is not None and sucesso_em is not None and sucesso_em>falha_em)
+        if (not origem_router and falha and sucesso and sucesso[0]==falha[0] and sucesso[1]>falha[1]):superada=True
+        em_pausa=bool(meta.get('em_pausa'))
+        # Formatos legados guardavam a categoria, mas não a data da falha.
+        # Um sucesso confirmado na sessão supera esse motivo antigo sem prazo ativo.
+        if falha_router is None and falha is None and sucesso_router is not None and not em_pausa:superada=True
+        pendente=bool(categoria and not superada and configurado is not False)
+        recente=falha_em is not None and 0<=agora-falha_em<=600
+        orientacao=_orientacao_provedor(provedor,categoria) if pendente else ''
+        situacao=('sem_chave' if configurado is False else
+                  'falha_sem_nova_verificacao' if pendente else
+                  'sucesso_na_ultima_consulta' if sucesso_em is not None else 'nao_verificado')
+        evidencias[provedor]={'situacao':situacao,'configurado':configurado,'categoria':categoria,
+                             'codigo':codigo,'falha_em':falha_em,'sucesso_em':sucesso_em,
+                             'em_pausa':em_pausa,'orientacao':orientacao}
+        # Logs antigos permanecem no histórico. O snapshot pode comprovar uma
+        # última falha ainda pendente mesmo após o prazo de espera terminar.
+        if pendente and (recente or evidencia_router):
+            causa=f' (HTTP {codigo})' if codigo else ''
+            descricao={
+                'servidor_ocupado':'Alta demanda ou indisponibilidade temporária do provedor',
+                'limite_temporario':'Limite temporário de consultas',
+                'sem_creditos':'Créditos insuficientes na última tentativa',
+                'autenticacao':'Credencial ou permissão rejeitada',
+                'modelo_indisponivel':'Modelo ou rota não acessível',
+                'rede':'Falha de conexão',
+                'resposta_invalida':'Resposta inválida do provedor',
+                'requisicao_invalida':'Requisição rejeitada pelo provedor',
+            }.get(categoria,'Falha na consulta ao provedor')
+            mensagem=f'{descricao}{causa}. A última consulta falhou; a disponibilidade atual ainda não foi verificada.'
+            avisos.append({'nivel':'aviso','alvo':'provedor: '+provedor,'provedor':provedor,
+                           'categoria':categoria,'codigo':codigo,'detalhe':mensagem,
+                           'orientacao':orientacao,'em_pausa':em_pausa})
+    return evidencias,avisos
 
 
 def nomes_globais_indefinidos(codigo: str, arquivo: str = "<codigo>") -> list[str]:
@@ -48,8 +174,8 @@ def nomes_globais_indefinidos(codigo: str, arquivo: str = "<codigo>") -> list[st
     return [f"{funcao}: nome '{nome}' não definido" for funcao, nome in sorted(achados)]
 
 
-def analisar(*, registrar_resultado=True):
-    """Inspeção local sem usar APIs, executar macros ou sobrescrever dados."""
+def analisar(*, registrar_resultado=True, estado_provedores=None):
+    """Inspeção local sem consultas remotas; estado opcional vem do roteador."""
     with _ANALISE_LOCK:
         problemas=[]; ok=[]; sugestoes=[]
         for nome in FONTES:
@@ -85,44 +211,52 @@ def analisar(*, registrar_resultado=True):
             resumo={}
             problemas.append({'nivel':'erro','alvo':'status','detalhe':str(nucleo.redigir(exc))[:180]})
         eventos=nucleo.ler_json('log_acoes_e_erros.json',[])
-        agora=dt.datetime.now().astimezone()
-        historicas=[];ativas=[]
-        for e in eventos[-100:]:
-            if not isinstance(e,dict) or str(e.get('status','')).lower() not in ('erro','falha','indisponivel'):continue
-            historicas.append(e)
-            try:
-                carimbo=dt.datetime.fromisoformat(str(e.get('timestamp','')))
-                if carimbo.tzinfo is None:carimbo=carimbo.astimezone()
-                if dt.timedelta(0)<=agora-carimbo<=dt.timedelta(minutes=10):ativas.append(e)
-            except (TypeError,ValueError):pass
-        if ativas:
-            problemas.append({'nivel':'aviso','alvo':'falhas_ativas','detalhe':f'{len(ativas)} falha(s) nos últimos 10 minutos. Veja /logs.'})
-            # Exibir a causa específica para que o diagnóstico seja acionável.
-            for evento in ativas[-3:]:
+        if not isinstance(eventos,list):
+            problemas.append({'nivel':'erro','alvo':'log_acoes_e_erros.json','detalhe':'O histórico deve ser uma lista JSON.'})
+            eventos=[]
+        eventos=eventos[-100:]
+        agora=dt.datetime.now().astimezone().timestamp()
+        historicas=[];recentes=[];locais_recentes=[];externas_recentes=[]
+        for evento in eventos:
+            if not isinstance(evento,dict) or str(evento.get('status','')).lower() not in STATUS_FALHA:continue
+            historicas.append(evento)
+            instante=_horario_evento(evento)
+            if instante is not None and 0<=agora-instante<=600:
+                recentes.append(evento)
+                (externas_recentes if _provedor_evento(evento) else locais_recentes).append(evento)
+        if locais_recentes:
+            problemas.append({'nivel':'aviso','alvo':'falhas_ativas','detalhe':f'{len(locais_recentes)} ocorrência(s) de falha local nos últimos 10 minutos. Veja /logs.'})
+            for evento in locais_recentes[-3:]:
                 acao=str(evento.get('acao','desconhecida'))[:45]
                 detalhe=str(nucleo.redigir(evento.get('detalhes','')))[:140]
                 problemas.append({'nivel':'aviso','alvo':'log: '+acao,'detalhe':detalhe or 'Falha sem mensagem detalhada.'})
-        # Ocorrências antigas permanecem rastreáveis, mas não exigem reparo novamente.
-        if any('sem_creditos' in str(e.get('detalhes','')) for e in historicas):
-            sugestoes.append('Há falhas anteriores por falta de créditos; adicione saldo na plataforma ou desative o provedor. Nenhum código recupera créditos da conta.')
+        problemas_locais=list(problemas)
+        evidencias,avisos_externos=_diagnosticar_provedores(eventos,estado_provedores,agora)
+        for aviso in avisos_externos:sugestoes.append(aviso['provedor']+': '+aviso['orientacao'])
         token=os.environ.get('TELEGRAM_TOKEN','')
         if not token:
             sugestoes.append('Telegram sem token nesta sessão: configure o .env e reinicie o aplicativo.')
         if not os.environ.get('TELEGRAM_ALLOWED_USER_IDS','').strip():
             sugestoes.append('Permissões Telegram pendentes: configure TELEGRAM_ALLOWED_USER_IDS.')
-        if problemas:
-            sugestoes.append('Corrija os avisos sinalizados antes de reiniciar ou ativar tarefas automáticas.')
+        if problemas_locais:
+            sugestoes.append('Revise os problemas locais sinalizados antes de reiniciar ou ativar tarefas automáticas.')
         else:
-            sugestoes.append('Verificações locais sem erros detectados; APIs e ações no Windows não foram testadas.')
-        sugestoes.append('Melhorias permitidas mediante confirmação: backup local dos dados, atualização de CSV/Jupyter e índice RoboTask.')
+            sugestoes.append('Verificações locais sem erros detectados. Esta análise não consultou APIs nem executou ações do Windows.')
+        sugestoes.append('Manutenção local opcional mediante confirmação: backup dos dados, CSV/Jupyter e índice RoboTask. Essas ações não alteram a disponibilidade das APIs.')
+        problemas=problemas_locais+avisos_externos
+        estado_local='atenção' if problemas_locais else 'sem falhas locais detectadas'
         resultado={'quando':dt.datetime.now().isoformat(timespec='seconds'),
                    'modo':'inspecao_sem_alteracao', 'verificacoes_ok':len(ok),
-                   'falhas_recentes':len(ativas),'falhas_historicas':len(historicas)-len(ativas),'problemas':problemas,
+                   'falhas_recentes':len(recentes),'falhas_historicas':len(historicas)-len(recentes),'problemas':problemas,
+                   'problemas_locais':problemas_locais,'avisos_externos':avisos_externos,
+                   'estado_local':estado_local,'estado_provedores':evidencias,
+                   'falhas_locais_recentes':len(locais_recentes),'falhas_externas_recentes':len(externas_recentes),
+                   'falhas_externas_pendentes':len(avisos_externos),
                    'sugestoes':sugestoes,'melhorias_disponiveis':['backup','notebook','robotask'],
-                   'estado':'atenção' if problemas else 'sem falhas locais detectadas'}
+                   'estado':'atenção local' if problemas_locais else 'sem falhas locais; há avisos de serviços externos' if avisos_externos else estado_local}
         if registrar_resultado:
             nucleo.gravar_json('ultima_autoanalise.json',resultado)
-            nucleo.registrar('auto_analise','executado',f"{len(problemas)} alertas; {len(ativas)} falhas ativas; {len(historicas)} no histórico")
+            nucleo.registrar('auto_analise','executado',f"{len(problemas_locais)} problemas locais; {len(avisos_externos)} avisos externos; {len(recentes)} ocorrências de falha recentes")
         return resultado
 
 
@@ -222,13 +356,13 @@ def melhorar(acoes=('backup','notebook','robotask')):
         return relatorio
 
 
-def executar_agendador(stop_event:threading.Event):
+def executar_agendador(stop_event:threading.Event, obter_estado_provedores=None):
     """Executa *somente análise* de tempos em tempos, nunca reparos por conta própria."""
     try: intervalo=int(os.environ.get('AUTOANALISE_INTERVALO_MIN','360'))
     except ValueError: intervalo=360
     intervalo=max(15,min(intervalo,10080))
     if not stop_event.wait(5):
         while not stop_event.is_set():
-            try:analisar()
+            try:analisar(estado_provedores=obter_estado_provedores() if obter_estado_provedores else None)
             except Exception as exc:nucleo.registrar('auto_analise_agendada','falha',str(exc))
             if stop_event.wait(intervalo*60):break

@@ -1,8 +1,8 @@
-# MeuControlePC v2.2.2
+# MeuControlePC v2.2.3
 
 Assistente Python para Windows com bot Telegram, painel local, rotina, finanças, catálogo RoboTask e provedores de IA configuráveis.
 
-Esta revisão corrige requisições inválidas do painel, cliques duplicados, confirmações do Telegram, limites de APIs, precisão financeira e novas tentativas de melhorias após falhas. Os formatos de dados existentes foram preservados.
+Esta revisão separa falhas locais de alertas de APIs, explica a sobrecarga HTTP 503 e elimina avisos de recursos abertos nos testes do Python 3.14. Mantém as correções de segurança, persistência, finanças e interface da v2.2.2. Os formatos de dados existentes foram preservados.
 
 ## Instalação no Windows
 
@@ -20,8 +20,8 @@ python -m unittest discover -s testes -v
 python -m compileall -q .
 ```
 
-Node.js 18 ou superior habilita também as oito verificações comportamentais do painel. Sem Node, o teste correspondente informa que foi ignorado; o uso normal do assistente não depende de Node. O CI instala Node e executa a suíte em Linux e Windows, com Python 3.11 e 3.12.
+Node.js 18 ou superior habilita também as treze verificações comportamentais do painel. Sem Node, o teste correspondente informa que foi ignorado; o uso normal do assistente não depende de Node. O CI instala Node e executa a suíte em Linux e Windows, com Python 3.11, 3.12 e 3.14.
 
 Os testes usam arquivos temporários e serviços simulados. A conexão real com Telegram, provedores de IA e RoboTask deve ser verificada no seu computador.
 
-Veja o [relatório da revisão](REVISAO_V2_2_2.md) para causas, arquivos alterados, validação manual e reversão. A [documentação completa](LEIA-ME.md) descreve comandos, migração e integrações opcionais.
+Veja o [relatório da revisão](REVISAO_V2_2_3.md) para causas, arquivos alterados, validação manual e reversão. A [documentação completa](LEIA-ME.md) descreve comandos, migração e integrações opcionais.

@@ -57,8 +57,9 @@ class PersistenciaRegressoes(unittest.TestCase):
                 path = nucleo.DADOS / 'invalido.json'
                 original = ('{"saldo":' + constante + '}').encode()
                 path.write_bytes(original)
-                with self.assertRaises(ValueError):
+                with self.assertLogs(nucleo._LOG,level='ERROR') as logs,self.assertRaises(ValueError):
                     nucleo.ler_json('invalido.json', {})
+                self.assertIn('invalido.json',logs.output[0])
                 self.assertEqual(path.read_bytes(), original)
 
     def test_subcentavos_nao_alteram_saldo_nem_historico(self):

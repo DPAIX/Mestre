@@ -127,5 +127,111 @@ class MultiIARegressoes(unittest.TestCase):
             roteador=ia.Roteador()
             self.assertFalse(roteador.disponivel('OpenAI'))
 
+    def test_todos_indisponiveis_inclui_pausas_anteriores_e_causas_distintas(self):
+        with patch.dict(os.environ,{'GEMINI_API_KEY':'chave-ficticia-gemini'}):
+            roteador=ia.Roteador()
+            with patch('multi_ia.time.time',return_value=1000):
+                for nome in ('OpenAI','Claude'):
+                    roteador.registrar_falha(ia.FalhaAPI(nome,429,'saldo fictício','sem_creditos'))
+            erro=ia.FalhaAPI('Gemini',503,'overloaded','servidor_ocupado')
+            with patch('multi_ia.time.time',return_value=3340),patch.object(roteador,'gemini',side_effect=erro) as gemini,\
+                    patch.object(roteador,'openai') as openai,patch.object(roteador,'claude') as claude:
+                with self.assertRaises(ia.FalhaAPI) as exc:roteador.responder('teste')
+            texto=str(exc.exception)
+            self.assertIn('Gemini: servidor ocupado (HTTP 503)',texto)
+            self.assertIn('pausa local por mais 1 min',texto)
+            self.assertIn('OpenAI: sem créditos (HTTP 429)',texto)
+            self.assertIn('Claude: sem créditos (HTTP 429)',texto)
+            self.assertIn('23 h 21 min',texto)
+            self.assertIn('Exa atende apenas /pesquisar',texto)
+            self.assertIn('Nenhuma nova tentativa foi agendada',texto)
+            gemini.assert_called_once()
+            openai.assert_not_called()
+            claude.assert_not_called()
+
+    def test_sobrecarga_isolada_nao_recomenda_creditos(self):
+        with patch.dict(os.environ,{'GEMINI_API_KEY':'ficticia','OPENAI_API_KEY':'','ANTHROPIC_API_KEY':''}):
+            roteador=ia.Roteador()
+            erro=ia.analisar_erro('Gemini',503,'Temporary overload. See billing docs.')
+            self.assertEqual(erro.categoria,'servidor_ocupado')
+            with patch.object(roteador,'gemini',side_effect=erro):
+                with self.assertRaises(ia.FalhaAPI) as exc:roteador.responder('teste')
+            texto=str(exc.exception)
+            self.assertIn('servidor ocupado (HTTP 503)',texto)
+            self.assertNotIn('créditos',texto)
+            self.assertNotIn('faturamento',texto)
+
+    def test_snapshot_preserva_falha_apos_expirar_pausa_sem_prometer_recuperacao(self):
+        roteador=ia.Roteador()
+        with patch('multi_ia.time.time',return_value=1000):
+            roteador.registrar_falha(ia.FalhaAPI('OpenAI',503,'conteúdo não deve integrar snapshot','servidor_ocupado'))
+        with patch('multi_ia.time.time',return_value=1061):
+            estado=roteador.estado_local()['OpenAI']
+            self.assertFalse(estado['em_pausa'])
+            self.assertEqual(estado['espera_segundos'],0)
+            self.assertEqual(estado['categoria'],'servidor_ocupado')
+            self.assertEqual(estado['codigo'],503)
+            self.assertEqual(estado['falha_em'],1000)
+            self.assertEqual(estado['pausa_ate'],1060)
+            self.assertIsNone(estado['sucesso_em'])
+            self.assertEqual(roteador.status()['OpenAI'],'configurado; não testado')
+
+    def test_snapshot_sucesso_registra_somente_resposta_observada_na_sessao(self):
+        roteador=ia.Roteador()
+        with patch('multi_ia.time.time',return_value=1000):
+            roteador.registrar_falha(ia.FalhaAPI('OpenAI',503,'erro fictício','servidor_ocupado'))
+        with patch('multi_ia.time.time',return_value=1061),patch.object(roteador,'openai',return_value='resposta fictícia'):
+            self.assertEqual(roteador.responder('teste'),('resposta fictícia','OpenAI'))
+            estado=roteador.estado_local()['OpenAI']
+            self.assertFalse(estado['em_pausa'])
+            self.assertEqual(estado['falha_em'],1000)
+            self.assertEqual(estado['sucesso_em'],1061)
+            self.assertIsNone(estado['pausa_ate'])
+
+    def test_snapshot_sem_chaves_perguntas_ou_detalhes_e_sem_consultas(self):
+        roteador=ia.Roteador()
+        with patch('multi_ia.time.time',return_value=1000):
+            roteador.registrar_falha(ia.FalhaAPI('OpenAI',429,'segredo-ficticio-interno','sem_creditos'))
+        with patch('multi_ia.urllib.request.urlopen',side_effect=AssertionError('snapshot não consulta APIs')):
+            estado=roteador.estado_local()
+        serializado=json.dumps(estado)
+        self.assertNotIn('segredo-ficticio-interno',serializado)
+        self.assertNotIn('chave-ficticia',serializado)
+        self.assertEqual(set(estado),{'Gemini','OpenAI','Claude','Exa'})
+        estado['OpenAI']['categoria']='mudança externa'
+        self.assertEqual(roteador.estado_local()['OpenAI']['categoria'],'sem_creditos')
+
+    def test_metadados_bloqueio_restaurados_e_legado_aceito(self):
+        dados={'OpenAI':{'ate':1100,'categoria':'sem_creditos','codigo':429,'falha_em':990},
+            'Claude':{'ate':1200,'categoria':'autenticacao'}}
+        with patch('multi_ia.ler_json',return_value=dados),patch('multi_ia.time.time',return_value=1000):
+            roteador=ia.Roteador()
+            estados=roteador.estado_local()
+        self.assertEqual(estados['OpenAI']['codigo'],429)
+        self.assertEqual(estados['OpenAI']['falha_em'],990)
+        self.assertIsNone(estados['Claude']['codigo'])
+        self.assertTrue(estados['Claude']['em_pausa'])
+
+    def test_reativar_nao_e_considerado_resposta_bem_sucedida(self):
+        roteador=ia.Roteador()
+        with patch('multi_ia.time.time',return_value=1000):
+            roteador.registrar_falha(ia.FalhaAPI('OpenAI',429,'erro fictício','sem_creditos'))
+            roteador.reativar()
+            estado=roteador.estado_local()['OpenAI']
+        self.assertFalse(estado['em_pausa'])
+        self.assertIsNone(estado['sucesso_em'])
+        self.assertEqual(estado['falha_em'],1000)
+
+    def test_pesquisa_em_pausa_informa_causa_e_espera_sem_nova_consulta(self):
+        roteador=ia.Roteador()
+        with patch('multi_ia.time.time',return_value=1000):
+            roteador.registrar_falha(ia.FalhaAPI('Exa',503,'erro fictício','servidor_ocupado'))
+            with patch.object(roteador,'pesquisa_exa') as consulta:
+                with self.assertRaises(ia.FalhaAPI) as exc:roteador.responder('teste',pesquisa=True)
+        self.assertEqual(exc.exception.categoria,'suspenso')
+        self.assertIn('servidor ocupado (HTTP 503)',str(exc.exception))
+        self.assertIn('mais 1 min',str(exc.exception))
+        consulta.assert_not_called()
+
 
 if __name__=='__main__':unittest.main()

@@ -113,3 +113,81 @@ test('dados contendo HTML permanecem texto na renderização',async()=>{
  const item=p.obter('colunas').children[0].children[1];
  assert.equal(item.textContent,p.contexto.malicioso);
 });
+
+test('autoanálise separa estado local de falha 503 do provedor',async()=>{
+ const p=await painel();
+ p.contexto.novoEstado={...estado,autoanalise:{
+  quando:'2026-10-21T12:00:00',estado:'atenção',estado_local:'sem falhas locais detectadas',
+  verificacoes_ok:8,falhas_recentes:1,falhas_historicas:6,
+  falhas_locais_recentes:0,falhas_externas_recentes:1,falhas_externas_pendentes:1,
+  problemas:[{alvo:'Gemini',detalhe:'texto legado misturado'}],problemas_locais:[],
+  avisos_externos:[{nivel:'aviso',provedor:'Gemini',categoria:'servidor_ocupado',codigo:503,
+   detalhe:'Última consulta falhou; disponibilidade atual não verificada.',em_pausa:true}],sugestoes:[]
+ }};
+ p.executar('render(novoEstado)');
+ const texto=p.obter('resumo-analise').textContent;
+ assert.match(texto,/Estado local: sem falhas locais detectadas/);
+ assert.match(texto,/Gemini · HTTP 503/);
+ assert.match(texto,/alta demanda ou sobrecarga temporária/);
+ assert.match(texto,/não indica falta de créditos/);
+ assert.match(texto,/disponibilidade atual das APIs não foi verificada/);
+ assert.match(texto,/Backup e arquivos locais não corrigem/);
+ assert.doesNotMatch(texto,/falhas ativas|texto legado misturado/);
+});
+
+test('ocorrência recente com sucesso posterior não vira falha atual',async()=>{
+ const p=await painel();
+ p.contexto.novoEstado={...estado,autoanalise:{
+  estado_local:'sem falhas locais detectadas',falhas_locais_recentes:0,
+  falhas_externas_recentes:1,falhas_externas_pendentes:0,
+  problemas_locais:[],avisos_externos:[],falhas_historicas:4
+ }};
+ p.executar('render(novoEstado)');
+ const texto=p.obter('resumo-analise').textContent;
+ assert.match(texto,/Ocorrências nos últimos 10 min: 0 locais; 1 externas/);
+ assert.match(texto,/0 aviso\(s\) pendente\(s\)/);
+ assert.doesNotMatch(texto,/falhas ativas|indisponível|undefined/);
+});
+
+test('problema de código fica local e não se mistura ao aviso externo',async()=>{
+ const p=await painel();
+ p.contexto.novoEstado={...estado,autoanalise:{estado_local:'atenção',
+  problemas_locais:[{alvo:'arquivo.py',detalhe:'Erro de sintaxe'}],
+  avisos_externos:[{provedor:'Gemini',codigo:503,orientacao:'Aguarde a redução de demanda.'}],
+  falhas_externas_pendentes:1
+ }};
+ p.executar('render(novoEstado)');
+ const texto=p.obter('resumo-analise').textContent;
+ assert.match(texto,/Problema local — arquivo.py: Erro de sintaxe/);
+ assert.match(texto,/Gemini · HTTP 503/);
+ assert.match(texto,/Aguarde a redução de demanda/);
+ assert.doesNotMatch(texto,/undefined/);
+});
+
+test('relatório antigo preserva evidências sem repetir orientação de recarga histórica',async()=>{
+ const p=await painel();
+ p.contexto.novoEstado={...estado,autoanalise:{quando:'2026-10-20T12:00:00',estado:'atenção',
+  verificacoes_ok:7,falhas_recentes:0,falhas_historicas:5,
+  problemas:[{alvo:'Logs',detalhe:'Falhas registradas na data anterior'}],
+  sugestoes:['Há falhas anteriores por falta de créditos; adicione saldo na plataforma.']
+ }};
+ p.executar('render(novoEstado)');
+ const texto=p.obter('resumo-analise').textContent;
+ assert.match(texto,/Resultado salvo \(formato anterior\): atenção/);
+ assert.match(texto,/0 nos últimos 10 min; 5 anteriores/);
+ assert.match(texto,/Execute «Analisar agora» para atualizar/);
+ assert.match(texto,/Registro anterior — Logs/);
+ assert.doesNotMatch(texto,/adicione saldo|falhas ativas|Estado local: atenção/);
+});
+
+test('relatório ausente ou parcial usa mensagens compatíveis sem undefined',async()=>{
+ const p=await painel();
+ p.contexto.novoEstado={...estado,autoanalise:{}};
+ p.executar('render(novoEstado)');
+ assert.equal(p.obter('resumo-analise').textContent,'Nenhuma análise registrada ainda.');
+ p.contexto.novoEstado={...estado,autoanalise:{verificacoes_ok:4}};
+ p.executar('render(novoEstado)');
+ const texto=p.obter('resumo-analise').textContent;
+ assert.match(texto,/Resultado salvo \(formato anterior\): não informado/);
+ assert.doesNotMatch(texto,/undefined|falhas ativas/);
+});
