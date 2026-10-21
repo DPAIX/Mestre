@@ -2,6 +2,7 @@
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -36,10 +37,12 @@ class MelhoriasRegressoes(unittest.TestCase):
         gerar.assert_called_once_with()
 
     def test_falha_catalogo_com_arquivo_antigo_permite_retentar(self):
-        with patch.object(evol.os,'name','nt'),patch.object(nucleo,'catalogo_robotask',side_effect=OSError('Catálogo indisponível na simulação')):
+        # Isola a simulação no módulo; pathlib conserva a plataforma real do teste.
+        windows=SimpleNamespace(name='nt',environ=evol.os.environ,path=evol.os.path,replace=evol.os.replace)
+        with patch.object(evol,'os',windows),patch.object(nucleo,'catalogo_robotask',side_effect=OSError('Catálogo indisponível na simulação')):
             primeira=evol.melhorar()
         self.assertEqual(next(a['resultado'] for a in primeira['acoes'] if a['acao']=='robotask'),'falha')
-        with patch.object(evol.os,'name','nt'),patch.object(nucleo,'catalogo_robotask',return_value=[]) as catalogar:
+        with patch.object(evol,'os',windows),patch.object(nucleo,'catalogo_robotask',return_value=[]) as catalogar:
             segunda=evol.melhorar()
         self.assertFalse(segunda['sem_alteracoes'])
         catalogar.assert_called_once_with()

@@ -20,7 +20,7 @@ O código corrigido está preparado para revisão em branch própria. Não houve
 
 ## Verificação executada
 
-Antes das mudanças, **46 testes Python passaram** e a compilação passou. Após a integração, em Linux com Python 3.12:
+Antes das mudanças, **46 testes Python passaram** e a compilação passou. Após a integração, em Linux com Python 3.11 e 3.12:
 
 - `python -m unittest discover -s testes -v`: **87 testes passaram, nenhum ignorado**. A suíte inclui o wrapper dos testes JavaScript.
 - `node --test testes/test_painel_frontend.js`: **8 testes comportamentais passaram**.
@@ -28,7 +28,7 @@ Antes das mudanças, **46 testes Python passaram** e a compilação passou. Apó
 - Verificação de sintaxe JavaScript e `git diff --check`: passaram.
 - Revisão adicional das alterações HTTP e de autorização: sem problemas acionáveis encontrados.
 
-As regressões usam dados temporários, servidor HTTP em loopback e serviços simulados. Não foram feitas consultas reais a Telegram/IA, capturas de tela, hotkeys, tarefas RoboTask ou reinícios. Execução de CI no GitHub é verificação separada destes resultados locais.
+As regressões usam dados temporários, servidor HTTP em loopback e serviços simulados. Não foram feitas consultas reais a Telegram/IA, capturas de tela, hotkeys, tarefas RoboTask ou reinícios. A primeira matriz de CI passou em Windows 3.11/3.12 e Linux 3.12. Em Linux 3.11, encontrou uma incompatibilidade nos testes que simulavam Windows alterando `os.name` globalmente. A simulação foi isolada ao módulo em `testes/test_v22.py` e `testes/test_evolucao_regressoes.py`, preservando as verificações e sem mudar o código de produção. O resultado atualizado de CI está nos checks da proposta.
 
 ## Atualizar e validar no Windows
 

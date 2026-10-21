@@ -3,6 +3,7 @@ import datetime as dt
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import sys
@@ -44,14 +45,16 @@ class TesteV22(unittest.TestCase):
         self.assertTrue(any('créditos' in s for s in r['sugestoes']))
     def test_repetir_melhoria_nao_gera_novo_backup(self):
         # Simula Windows com catálogo existente, sem acionar tarefas.
-        with patch('evolucao_segura.os.name','nt'),patch('evolucao_segura.nucleo.catalogo_robotask',return_value=[]):
+        windows=SimpleNamespace(name='nt',environ=os.environ,path=os.path,replace=os.replace)
+        with patch.object(evo,'os',windows),patch('evolucao_segura.nucleo.catalogo_robotask',return_value=[]):
             a=evo.melhorar(); b=evo.melhorar()
         self.assertFalse(a['sem_alteracoes'])
         self.assertTrue(b['sem_alteracoes'])
         self.assertEqual(len(list((nucleo.DADOS/'backups').glob('*.zip'))),1)
         self.assertIn('já atualizado',app.texto_melhorias(b))
     def test_mudanca_dados_produz_novo_backup(self):
-        with patch('evolucao_segura.os.name','nt'),patch('evolucao_segura.nucleo.catalogo_robotask',return_value=[]):
+        windows=SimpleNamespace(name='nt',environ=os.environ,path=os.path,replace=os.replace)
+        with patch.object(evo,'os',windows),patch('evolucao_segura.nucleo.catalogo_robotask',return_value=[]):
             evo.melhorar()
             d=nucleo.vida();d['financeiro']['saldo']=122.0;nucleo.gravar_json('gestao_vida.json',d)
             b=evo.melhorar()
