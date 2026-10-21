@@ -7,7 +7,7 @@ import colaboracao_chats as central
 _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chats_modelos_ollama','modelo_testar','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -101,6 +101,31 @@ def texto_equipe(resultado):
 
 
 def executar_acao(acao,obj,contexto,roteador):
+    if acao=='chats_modelos_ollama':
+        from configurar_ia_local import validar_modelo,modelo_instalado
+        modelos=obj.get('modelos')
+        if not isinstance(modelos,list) or not 1<=len(modelos)<=4:
+            raise ValueError('Selecione entre um e quatro modelos.')
+        modelos=list(dict.fromkeys(validar_modelo(nome) for nome in modelos))
+        catalogo=roteador.catalogo_ollama();nomes=[item['nome'] for item in catalogo['modelos']]
+        presentes=[modelo_instalado(nome,nomes) for nome in modelos]
+        if None in presentes:raise ValueError('Um dos modelos não está no catálogo do seu Ollama. Atualize a lista antes de criar as conversas.')
+        resultado=central.preparar_chats_modelos(contexto,presentes)
+        linhas=[f'Conversas preparadas: {resultado["criados"]} nova(s). A primeira foi selecionada.']
+        linhas.extend(c['id']+' | '+c['modelo_ollama'] for c in resultado['chats'])
+        linhas.append('Nenhuma resposta foi gerada nem modelo baixado. Use /ia ou o teste explícito para verificar cada modelo.')
+        if not catalogo.get('habilitado'):linhas.append('Configure Ollama com configurar_ia_local.bat e reinicie o assistente antes de conversar.')
+        return '\n'.join(linhas)
+    if acao=='modelo_testar':
+        if obj.get('confirmacao')!='TESTAR MODELO':raise ValueError('Confirme TESTAR MODELO; será feita uma consulta real que pode consumir cota.')
+        from configurar_ia_local import validar_modelo,modelo_instalado
+        modelo=validar_modelo(campo_texto(obj,'modelo',200))
+        catalogo=roteador.catalogo_ollama()
+        modelo=modelo_instalado(modelo,[item['nome'] for item in catalogo['modelos']])
+        if modelo is None:raise ValueError('Modelo não encontrado no catálogo Ollama.')
+        texto,provedor=roteador.responder('Responda somente OK.',provedor='Ollama',modelo_ollama=modelo)
+        if provedor!='Ollama' or not isinstance(texto,str) or not texto.strip():raise RuntimeError('O teste não recebeu uma resposta válida do modelo escolhido.')
+        return 'Resposta recebida de '+modelo+': '+str(nucleo.redigir(texto))[:500]+'. Uma consulta concluída não mede saldo nem garante disponibilidade futura. Nenhum histórico de conversa foi enviado.'
     if acao=='chat_criar':
         chat=central.criar_chat(contexto,campo_texto(obj,'titulo',100),obj.get('provedor','auto'))
         return 'Conversa criada e selecionada: '+chat['id']

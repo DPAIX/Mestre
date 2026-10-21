@@ -282,3 +282,79 @@ test('equipe recusa mais de quatro participantes antes de consultar',async()=>{
  p.obter('equipe-objetivo').value='Propor melhorias';await p.obter('consultar-equipe').eventos.click();
  assert.equal(chamadas,0);assert.match(p.obter('aviso').textContent,/no máximo quatro participantes/);
 });
+
+test('catálogo mostra famílias e usos sugeridos só para as tags retornadas',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,opt});return resposta({padrao:'mistral:latest',habilitado:true,modelos:[
+  {nome:'mistral:latest',nuvem:false,familia:'Mistral',uso_sugerido:'Planejar e revisar propostas'},
+  {nome:'llama3.2:latest',nuvem:false,familia:'Llama 3.2',uso_sugerido:'Organizar tarefas'},
+  {nome:'qwen3.8:27b',nuvem:false,familia:'Qwen',uso_sugerido:'<b>Propor mudanças de código</b>'}
+ ]})};
+ assert.equal(chamadas.length,0);
+ await p.obter('atualizar-modelos-ollama').eventos.click();
+ assert.equal(chamadas.length,1);assert.equal(chamadas[0].url,'/api/modelos_ollama');
+ const lista=p.obter('equipe-modelos-ollama').children;
+ assert.equal(lista.length,3);
+ assert.match(lista[0].children[1].textContent,/mistral:latest.*Mistral.*Planejar e revisar propostas/);
+ assert.match(lista[1].children[1].textContent,/llama3.2:latest.*Llama 3\.2.*Organizar tarefas/);
+ assert.match(lista[2].children[1].textContent,/<b>Propor mudanças de código<\/b>/);
+ const tags=p.obter('chat-modelo-ollama').children.slice(1).map(o=>o.value);
+ assert.deepEqual(tags,['mistral:latest','llama3.2:latest','qwen3.8:27b']);
+});
+
+test('detalhes consultam tag codificada com token e separam contexto máximo da janela ativa',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,opt});return resposta({nome:'library/qwen3.8:27b',familia:'qwen',parametros:'27B',quantizacao:'Q4_K_M',capacidades:['completion','<img onerror=x>'],contexto_maximo:131072,nuvem:false})};
+ p.obter('chat-modelo-ollama').value='library/qwen3.8:27b';
+ assert.equal(chamadas.length,0);
+ await p.obter('chat-detalhes-modelo').eventos.click();
+ assert.equal(chamadas.length,1);
+ assert.equal(chamadas[0].url,'/api/modelo_ollama?nome=library%2Fqwen3.8%3A27b');
+ assert.equal(chamadas[0].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(chamadas[0].opt.method,undefined);
+ const texto=p.obter('detalhes-modelo-ollama').textContent;
+ assert.match(texto,/Contexto máximo declarado: 131072 tokens/);
+ assert.match(texto,/não é a janela ativa, a memória disponível nem garantia/);
+ assert.match(texto,/<img onerror=x>/);
+ assert.match(texto,/nenhuma resposta foi gerada e nenhum modelo foi baixado/);
+ assert.doesNotMatch(texto,/200000|200k/);
+});
+
+test('criar conversas envia só os modelos marcados sem consultar as IAs',async()=>{
+ const p=await painel(),chamadas=[];
+ const anterior=p.contexto.document.querySelectorAll;
+ p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-modelos-ollama input:checked'?[{value:'mistral:latest'},{value:'llama3.2:latest'},{value:'qwen3.8:27b'}]:anterior(seletor);
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,opt});return resposta(opt.method==='POST'?{mensagem:'Conversas preparadas'}:estado)};
+ await p.obter('criar-chats-modelos').eventos.click();
+ const posts=chamadas.filter(c=>c.opt.method==='POST');
+ assert.equal(posts.length,1);assert.equal(posts[0].url,'/api/acao');
+ assert.deepEqual(JSON.parse(posts[0].opt.body),{acao:'chats_modelos_ollama',modelos:['mistral:latest','llama3.2:latest','qwen3.8:27b']});
+ assert.equal(chamadas.filter(c=>c.url==='/api/modelos_ollama'||c.url.startsWith('/api/modelo_ollama')).length,0);
+});
+
+test('criar conversas exige seleção e limita quatro modelos antes de escrever',async()=>{
+ const p=await painel();let chamadas=0;
+ p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
+ await p.obter('criar-chats-modelos').eventos.click();
+ assert.equal(chamadas,0);assert.match(p.obter('aviso').textContent,/Marque os modelos/);
+ const anterior=p.contexto.document.querySelectorAll;
+ p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-modelos-ollama input:checked'?['a','b','c','d','e'].map(value=>({value})):anterior(seletor);
+ await p.obter('criar-chats-modelos').eventos.click();
+ assert.equal(chamadas,0);assert.match(p.obter('aviso').textContent,/no máximo quatro modelos/);
+});
+
+test('teste de resposta aguarda confirmação e envia uma consulta sem histórico',async()=>{
+ const p=await painel(),chamadas=[];let confirmacao;
+ p.obter('chat-modelo-ollama').value='qwen3.8:27b';
+ p.contexto.confirm=texto=>{confirmacao=texto;return false};
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,opt});return resposta(opt.method==='POST'?{mensagem:'Resposta recebida nesta consulta; não mede saldo nem garante disponibilidade futura.'}:estado)};
+ await p.obter('chat-testar-modelo').eventos.click();
+ assert.equal(chamadas.length,0);
+ assert.match(confirmacao,/qwen3\.8:27b.*consulta real/);assert.match(confirmacao,/sem histórico.*cota/);
+ p.contexto.confirm=()=>true;
+ await p.obter('chat-testar-modelo').eventos.click();
+ const posts=chamadas.filter(c=>c.opt.method==='POST');
+ assert.equal(posts.length,1);
+ assert.deepEqual(JSON.parse(posts[0].opt.body),{acao:'modelo_testar',modelo:'qwen3.8:27b',confirmacao:'TESTAR MODELO'});
+ assert.match(p.obter('teste-modelo-ollama').textContent,/não mede saldo nem garante disponibilidade futura/);
+});

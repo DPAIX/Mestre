@@ -34,6 +34,37 @@ No painel, abra **Chats e projeto → Atualizar modelos do Ollama**, selecione u
 
 ## 1. Conversas e tópicos independentes
 
+### Mistral, Llama 3.2 e Qwen dos novos prints — v2.3.2
+
+Esses modelos usam a integração Ollama diretamente, pelo mesmo protocolo de conversa e equipe. O catálogo identifica a família pelo nome da tag e sugere usos; isso organiza o trabalho, sem afirmar desempenho ou compatibilidade com agentes externos.
+
+1. Na pasta nova do projeto, execute `configurar_ia_local.bat --listar`. Para definir um Mistral já instalado como padrão e habilitar Ollama, use `configurar_ia_local.bat --modelo mistral` (o nome precisa constar no catálogo, possivelmente como `mistral:latest`). Reinicie o assistente.
+2. No painel **Chats e projeto**, clique **Atualizar modelos do Ollama**. Marque os modelos disponíveis e clique **Criar conversas para modelos marcados**. São aceitos até quatro por vez. A operação cria uma conversa por tag, seleciona a primeira e não duplica conversas já preparadas para o mesmo modelo.
+3. Selecione um modelo e clique **Ver detalhes do modelo**. A leitura informa família técnica, parâmetros, quantização, capacidades e contexto máximo declarado pelo Ollama. Não envia uma pergunta, não carrega uma nova janela de contexto nem baixa modelos.
+4. Clique **Testar resposta deste modelo** e confirme para fazer uma consulta real curta, sem histórico. O teste não troca para outra IA; resposta, falha ou limite se referem ao modelo escolhido. Modelos cloud podem consumir cota. Depois converse normalmente ou marque os modelos na equipe para gerar propostas.
+
+No Telegram, use os nomes da sua lista:
+
+```text
+/modelos ollama
+/modelos preparar mistral,llama3.2,qwen3.8:27b
+/modelos detalhes mistral
+/modelos testar mistral
+/ia Proponha melhorias para o assistente
+```
+
+A preparação só funciona se os três nomes estiverem registrados no seu Ollama. Nomes sem tag são normalizados para `:latest` quando esse alias estiver presente; outras tags precisam ser escritas por completo. Se algum nome estiver ausente, nenhuma conversa do lote é gravada. É possível preparar só os modelos presentes. O nome completo do Llama não está visível no print: não se deve inferir uma tag apenas pelos 3,2B parâmetros exibidos. O Qwen `qwen3.8:27b` mostrado no Claude Code também precisa ser confirmado no catálogo Ollama.
+
+Para consultar metadados sem iniciar o assistente, execute `configurar_ia_local.bat --detalhes mistral`. Para listar modelos no PowerShell, saia primeiro da conversa `>>>` do Ollama com `/bye` e então execute `ollama list`. Dentro de `>>>`, `list` é texto enviado ao modelo, não um comando de terminal.
+
+### Aviso do Claude Code sobre Qwen e 200 mil tokens
+
+O aviso “model isn't recognized; context assumed to be 200k tokens” vem do cliente Claude Code. Não confirma que o modelo aceite 200 mil tokens, esteja disponível no Ollama ou tenha gerado resposta. O MeuControlePC não reutiliza essa estimativa: os detalhes vêm de `/api/show`, e o contexto máximo declarado continua distinto da janela ativa do serviço.
+
+Para usar Claude Code com Ollama, confira primeiro a tag em `ollama list` e inicie pelo launcher oficial, por exemplo `ollama launch claude --model qwen3.8:27b`, somente se essa tag estiver disponível. Preserve as confirmações de permissões do cliente. O Ollama recomenda modelos com ferramentas e contexto de pelo menos 64k para projetos maiores no Claude Code. O Mistral do print declara 32.768 tokens: pode responder no MeuControlePC, mas fica abaixo dessa recomendação para o agente de código. Llama 3.2 no print declara 131.072; a janela ativa e a memória necessária continuam dependendo do serviço e da máquina. A atualização do Claude Code pode alterar o aviso; esta implementação não afirma removê-lo nem instala/atualiza esse cliente.
+
+Referências: https://docs.ollama.com/integrations/claude-code e https://code.claude.com/docs/en/model-config.
+
 Use `/chats` para ver as conversas do chat/tópico atual. `/chat novo Nome` cria e seleciona uma conversa; `/chat usar ID` alterna. `/chat provedor Gemini`, `OpenAI`, `Claude`, `Ollama` ou `auto` define o motor de resposta. O automático tenta os provedores configurados, respeitando pausas; a seleção explícita consulta somente o escolhido.
 
 `/ia pergunta` usa o histórico da conversa selecionada. `/chat modo on` permite enviar mensagens comuns como conversa contínua; `/chat modo off` volta ao uso explícito de `/ia`. Ativar esse modo pode consumir créditos se um provedor externo estiver selecionado. No painel, cada pergunta também usa a conversa selecionada.

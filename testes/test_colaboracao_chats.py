@@ -86,6 +86,19 @@ class ColaboracaoChats(unittest.TestCase):
         with self.assertRaises(ValueError):
             colab.configurar_chat(self.contexto,chat['id'],'provedor-inexistente')
 
+    def test_preparacao_em_lote_e_atomica_idempotente_e_isolada(self):
+        primeiro=colab.preparar_chats_modelos(self.contexto,['mistral:latest','llama3.2:latest'])
+        self.assertEqual(primeiro['criados'],2)
+        ids=[c['id'] for c in primeiro['chats']]
+        self.assertEqual(colab.preparar_chats_modelos(self.contexto,['mistral:latest','llama3.2:latest'])['criados'],0)
+        self.assertEqual([c['id'] for c in colab.listar_chats(self.contexto)],ids)
+        self.assertEqual(colab.listar_chats(self.outro),[])
+        antes=(self.dados/'colaboracao_chats.json').read_bytes()
+        with patch.dict('os.environ',{'COLABORACAO_MAX_CHATS_POR_CONTEXTO':'3'}):
+            with self.assertRaises(ValueError):
+                colab.preparar_chats_modelos(self.contexto,['novo:1b','novo:2b'])
+        self.assertEqual((self.dados/'colaboracao_chats.json').read_bytes(),antes)
+
     def test_historico_limita_trocas_tamanho_e_redige_segredos(self):
         colab.criar_chat(self.contexto,'Histórico limitado')
         for numero in range(22):

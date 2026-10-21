@@ -276,6 +276,110 @@ class ConfiguracaoIALocal(unittest.TestCase):
             self.assertEqual(local.main([], self.env), 2)
         self.assertEqual(self.env.read_bytes(), antes)
 
+    def test_detalhes_projeta_capacidade_real_sem_prompts_ou_alocacao(self):
+        dados = {'details': {'family': 'llama', 'parameter_size': '7.2B', 'quantization_level': 'Q4_K_M'},
+                 'model_info': {'general.architecture': 'llama', 'llama.context_length': 32768},
+                 'capabilities': ['completion', 'tools'], 'template': 'NAO_EXIBIR_TEMPLATE',
+                 'system': 'NAO_EXIBIR_SYSTEM', 'modelfile': 'NAO_EXIBIR_MODELFILE',
+                 'license': 'NAO_EXIBIR_LICENSE'}
+        resposta = io.BytesIO(json.dumps(dados).encode())
+        cliente = MagicMock()
+        cliente.open.return_value = resposta
+        with patch.object(local.urllib.request, 'build_opener', return_value=cliente) as abrir:
+            resultado = local.mostrar_modelo('mistral:latest')
+        self.assertEqual(resultado, {'nome': 'mistral:latest', 'familia': 'llama', 'parametros': '7.2B',
+                                    'quantizacao': 'Q4_K_M', 'capacidades': ['completion', 'tools'],
+                                    'contexto_maximo': 32768, 'nuvem': False})
+        self.assertTrue(resposta.closed)
+        pedido = cliente.open.call_args.args[0]
+        self.assertEqual(pedido.full_url, local.URL_PADRAO + '/api/show')
+        self.assertEqual(pedido.method, 'POST')
+        self.assertEqual(json.loads(pedido.data), {'model': 'mistral:latest', 'verbose': False})
+        self.assertEqual(cliente.open.call_args.kwargs['timeout'], local.TIMEOUT_CONSULTA)
+        self.assertEqual(abrir.call_args.args[0].proxies, {})
+        self.assertIsInstance(abrir.call_args.args[1], local.SemRedirecionamento)
+        self.assertNotIn('NAO_EXIBIR', repr(resultado))
+
+    def test_detalhes_limita_valores_e_nao_converte_contexto_invalido(self):
+        for invalido in (True, False, 0, -1, 10_000_001, 131072.0, '200000', None):
+            dados = {'details': {}, 'model_info': {'llama.context_length': invalido}}
+            cliente = MagicMock()
+            cliente.open.return_value = io.BytesIO(json.dumps(dados).encode())
+            with self.subTest(invalido=invalido), patch.object(local.urllib.request, 'build_opener', return_value=cliente):
+                self.assertIsNone(local.mostrar_modelo('llama3.2:latest')['contexto_maximo'])
+        dados = {'details': {'family': 'sk-proj-' + 'Z' * 38, 'parameter_size': 'X' * 500},
+                 'capabilities': [' tools ', 'tools', None] + ['X' * 500] * 30,
+                 'model_info': {'outro.context_length': 131072, 'menor.context_length': 32768}}
+        cliente = MagicMock()
+        cliente.open.return_value = io.BytesIO(json.dumps(dados).encode())
+        with patch.object(local.urllib.request, 'build_opener', return_value=cliente):
+            resultado = local.mostrar_modelo('llama3.2:latest')
+        self.assertNotIn('sk-proj-', resultado['familia'])
+        self.assertLessEqual(len(resultado['parametros']), 100)
+        self.assertLessEqual(len(resultado['capacidades']), 20)
+        self.assertTrue(all(len(item) <= 100 for item in resultado['capacidades']))
+        self.assertEqual(resultado['capacidades'][0], 'tools')
+        self.assertEqual(resultado['contexto_maximo'], 32768)
+
+    def test_detalhes_usa_arquitetura_informada_e_identifica_alias_remoto(self):
+        dados = {'details': {'family': 'qwen'}, 'model_info': {'general.architecture': 'qwen',
+                 'qwen.context_length': 131072, 'outro.context_length': 4096},
+                 'remote_host': 'https://nao-consultar.example', 'remote_model': 'remoto'}
+        cliente = MagicMock()
+        cliente.open.return_value = io.BytesIO(json.dumps(dados).encode())
+        with patch.object(local.urllib.request, 'build_opener', return_value=cliente):
+            resultado = local.mostrar_modelo('alias:latest')
+        self.assertEqual(resultado['contexto_maximo'], 131072)
+        self.assertTrue(resultado['nuvem'])
+        self.assertNotIn('nao-consultar.example', repr(resultado))
+        cliente.open.assert_called_once()
+
+    def test_detalhes_invalidos_tamanho_e_http_preservam_limites_e_fechamento(self):
+        for corpo in (b'null', b'[]', b'{}', b'not json', b'\xff', b'{"error":"NAO_EXIBIR"}',
+                      b'{"details":null}', b'{"model_info":[]}', b'{"capabilities":"tools"}',
+                      b'x' * (local.LIMITE_RESPOSTA + 10)):
+            resposta = io.BytesIO(corpo)
+            cliente = MagicMock()
+            cliente.open.return_value = resposta
+            with self.subTest(corpo=corpo[:30]), patch.object(local.urllib.request, 'build_opener', return_value=cliente):
+                with self.assertRaises(local.FalhaConfiguracao) as erro:
+                    local.mostrar_modelo('mistral')
+                self.assertNotIn('NAO_EXIBIR', str(erro.exception))
+            self.assertTrue(resposta.closed)
+        for codigo in (401, 404, 503):
+            resposta = io.BytesIO(b'NAO_EXIBIR_CORPO')
+            cliente = MagicMock()
+            cliente.open.side_effect = HTTPError(local.URL_PADRAO, codigo, 'Falha', {}, resposta)
+            with self.subTest(codigo=codigo), patch.object(local.urllib.request, 'build_opener', return_value=cliente):
+                with self.assertRaises(local.FalhaConfiguracao) as erro:
+                    local.mostrar_modelo('mistral')
+                self.assertIn('HTTP ' + str(codigo), str(erro.exception))
+                self.assertNotIn('NAO_EXIBIR', str(erro.exception))
+            self.assertTrue(resposta.closed)
+
+    def test_detalhes_rejeita_url_ou_nome_invalido_antes_da_rede(self):
+        with patch.object(local.urllib.request, 'build_opener') as abrir:
+            with self.assertRaises(ValueError):
+                local.mostrar_modelo('modelo;comando')
+            with self.assertRaises(ValueError):
+                local.mostrar_modelo('mistral', 'https://example.com')
+            abrir.assert_not_called()
+
+    def test_cli_detalhes_nao_grava_env_nem_baixa_ou_promete_inferencia(self):
+        antes = self.env.read_bytes()
+        dados = {'nome': 'mistral:latest', 'familia': 'llama', 'parametros': '7.2B',
+                 'quantizacao': 'Q4_K_M', 'capacidades': ['completion', 'tools'],
+                 'contexto_maximo': 32768, 'nuvem': False}
+        with patch.object(local, 'mostrar_modelo', return_value=dados) as mostrar, \
+                patch.object(local, 'atualizar_env') as gravar, patch.object(local.subprocess, 'run') as executar:
+            self.assertEqual(local.main(['--detalhes', 'mistral'], self.env), 0)
+            mostrar.assert_called_once_with('mistral', local.URL_PADRAO)
+            gravar.assert_not_called()
+            executar.assert_not_called()
+        self.assertEqual(self.env.read_bytes(), antes)
+        self.assertIn('"contexto_maximo": 32768', self.saida.getvalue())
+        self.assertIn('não representa a janela ativa nem um teste de geração', self.saida.getvalue())
+
 
 if __name__ == '__main__':
     unittest.main()
