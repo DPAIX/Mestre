@@ -174,7 +174,7 @@ class ColaboracaoChats(unittest.TestCase):
             }.issubset(nomes))
             manifesto=json.loads(pacote.read('manifesto.json'))
             sanitizado=pacote.read('fontes/nucleo.py')
-            self.assertEqual(manifesto['hashes_fontes']['nucleo.py'],hashlib.sha256(self.codigo.encode('utf8')).hexdigest())
+            self.assertEqual(manifesto['hashes_fontes']['nucleo.py'],hashlib.sha256((self.fontes/'nucleo.py').read_bytes()).hexdigest())
             self.assertEqual(manifesto['hashes_sanitizados']['nucleo.py'],hashlib.sha256(sanitizado).hexdigest())
             self.assertNotIn(self.segredo,sanitizado.decode('utf8'))
         self.assertEqual(caminho.parent,self.dados/'colaboracao')
