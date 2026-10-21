@@ -95,7 +95,7 @@ def texto_equipe(resultado):
 
 def executar_acao(acao,obj,contexto,roteador):
     if acao=='chat_criar':
-        chat=central.criar_chat(contexto,campo_texto(obj,'titulo',120),obj.get('provedor','auto'))
+        chat=central.criar_chat(contexto,campo_texto(obj,'titulo',100),obj.get('provedor','auto'))
         return 'Conversa criada e selecionada: '+chat['id']
     if acao=='chat_selecionar':
         central.selecionar_chat(contexto,campo_texto(obj,'id',100));return 'Conversa selecionada.'
@@ -115,7 +115,7 @@ def executar_acao(acao,obj,contexto,roteador):
     if acao=='tarefa_status':
         central.alterar_tarefa(campo_texto(obj,'id',100),campo_texto(obj,'status',40));return 'Tarefa atualizada.'
     if acao=='contribuicao_importar':
-        proposta=central.importar_contribuicao(campo_texto(obj,'origem',120),campo_texto(obj,'titulo',200),campo_texto(obj,'texto',30000),tarefa_id=obj.get('tarefa_id') or None)
+        proposta=central.importar_contribuicao(campo_texto(obj,'origem',80),campo_texto(obj,'titulo',150),campo_texto(obj,'texto',30000),tarefa_id=obj.get('tarefa_id') or None)
         return 'Contribuição registrada para revisão: '+proposta['id']+'. Nenhum código foi executado.'
     if acao=='contribuicao_status':
         central.decidir_contribuicao(campo_texto(obj,'id',100),campo_texto(obj,'status',30));return 'Decisão registrada. Aceitar uma proposta não aplica código.'
