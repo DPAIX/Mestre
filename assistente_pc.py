@@ -144,7 +144,7 @@ def interpretar_comando(texto):
                 '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.2.1\n'
+    return ('🤖 MeuControlePC v2.2.2\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
@@ -156,8 +156,11 @@ def mensagem_ajuda():
             '/melhorar (com confirmação) /reiniciar /reiniciar_windows /cancelar_reinicio\n'
             'Para executar ações no Windows, use os botões de confirmação.')
 
+def rejeitar_constante_json(valor):
+    raise ValueError('Número JSON inválido: '+valor)
+
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.0'
+    server_version='MeuControlePC/2.2.2'
     def log_message(self,*args):pass
     def _headers(self,codigo,tipo):
         self.send_response(codigo)
@@ -171,8 +174,19 @@ class PainelHandler(BaseHTTPRequestHandler):
         self._headers(codigo,'application/json; charset=utf-8')
         self.wfile.write(json.dumps(redigir(obj),ensure_ascii=False).encode('utf-8'))
     def autenticado(self):
-        return secrets.compare_digest(self.headers.get('X-Painel-Token',''),TOKEN_PAINEL)
+        recebido=self.headers.get('X-Painel-Token','').encode('utf-8')
+        return secrets.compare_digest(recebido,TOKEN_PAINEL.encode('utf-8'))
+    def _hosts_locais(self):
+        porta=self.server.server_port
+        hosts={f'127.0.0.1:{porta}',f'localhost:{porta}'}
+        if porta==80:hosts.update({'127.0.0.1','localhost'})
+        return hosts
+    def _host_local(self):
+        # Validar antes de entregar o HTML, que contém o token da sessão.
+        hosts=self.headers.get_all('Host',[])
+        return len(hosts)==1 and hosts[0].lower() in self._hosts_locais()
     def do_GET(self):
+        if not self._host_local():return self._json({'erro':'host não permitido'},403)
         caminho=urlparse(self.path).path
         if caminho=='/':
             html=(BASE/'painel_rotina.html').read_text(encoding='utf-8')
@@ -181,22 +195,31 @@ class PainelHandler(BaseHTTPRequestHandler):
             self.wfile.write(html.encode('utf-8'))
         elif caminho=='/api/estado':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
-            self._json({'vida':vida(),'resumo':resumo_status(),
-                        'provedores':ROTEADOR.status(),
-                        'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
-                        'robotask':ler_json('robotask_conhecimento.json',{}).get('tarefas',[])[:100],
-                        'autoanalise':ler_json('ultima_autoanalise.json',{})})
+            try:
+                estado={'vida':vida(),'resumo':resumo_status(),
+                         'provedores':ROTEADOR.status(),
+                         'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
+                         'robotask':ler_json('robotask_conhecimento.json',{}).get('tarefas',[])[:100],
+                         'autoanalise':ler_json('ultima_autoanalise.json',{})}
+            except (ValueError,OSError,TypeError,AttributeError):
+                return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
+            self._json(estado)
         else:self._json({'erro':'não encontrado'},404)
     def do_POST(self):
+        if not self._host_local():return self._json({'erro':'host não permitido'},403)
         origem=self.headers.get('Origin','')
-        porta=int(os.environ.get('PAINEL_PORTA','8765'))
-        origens={f'http://127.0.0.1:{porta}',f'http://localhost:{porta}'}
+        origens={'http://'+host for host in self._hosts_locais()}
         if origem not in origens or not self.autenticado():return self._json({'erro':'acesso negado'},403)
         if urlparse(self.path).path!='/api/acao':return self._json({'erro':'não encontrado'},404)
-        tamanho=int(self.headers.get('Content-Length',0) or 0)
-        if not 0<tamanho<=8192:return self._json({'erro':'tamanho inválido'},400)
+        if self.headers.get_content_type()!='application/json':return self._json({'erro':'Envie application/json.'},415)
         try:
-            obj=json.loads(self.rfile.read(tamanho))
+            comprimentos=self.headers.get_all('Content-Length',[])
+            if len(comprimentos)!=1 or not comprimentos[0].isdecimal():raise ValueError('Tamanho inválido.')
+            tamanho=int(comprimentos[0])
+            if not 0<tamanho<=8192:raise ValueError('Tamanho inválido.')
+            if self.headers.get('Transfer-Encoding'):raise ValueError('Transferência não suportada.')
+            obj=json.loads(self.rfile.read(tamanho),parse_constant=rejeitar_constante_json)
+            if not isinstance(obj,dict):raise ValueError('O pedido deve ser um objeto JSON.')
             acao=obj.get('acao')
             if acao=='agua':r=registrar_agua(); resultado=f'Água: {r[0]}/{r[1]}'
             elif acao=='concluir':resultado='Tarefa: '+concluir_tarefa(str(obj.get('id','')))
@@ -221,14 +244,17 @@ class PainelHandler(BaseHTTPRequestHandler):
                 resultado=reiniciar_windows()
             elif acao=='cancelar_reinicio_windows':
                 resultado=cancelar_reinicio_windows()
-            elif acao=='ru':resultado='Simulação RU: custo R$ %.2f; saldo projetado R$ %.2f'%simular_ru(int(obj.get('quantidade',0)))
+            elif acao=='ru':
+                quantidade=obj.get('quantidade',0)
+                if isinstance(quantidade,bool) or not isinstance(quantidade,int):raise ValueError('Informe uma quantidade inteira de refeições.')
+                resultado='Simulação RU: custo R$ %.2f; saldo projetado R$ %.2f'%simular_ru(quantidade)
             elif acao=='pergunta':resultado=interpretar_comando(str(obj.get('texto',''))[:1000])
             elif acao=='pc' and obj.get('comando') in ('f8','f9','f10','desktop','taskmgr','furg','agenda','colab'):
                 # Requer confirmação no próprio HTML antes da chamada.
                 resultado=executar(obj['comando'])
             else:return self._json({'erro':'ação não permitida'},400)
             self._json({'ok':True,'mensagem':resultado})
-        except (ValueError,RuntimeError,KeyError) as e:self._json({'erro':str(redigir(e))},400)
+        except (ValueError,RuntimeError,KeyError,UnicodeError,TypeError,OverflowError) as e:self._json({'erro':str(redigir(e))},400)
         except Exception as e:
             registrar('painel','falha',str(e))
             self._json({'erro':'Falha inesperada; consulte o log.'},500)
@@ -238,7 +264,7 @@ def iniciar_painel():
     servidor=ThreadingHTTPServer(('127.0.0.1',porta),PainelHandler)
     thread=threading.Thread(target=servidor.serve_forever,daemon=True)
     thread.start()
-    registrar('painel','iniciado','http://127.0.0.1:'+str(porta))
+    registrar('painel','iniciado','http://127.0.0.1:'+str(servidor.server_port))
     return servidor
 
 
@@ -385,8 +411,11 @@ def tratar_pedido(m):
     elif chave in ('/reiniciar_windows','/reiniciar_pc'):confirmar(chat,usuario,'reiniciar_windows','Reiniciar TODO O WINDOWS? Aplicativos podem ser FECHADOS à força; salve arquivos. Confirmação adicional por código necessária.')
     elif chave=='/confirmar_windows':
         with PEND_LOCK:
-            pend=CONFIRMACOES_WINDOWS.pop(usuario,None)
-        if not pend or time.monotonic()>pend['expira'] or pend['chat']!=chat or not secrets.compare_digest(args,pend['codigo']):
+            pend=CONFIRMACOES_WINDOWS.get(usuario)
+            valido=bool(pend and time.monotonic()<=pend['expira'] and pend['chat']==chat and
+                        secrets.compare_digest(args.encode('utf-8'),pend['codigo'].encode('utf-8')))
+            if valido:CONFIRMACOES_WINDOWS.pop(usuario)
+        if not valido:
             BOT.send_message(chat,'Confirmação inválida ou expirada. Nada foi agendado.')
         else:BOT.send_message(chat,reiniciar_windows())
     elif chave=='/cancelar_reinicio':BOT.send_message(chat,cancelar_reinicio_windows())
@@ -467,8 +496,10 @@ def configurar_bot():
             tipo,valor=c.data.split(':',1)
             if tipo in ('ok','cancelar'):
                 with PEND_LOCK:
-                    pend=PENDENTES.pop(valor,None)
-                if not pend or pend['user']!=c.from_user.id or pend['chat']!=c.message.chat.id or time.monotonic()>pend['expira']:
+                    pend=PENDENTES.get(valor)
+                    valido=bool(pend and pend['user']==c.from_user.id and pend['chat']==c.message.chat.id and time.monotonic()<=pend['expira'])
+                    if valido:PENDENTES.pop(valor)
+                if not valido:
                     BOT.answer_callback_query(c.id,'Solicitação expirada ou não autorizada.');return
                 if tipo=='cancelar':BOT.answer_callback_query(c.id,'Cancelado');return
                 acao=pend['acao']

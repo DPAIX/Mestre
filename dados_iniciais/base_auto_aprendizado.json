@@ -1,45 +1,7 @@
 {
-  "total_comandos_executados": 44,
-  "frequencia_acoes": {
-    "executar_auto_analise": 30,
-    "auto_reparar_bot": 5,
-    "exportar_logs_chat": 2,
-    "hub_google_apis": 2,
-    "hub_ferramentas_pc": 2,
-    "hub_vscode_colab": 1,
-    "status_pc": 1,
-    "acionar_nestask_f8": 1
-  },
-  "erros_conhecidos_e_solucoes": {
-    "503 UNAVAILABLE": "Aplicado backoff + cascata automática para gemini-2.5-flash / Exa Answer.",
-    "Errno 28 No space left": "Ativada limpeza automática de temporários e rotação de logs.",
-    "HTTP Error 400 Claude": "Adicionado suporte híbrido de cabeçalhos e sanitização de JSON.",
-    "HTTP Error 429": "Calculado horário de liberação e ativado roteamento Multi-IA + Motor Local."
-  },
-  "regras_aprendidas": [
-    "Manter saldo financeiro FURG sincronizado e calcular impacto do RU (R$ 6,00/refeição).",
-    "Retornar recibo detalhado de cada passo executado ao utilizador.",
-    "Evitar tentativas em modelos obsoletos ou provedores sem saldo para reduzir a latência de fallback e otimizar ciclos de auto-análise.",
-    "Em cenários de erros 404/503 em IAs secundárias com disco acima de 1000 MB, a migração para gemini-3.8-flash deve ser imediata sem acionar repetidamente o auto-reparo de disco.",
-    "Execuções sequenciais de auto-diagnóstico em intervalos curtos sob alta demanda exigem chaveamento preventivo imediato para evitar atrasos de retentativa.",
-    "Modelos legados (404) e provedores sem créditos ativos (429/400) devem ser ignorados temporariamente na cascata de fallback para evitar latência em requisições redundantes."
-  ],
-  "historico_melhorias": [
-    {
-      "data": "21/10 10:46",
-      "melhoria": "Remoção de gemini-2.0 e 2.5 da lista de modelos ativos, substituindo-os pelo gemini-3.8-flash e reordenando a fila de execução local."
-    },
-    {
-      "data": "21/10 10:46",
-      "melhoria": "Reordenação definitiva da fila de contingência de LLMs para gemini-3.8-flash e otimização dos intervalos de log no Jupyter Notebook."
-    },
-    {
-      "data": "21/10 10:48",
-      "melhoria": "Configurado circuito de falha rápida (circuit breaker) e failover automático para rotas de retentativa com backoff otimizado ao detectar HTTP 503/404."
-    },
-    {
-      "data": "21/10 10:56",
-      "melhoria": "Remoção do gemini-2.0-flash da fila de execução e ajuste autônomo da cascata para priorizar gemini-3.5-flash e motores locais."
-    }
-  ]
+  "total_comandos_executados": 0,
+  "frequencia_acoes": {},
+  "erros_conhecidos_e_solucoes": {},
+  "regras_aprendidas": [],
+  "historico_melhorias": []
 }

@@ -1,3 +1,5 @@
+> **Revisão v2.2.2:** consulte [REVISAO_V2_2_2.md](REVISAO_V2_2_2.md) para correções, testes, atualização e reversão.
+
 > **Correção v2.2.1:** consulte [GUIA_CORRECAO_V2_2_1.md](GUIA_CORRECAO_V2_2_1.md). Corrige o botão Multi-IA, amplia a auditoria de código e melhora o bloqueio de desligamento remoto.
 
 > **Atualização v2.2:** veja [GUIA_ATUALIZACAO_V2_2.md](GUIA_ATUALIZACAO_V2_2.md). O desligamento do computador não está disponível; o reinício do Windows permanece opcional.
@@ -15,7 +17,7 @@ Revisão do projeto legado `assistente_pc.py`, destinada ao Windows. Código Pyt
 5. **Se aparecer `Token must contain a colon`**, execute `configurar_telegram.bat`. Ele solicitará um novo token do BotFather com entrada oculta, validará o formato e salvará no `.env` sem sobrescrever outras APIs. `iniciar_windows.bat` também oferece essa configuração ao detectar token inválido. Para obter `TELEGRAM_ALLOWED_USER_IDS`, inicie com o campo vazio e envie `/id` ao bot: nessa condição ele apenas informa o identificador, sem aceitar ações de controle. Copie o número para `.env` e reinicie. Alternativamente use um ID pessoal previamente conhecido.
 6. **Antes de executar o bot pela primeira vez**, migre seus dados executando no Prompt/PowerShell, dentro da pasta nova:
    ```bat
-   .venv\Scripts\python.exe migrar_legado.py "C:\Users\Mestre\Desktop"
+   .venv\Scripts\python.exe migrar_legado.py "C:\Users\SEU_USUARIO\Desktop"
    ```
    Substitua a pasta se os seus arquivos antigos estiverem em outro lugar. A migração nunca sobrescreve dados já existentes na pasta `dados`.
 7. Execute `iniciar_windows.bat`. Acesse `http://127.0.0.1:8765` **no próprio PC** para o painel; o bot Telegram usa os botões e comandos descritos em `/ajuda`.

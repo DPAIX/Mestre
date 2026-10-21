@@ -1,0 +1,46 @@
+# Credenciais/ambiente local — nunca versionar
+.env
+.env.*
+!.env.exemplo
+*.pem
+*.p12
+*.pfx
+credentials.json
+token.json
+secrets*.json
+config_apis.json
+
+# Dados pessoais, logs e backups do bot
+dados/
+backups_codigo/
+backups/
+*.log
+exportacao_*.zip
+config_local*.json
+
+# Python, editors, virtual envs
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.vscode/
+.idea/
+
+# Temporarios/capturas/arquivos Windows
+*.tmp
+*.bak
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+*.png
+*.jpg
+*.jpeg
+*.ogg
+*.mp3

@@ -4,7 +4,6 @@ Limites e créditos são distinguidos. Provedores sem créditos ficam suspensos 
 from __future__ import annotations
 import json
 import os
-import random
 import re
 import threading
 import time
@@ -12,6 +11,14 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from nucleo import registrar,redigir,gravar_json,ler_json
+
+LIMITE_RESPOSTA=2_000_000
+
+def detalhe_seguro(texto,chave=''):
+    """Erros de provedores podem repetir a chave, inclusive sem prefixo conhecido."""
+    texto=str(texto)
+    if chave:texto=texto.replace(chave,'[CREDENCIAL-REDACTADA]')
+    return str(redigir(texto))
 
 @dataclass
 class FalhaAPI(Exception):
@@ -25,16 +32,16 @@ def analisar_erro(provedor,codigo,corpo):
     try:
         payload=json.loads(corpo)
         e=payload.get('error',payload)
-        tipo=str(e.get('type') or e.get('code') or '')
+        tipo=' '.join(str(e.get(campo) or '') for campo in ('type','code','status'))
         msg=str(e.get('message') or e.get('status') or corpo)
-    except (ValueError,AttributeError):tipo='';msg=str(corpo)
+    except (ValueError,AttributeError,TypeError):tipo='';msg=str(corpo)
     low=(tipo+' '+msg).lower()
     if codigo==404: cat='modelo_indisponivel'
     elif codigo==401 or codigo==403: cat='autenticacao'
-    elif any(x in low for x in ('no credits','credit balance','insufficient_quota','quota exceeded','billing','purchase credits','saldo insuficiente','credits remaining','usage_limit','credit_balance_exhausted')):
+    elif codigo==402 or any(x in low for x in ('no credits','credit balance','insufficient_quota','billing','purchase credits','saldo insuficiente','credits remaining','usage_limit','credit_balance_exhausted')):
         cat='sem_creditos'
     elif codigo==429: cat='limite_temporario'
-    elif codigo in (502,503,504):cat='servidor_ocupado'
+    elif codigo in (500,502,503,504,529):cat='servidor_ocupado'
     elif codigo==400:cat='requisicao_invalida'
     else:cat='temporario'
     return FalhaAPI(provedor,codigo,str(redigir(msg))[:250],cat)
@@ -45,11 +52,24 @@ def postar(url,chave,payload,provedor,headers=None,timeout=18):
     req=urllib.request.Request(url,json.dumps(payload,ensure_ascii=False).encode('utf-8'),headers=cab,method='POST')
     try:
         with urllib.request.urlopen(req,timeout=timeout) as resposta:
-            return json.loads(resposta.read().decode('utf-8'))
+            corpo=resposta.read(LIMITE_RESPOSTA+1)
+        if len(corpo)>LIMITE_RESPOSTA:
+            raise FalhaAPI(provedor,0,'Resposta excedeu o tamanho permitido.','resposta_invalida')
+        try:
+            dados=json.loads(corpo.decode('utf-8'))
+        except (ValueError,UnicodeError):
+            raise FalhaAPI(provedor,0,'O provedor retornou uma resposta JSON inválida.','resposta_invalida') from None
+        if not isinstance(dados,dict):
+            raise FalhaAPI(provedor,0,'O provedor retornou uma estrutura inesperada.','resposta_invalida')
+        if dados.get('error'):
+            raise analisar_erro(provedor,0,detalhe_seguro(json.dumps(dados),chave))
+        return dados
     except urllib.error.HTTPError as e:
-        raise analisar_erro(provedor,e.code,e.read().decode('utf-8','replace')[:1200]) from None
-    except (urllib.error.URLError,TimeoutError) as e:
-        raise FalhaAPI(provedor,0,str(redigir(str(e)))[:150],'rede') from None
+        try:corpo=e.read(1200).decode('utf-8','replace')
+        finally:e.close()
+        raise analisar_erro(provedor,e.code,detalhe_seguro(corpo,chave)) from None
+    except (urllib.error.URLError,TimeoutError,OSError) as e:
+        raise FalhaAPI(provedor,0,detalhe_seguro(e,chave)[:150],'rede') from None
 
 class Roteador:
     def __init__(self):
@@ -65,7 +85,8 @@ class Roteador:
             if not isinstance(dados,dict):return
             for nome,item in dados.items():
                 if nome not in ('Gemini','OpenAI','Claude','Exa') or not isinstance(item,dict):continue
-                limite=float(item.get('ate',0))
+                try:limite=float(item.get('ate',0))
+                except (ValueError,TypeError):continue
                 categoria=str(item.get('categoria','temporario'))
                 if time.time()<limite<time.time()+86460:
                     self.bloqueados[nome]=limite
@@ -122,7 +143,7 @@ class Roteador:
                     descricao={'sem_creditos':'sem créditos','autenticacao':'credencial rejeitada',
                                'modelo_indisponivel':'modelo não acessível','limite_temporario':'limite temporário',
                                'servidor_ocupado':'servidor ocupado','requisicao_invalida':'requisição inválida',
-                               'rede':'problema de rede'}.get(cat,'temporariamente indisponível')
+                               'rede':'problema de rede','resposta_invalida':'resposta inválida'}.get(cat,'temporariamente indisponível')
                     espera=max(1,int((limite-time.time()+59)//60))
                     result[nome]=f'{descricao} — pausa local (~{espera} min)'
                 else:result[nome]='configurado; não testado'
@@ -146,7 +167,7 @@ class Roteador:
             cod=getattr(e,'code',getattr(e,'status_code',0))
             try:cod=int(cod)
             except (TypeError,ValueError):cod=0
-            raise analisar_erro('Gemini',cod,str(e)) from None
+            raise analisar_erro('Gemini',cod,detalhe_seguro(e,chave)) from None
     def openai(self,pergunta):
         chave=os.environ.get('OPENAI_API_KEY')
         if not chave:raise FalhaAPI('OpenAI',0,'Chave não configurada.','configuracao')
@@ -154,7 +175,11 @@ class Roteador:
             'model':os.environ.get('OPENAI_MODEL','gpt-4o-mini'),
             'messages':[{'role':'system','content':'Responda em português do Brasil com precisão. Não simule execução de comandos no computador.'},
                         {'role':'user','content':pergunta[:11000]}]},'OpenAI',{'Authorization':'Bearer '+chave})
-        return d['choices'][0]['message']['content'].strip()
+        try:texto=d['choices'][0]['message']['content']
+        except (KeyError,IndexError,TypeError):texto=None
+        if not isinstance(texto,str) or not texto.strip():
+            raise FalhaAPI('OpenAI',0,'Resposta sem conteúdo textual.','resposta_invalida')
+        return texto.strip()
     def claude(self,pergunta):
         chave=os.environ.get('ANTHROPIC_API_KEY')
         if not chave:raise FalhaAPI('Claude',0,'Chave não configurada.','configuracao')
@@ -162,14 +187,22 @@ class Roteador:
             'model':os.environ.get('ANTHROPIC_MODEL','claude-sonnet-4-5'),
             'max_tokens':1024,'messages':[{'role':'user','content':pergunta[:11000]}]},
             'Claude',{'x-api-key':chave,'anthropic-version':'2023-06-01'})
-        return ''.join(x.get('text','') for x in d.get('content',[]) if x.get('type')=='text').strip()
+        conteudo=d.get('content')
+        if not isinstance(conteudo,list) or any(not isinstance(x,dict) for x in conteudo):
+            raise FalhaAPI('Claude',0,'Resposta sem conteúdo textual.','resposta_invalida')
+        textos=[x.get('text') for x in conteudo if x.get('type')=='text']
+        if not textos or any(not isinstance(x,str) for x in textos) or not ''.join(textos).strip():
+            raise FalhaAPI('Claude',0,'Resposta sem conteúdo textual.','resposta_invalida')
+        return ''.join(textos).strip()
     def pesquisa_exa(self,consulta):
         chave=os.environ.get('EXA_API_KEY')
         if not chave:raise FalhaAPI('Exa',0,'Chave não configurada.','configuracao')
         d=postar('https://api.exa.ai/search',chave,{
             'query':consulta[:450],'numResults':4,'contents':{'text':{'maxCharacters':550}}},
             'Exa',{'x-api-key':chave})
-        itens=d.get('results',[])
+        itens=d.get('results')
+        if not isinstance(itens,list) or any(not isinstance(x,dict) for x in itens):
+            raise FalhaAPI('Exa',0,'Resposta de pesquisa inválida.','resposta_invalida')
         if not itens:return 'A pesquisa não encontrou resultados.'
         saida=[]
         for i,item in enumerate(itens[:4],1):

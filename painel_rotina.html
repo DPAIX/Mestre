@@ -1,26 +1,26 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.2.1 · Centro de comando</title>
+<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.2.2 · Centro de comando</title>
 <style>
 :root{color-scheme:dark;--bg:#090f1c;--panel:#151f31;--inner:#0e1727;--border:#29384c;--text:#eaf1fa;--muted:#95a9c1;--accent:#5caafc;--success:#6dd8b3;--warn:#e0ba69}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,'Segoe UI',sans-serif}
 header{padding:22px 30px;background:linear-gradient(110deg,#152841,#192137);display:flex;gap:20px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-wrap:wrap}
 h1{font-size:24px;margin:0 0 4px;font-weight:750;letter-spacing:-.5px}h2{font-size:17px;margin:0 0 15px}small,.muted{color:var(--muted)}a{color:var(--accent)}main{max-width:1440px;margin:0 auto;padding:22px}nav{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px}
-button,.action{cursor:pointer;background:#1c3552;color:var(--text);border:1px solid #385676;border-radius:9px;padding:10px 13px;font-weight:600;font-size:13px}button:hover,.action:hover{background:#285176}button.active{background:#266db5;border-color:#67b9ff}button.warn{background:#63402c;border-color:#ad7948}
+button,.action{cursor:pointer;background:#1c3552;color:var(--text);border:1px solid #385676;border-radius:9px;padding:10px 13px;font-weight:600;font-size:13px}button:hover,.action:hover{background:#285176}button.active{background:#266db5;border-color:#67b9ff}button.warn{background:#63402c;border-color:#ad7948}button:disabled{cursor:wait;opacity:.55}
 input{padding:11px;border-radius:9px;border:1px solid #31415a;background:#0d1828;color:white;min-width:120px}input:focus{outline:2px solid var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:20px}.tile,.panel{padding:18px;background:var(--panel);border:1px solid var(--border);border-radius:13px;min-width:0}.tile strong{display:block;font-size:25px;margin-top:6px;color:#83c4ff}.section{display:none}.section.active{display:block}.duo{display:grid;grid-template-columns:2fr 1fr;gap:18px}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-size:12px}td button{padding:5px 9px}.scroll{overflow:auto}.status{border-left:3px solid var(--accent);background:var(--inner);border-radius:8px;padding:10px;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere} .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.flex{flex:1;min-width:160px}.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kcol{min-width:0;background:var(--inner);border:1px solid var(--border);border-radius:12px;padding:14px}.item{background:#1d2b40;padding:9px;margin-bottom:8px;border-radius:8px;overflow-wrap:anywhere}.pill{font-size:11px;padding:4px 7px;background:#264564;border-radius:20px;white-space:nowrap}#aviso{white-space:pre-wrap;position:sticky;bottom:12px;background:#11304e;border:1px solid #4f83b7;border-radius:9px;padding:12px;max-width:700px;display:none;margin:10px auto}
 @media(max-width:800px){main{padding:12px}header{padding:15px}.duo{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}table{min-width:700px}} 
 </style></head>
-<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.2.1</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
+<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.2.2</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
 <main>
 <div class="grid"><div class="tile">Rotina concluída<strong id="progresso">—</strong></div><div class="tile">Saldo registrado<strong id="saldo">—</strong></div><div class="tile">Ações aprendidas<strong id="aprendizado">—</strong></div><div class="tile">Disco livre<strong id="disco">—</strong></div></div>
 <nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
 <section class="section active" id="rotina"><div class="panel"><h2>Atividades e compromissos</h2><p class="muted">Marque tarefas concluídas. Os dados são atualizados em gestao_vida.json.</p><div class="scroll"><table><thead><tr><th>Feito</th><th>Dia</th><th>Horário</th><th>Atividade</th><th>Local</th><th>Prioridade</th></tr></thead><tbody id="tabela-rotina"></tbody></table></div></div></section>
 <section class="section" id="kanban"><div class="panel"><h2>Kanban · projetos acadêmicos e automações</h2><div class="kanban" id="colunas"></div></div></section>
-<section class="section" id="saude"><div class="duo"><div class="panel"><h2>Hábitos</h2><div id="habitos"></div><button data-acao="agua">💧 Registrar 1 copo</button></div><div class="panel"><h2>Financeiro / Restaurante Universitário</h2><p id="saldo-texto"></p><div class="row"><label for="qtd">Refeições RU</label><input id="qtd" type="number" min="0" max="300" value="5"></div><button id="simular">Simular (não debita saldo)</button><p class="muted">Movimentações financeiras ficam restritas aos comandos do proprietário no Telegram.</p></div></div></section>
+<section class="section" id="saude"><div class="duo"><div class="panel"><h2>Hábitos</h2><div id="habitos"></div><button data-acao="agua">💧 Registrar 1 copo</button></div><div class="panel"><h2>Financeiro / Restaurante Universitário</h2><p id="saldo-texto"></p><div class="row"><label for="qtd">Refeições RU</label><input id="qtd" type="number" min="0" max="300" step="1" required value="5"></div><button id="simular">Simular (não debita saldo)</button><p class="muted">Movimentações financeiras ficam restritas aos comandos do proprietário no Telegram.</p></div></div></section>
 <section class="section" id="robotask"><div class="duo"><div class="panel"><h2>Ferramentas do PC</h2><p class="muted">Essas ações afetam apenas a sessão atual do Windows e solicitam confirmação.</p><div class="row"><button data-pc="f8">⚡ NesTask · F8</button><button data-pc="f9">🔑 RoboTask · F9</button><button data-pc="f10">📱 Celular · F10</button><button data-pc="desktop">🖥️ Mostrar desktop</button><button data-pc="taskmgr">📊 Gerenciador de Tarefas</button></div><button data-acao="diagnostico">🛠️ Diagnóstico seguro</button><button data-acao="notebook">📓 Exportar CSV / Notebook</button></div><div class="panel"><h2>Catálogo RoboTask</h2><div id="tarefas-robotask" class="scroll"></div></div></div></section>
-<section class="section" id="ias"><div class="duo"><div class="panel"><h2>Perguntas e pesquisa</h2><p class="muted">Perguntas usam IA configurada; para pesquisa na web escreva «pesquise ...». Nada aqui executa código sugerido pela IA.</p><div class="row"><input class="flex" type="text" id="pergunta" placeholder="Pergunte algo ou pesquise robótica ..."><button id="consultar">Perguntar</button></div><div id="resposta" class="status">Aguardando pergunta.</div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. Falhas de cota não serão tratadas como sucesso.</p><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div></div></section>
+<section class="section" id="ias"><div class="duo"><div class="panel"><h2>Perguntas e pesquisa</h2><p class="muted">Perguntas usam IA configurada; para pesquisa na web escreva «pesquise ...». Nada aqui executa código sugerido pela IA.</p><div class="row"><input class="flex" type="text" id="pergunta" maxlength="1000" aria-label="Pergunta ou pesquisa" placeholder="Pergunte algo ou pesquise robótica ..."><button id="consultar">Perguntar</button></div><div id="resposta" class="status" role="status">Aguardando pergunta.</div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. Falhas de cota não serão tratadas como sucesso.</p><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div></div></section>
 <section class="section" id="evolucao"><div class="duo">
 <div class="panel"><h2>🧠 Auditoria e melhorias controladas</h2>
 <p class="muted">Análise periódica local (padrão: 360 minutos). Inspeciona código, JSON, disco e logs, e diferencia falhas históricas de falhas ativas, sem consultar APIs. Não altera código-fonte.</p>
@@ -45,19 +45,45 @@ const text=(el,value)=>{el.textContent=String(value??'')};
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 function el(tag,content,cls){const x=document.createElement(tag);if(content!==undefined)x.textContent=String(content);if(cls)x.className=cls;return x}
 function aviso(mensagem){const a=$('aviso');text(a,mensagem);a.style.display='block'}
-async function api(caminho,body){const opt={headers:{'X-Painel-Token':token}};if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}const r=await fetch(caminho,opt);const d=await r.json();if(!r.ok)throw Error(d.erro||'Falha no pedido');return d}
-async function agir(acao,campos={}){try{const d=await api('/api/acao',{acao,...campos});aviso(d.mensagem||'Executado');await atualizar()}catch(e){aviso('⚠️ '+e.message)}}
+const pedidosAtivos=new Set();
+let versaoEstado=0;
+function atualizarBotoes(){document.querySelectorAll('button:not([data-tab])').forEach(b=>{b.disabled=b.id==='cancelar-windows'?pedidosAtivos.has('cancelar'):pedidosAtivos.size>0})}
+async function api(caminho,body){
+ const controle=new AbortController();
+ const opt={headers:{'X-Painel-Token':token},signal:controle.signal};
+ if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
+ const prazo=setTimeout(()=>controle.abort(),body?90000:10000);
+ try{
+  const r=await fetch(caminho,opt);
+  if(r.status===403)throw Error('Sessão inválida. Recarregue o painel para renovar o acesso.');
+  let d;try{d=await r.json()}catch{throw Error('Resposta inválida do painel (HTTP '+r.status+').')}
+  if(!r.ok)throw Error(d?.erro||'Falha no pedido (HTTP '+r.status+').');
+  if(!d||typeof d!=='object'||Array.isArray(d))throw Error('Resposta inválida do painel.');
+  return d;
+ }catch(e){
+  if(e.name==='AbortError'||e instanceof TypeError)throw Error(body?'Não foi possível confirmar a ação. Confira o estado antes de tentar novamente.':'Sem conexão com o painel. Verifique se o assistente está em execução.');
+  throw e;
+ }finally{clearTimeout(prazo)}
+}
+async function enviarAcao(acao,campos={}){
+ const chave=acao==='cancelar_reinicio_windows'?'cancelar':'acao';
+ if(pedidosAtivos.has(chave)||(pedidosAtivos.size&&chave!=='cancelar'))return null;
+ pedidosAtivos.add(chave);atualizarBotoes();
+ try{const d=await api('/api/acao',{acao,...campos});await atualizar();return d}
+ finally{pedidosAtivos.delete(chave);atualizarBotoes()}
+}
+async function agir(acao,campos={}){try{const d=await enviarAcao(acao,campos);if(!d)return;aviso(d.mensagem||'Executado')}catch(e){aviso('⚠️ '+e.message)}}
 function render(s){const {vida:v,resumo:r,provedores:p,logs,robotask,autoanalise}=s;
  const a=$('resumo-analise');if(a)text(a,autoanalise?.quando?`${autoanalise.quando} | ${autoanalise.estado} | ${autoanalise.verificacoes_ok} verificações OK | ${autoanalise.falhas_recentes} falhas ativas (10 min) | ${autoanalise.falhas_historicas??0} históricas\n${(autoanalise.problemas||[]).map(x=>x.alvo+': '+x.detalhe).join('\n')}\n${(autoanalise.sugestoes||[]).join('\n')}`:'Nenhuma análise registrada ainda.');
  text($('rede'),'Painel local • dados sincronizados com Telegram (quando disponível)');text($('progresso'),`${r.concluidas}/${r.total_tarefas}`);text($('saldo'),money(r.saldo));text($('aprendizado'),r.comandos);text($('disco'),r.disco_livre_mb+' MiB');
- const t=$('tabela-rotina');t.replaceChildren();for(const item of v.rotina||[]){const tr=el('tr');const td=el('td');const b=el('button',item.status==='Concluído'?'✅':'⬜');b.addEventListener('click',()=>agir('concluir',{id:item.id}));td.append(b);tr.append(td);for(const val of [item.dia,(item.horario||'')+' – '+(item.fim||''),item.atividade,item.local,item.prioridade])tr.append(el('td',val));t.append(tr)}
+ const t=$('tabela-rotina');t.replaceChildren();for(const item of v.rotina||[]){const tr=el('tr');const td=el('td');const b=el('button',item.status==='Concluído'?'✅':'⬜');b.setAttribute('aria-label',(item.status==='Concluído'?'Reabrir: ':'Concluir: ')+(item.atividade||item.id));b.disabled=pedidosAtivos.size>0;b.addEventListener('click',()=>agir('concluir',{id:item.id}));td.append(b);tr.append(td);for(const val of [item.dia,(item.horario||'')+' – '+(item.fim||''),item.atividade,item.local,item.prioridade])tr.append(el('td',val));t.append(tr)}
  const k=$('colunas');k.replaceChildren();for(const [campo,nome] of [['A_Fazer','A fazer'],['Em_Andamento','Em andamento'],['Concluido','Concluído']]){const col=el('div',undefined,'kcol');col.append(el('h3',nome));for(const x of (v.kanban||{})[campo]||[])col.append(el('div',x,'item'));k.append(col)}
  const hab=$('habitos');hab.replaceChildren();for(const [nome,obj] of Object.entries(v.habitos_saude||{})){const d=el('p');d.append(el('strong',nome.replaceAll('_',' ')+': '));d.append(el('span',`${obj.valor??'-'} / ${obj.meta??'-'} ${obj.unidade||''}`));hab.append(d)}
  text($('saldo-texto'),`Saldo: ${money(v.financeiro?.saldo)} • RU: ${money(v.financeiro?.custo_unitario_ru??6)}/refeição`);
  const rt=$('tarefas-robotask');rt.replaceChildren();for(const t of robotask){rt.append(el('div',`${t.nome} · ${t.external_name||'sem ID'}`,'item'))}if(!robotask.length)rt.append(el('div','Sem tarefas mapeadas. Use /scanrt no Telegram ou ponte_robotask.py.'));
  const prov=$('provedores');prov.replaceChildren();for(const [nome,sit] of Object.entries(p)){const d=el('p');d.append(el('b',nome+': '));d.append(el('span',sit));prov.append(d)}
  const ev=$('eventos');ev.replaceChildren();for(const log of logs.slice().reverse()){ev.append(el('div',`${log.timestamp||''} · ${log.acao||log.categoria||''} · ${log.status||''} · ${log.detalhes||''}`,'status'))}}
-async function atualizar(){try{render(await api('/api/estado'))}catch(e){text($('rede'),'⚠️ '+e.message)}}
+async function atualizar(){const versao=++versaoEstado;try{const estado=await api('/api/estado');if(versao===versaoEstado)render(estado)}catch(e){if(versao===versaoEstado)text($('rede'),'⚠️ '+e.message)}}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===b.dataset.tab))}));
 document.querySelectorAll('[data-acao]').forEach(b=>b.addEventListener('click',()=>agir(b.dataset.acao)));
 document.querySelectorAll('[data-pc]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Executar no computador: '+b.textContent+'?'))agir('pc',{comando:b.dataset.pc})}));
@@ -80,8 +106,8 @@ $('reiniciar-windows').addEventListener('click',()=>{
 $('cancelar-windows').addEventListener('click',()=>{
  if(confirm('Tentar cancelar um reinício do Windows pendente?'))agir('cancelar_reinicio_windows');
 });
-$('simular').addEventListener('click' ,()=>agir('ru',{quantidade:Number($('qtd').value)}));
-$('consultar').addEventListener('click',async()=>{const pergunta=$('pergunta').value.trim();if(!pergunta)return;text($('resposta'),'Consultando...');try{const d=await api('/api/acao',{acao:'pergunta',texto:pergunta});text($('resposta'),d.mensagem||'Sem resposta')}catch(e){text($('resposta'),'⚠️ '+e.message)}});
+$('simular').addEventListener('click',()=>{if($('qtd').reportValidity())agir('ru',{quantidade:Number($('qtd').value)})});
+$('consultar').addEventListener('click',async()=>{const pergunta=$('pergunta').value.trim();if(!pergunta||pedidosAtivos.size)return;text($('resposta'),'Consultando...');try{const d=await enviarAcao('pergunta',{texto:pergunta});if(d)text($('resposta'),d.mensagem||'Sem resposta')}catch(e){text($('resposta'),'⚠️ '+e.message)}});
 $('pergunta').addEventListener('keydown',e=>{if(e.key==='Enter')$('consultar').click()});
 atualizar();setInterval(atualizar,30000);
 </script></body></html>

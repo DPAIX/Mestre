@@ -176,8 +176,17 @@ def melhorar(acoes=('backup','notebook','robotask')):
         # Evita backups duplicados gerados por múltiplos cliques, mas backups manuais explícitos são preservados.
         marca=_impressao_dados()
         anterior=nucleo.ler_json('ultima_melhoria.json',{})
+        if not isinstance(anterior,dict):anterior={}
+        acoes_anteriores=anterior.get('acoes',[])
+        if not isinstance(acoes_anteriores,list):acoes_anteriores=[]
+        concluidas={item.get('acao') for item in acoes_anteriores if isinstance(item,dict) and isinstance(item.get('acao'),str) and
+                    (item.get('resultado')=='concluído' or
+                     (item.get('acao')=='robotask' and item.get('resultado')=='não aplicável' and os.name!='nt'))}
+        backup_anterior=anterior.get('backup')
+        backup_disponivel=isinstance(backup_anterior,str) and bool(backup_anterior) and (nucleo.DADOS/backup_anterior).is_file()
         padrao=set(solicitadas)=={'backup','notebook','robotask'}
         if (padrao and anterior.get('impressao_dados')==marca and
+                set(solicitadas)<=concluidas and backup_disponivel and
                 (nucleo.DADOS/'analise_autonoma_rotina.ipynb').exists() and
                 (nucleo.DADOS/'tabela_rotina.csv').exists() and
                 (nucleo.DADOS/'robotask_conhecimento.json').exists()):
@@ -206,7 +215,8 @@ def melhorar(acoes=('backup','notebook','robotask')):
                 nucleo.registrar('melhoria_'+acao,'falha',str(exc))
         relatorio={'quando':dt.datetime.now().isoformat(timespec='seconds'),
                    'modo':'melhorias_permitidas_confirmadas','acoes':feitos,
-                   'codigo_modificado':False,'backup':copia,'impressao_dados':_impressao_dados(),'sem_alteracoes':False}
+                   # Mudanças concorrentes de entrada precisam produzir uma nova execução.
+                   'codigo_modificado':False,'backup':copia,'impressao_dados':marca,'sem_alteracoes':False}
         nucleo.gravar_json('ultima_melhoria.json',relatorio)
         nucleo.registrar('melhorias_seguras','executado',', '.join(x['acao'] for x in feitos))
         return relatorio

@@ -4,9 +4,11 @@ Nenhuma operação aqui executa código recebido de uma IA.
 from __future__ import annotations
 import csv
 import datetime as dt
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import io
 import json
 import logging
+import math
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
@@ -20,17 +22,30 @@ BASE = Path(__file__).resolve().parent
 DADOS = BASE / 'dados'
 _LOG = logging.getLogger('meucontrolepc')
 _LOCK = threading.RLock()
-SENSITIVE = re.compile(r'(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{14,}|\b\d{8,12}:AA[A-Za-z0-9_-]{15,}|AIza[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|\bBearer\s+\S+)',re.I)
-CONFIG_KEYS = {'telegram_token','gemini_api_key','pool_chaves_api','openai_api_key','claude_api_key','exa_api_key','token','api_key'}
+SENSITIVE = re.compile(r'(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{14,}|(?<!\d)\d{5,15}:[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|\bBearer\s+\S+)',re.I)
+CONFIG_KEYS = {'telegram_token','gemini_api_key','google_api_key','pool_chaves_api','openai_api_key','claude_api_key','anthropic_api_key','exa_api_key','token','api_key','authorization','x-api-key','access_token','refresh_token','client_secret'}
 
 def redigir(value):
+    if isinstance(value, BaseException):
+        return redigir(str(value))
     if isinstance(value, str):
         return SENSITIVE.sub('[CREDENCIAL-REDACTADA]', value)
-    if isinstance(value, list):
+    if isinstance(value, (list,tuple)):
         return [redigir(x) for x in value]
     if isinstance(value, dict):
         return {k: ('[REDACTADO]' if str(k).lower() in CONFIG_KEYS else redigir(v)) for k,v in value.items()}
     return value
+
+
+def _constante_json_invalida(valor):
+    raise ValueError('Número não finito em JSON.')
+
+
+def _float_json_finito(valor):
+    numero = float(valor)
+    if not math.isfinite(numero):
+        raise ValueError('Número não finito em JSON.')
+    return numero
 
 
 def ler_env(caminho=None):
@@ -54,7 +69,7 @@ def gravar_json(nome, valor):
         tmp = DADOS / ('.'+nome+'.'+uuid.uuid4().hex+'.tmp')
         try:
             with tmp.open('w',encoding='utf-8') as f:
-                json.dump(valor,f,ensure_ascii=False,indent=2)
+                json.dump(valor,f,ensure_ascii=False,indent=2,allow_nan=False)
                 f.flush(); os.fsync(f.fileno())
             os.replace(tmp,alvo)
         finally:
@@ -63,10 +78,10 @@ def gravar_json(nome, valor):
 
 def ler_json(nome, padrao):
     alvo = DADOS / nome
-    if not alvo.exists(): return json.loads(json.dumps(padrao))
+    if not alvo.exists(): return json.loads(json.dumps(padrao,allow_nan=False))
     try:
         with _LOCK, alvo.open(encoding='utf-8-sig') as f:
-            return json.load(f)
+            return json.load(f,parse_constant=_constante_json_invalida,parse_float=_float_json_finito)
     except (ValueError, OSError) as e:
         _LOG.error('Arquivo JSON inválido %s: %s',nome,e)
         raise ValueError(f'O arquivo {nome} está inválido; preservado para recuperação.') from e
@@ -96,13 +111,13 @@ def setup_log():
 
 
 def registrar(acao,status,detalhes='',provedor='local'):
-    evento={'timestamp':dt.datetime.now().isoformat(timespec='seconds'),'acao':acao,'status':status,'detalhes':str(redigir(detalhes))[:400],'provedor':provedor}
+    evento=redigir({'timestamp':dt.datetime.now().isoformat(timespec='seconds'),'acao':acao,'status':status,'detalhes':str(redigir(detalhes))[:400],'provedor':provedor})
     with _LOCK:
         eventos=ler_json('log_acoes_e_erros.json',[])
         if not isinstance(eventos,list): eventos=[]
         eventos.append(evento)
         gravar_json('log_acoes_e_erros.json',eventos[-250:])
-    _LOG.info('%s [%s] %s',acao,status,str(redigir(detalhes))[:200])
+    _LOG.info('%s [%s] %s',evento['acao'],evento['status'],evento['detalhes'][:200])
     return evento
 
 
@@ -172,13 +187,22 @@ def registrar_pomodoro():
 
 def movimentar(tipo, valor, descricao):
     if tipo not in ('entrada','saida'): raise ValueError('Tipo de movimentação inválido.')
-    try: valor=float(str(valor).replace(',','.'))
-    except ValueError as e: raise ValueError('Valor numérico inválido.') from e
-    if not 0<valor<1_000_000: raise ValueError('Valor fora do intervalo permitido.')
+    try: valor=Decimal(str(valor).replace(',','.'))
+    except InvalidOperation as e: raise ValueError('Valor numérico inválido.') from e
+    if not valor.is_finite() or not 0<valor<1_000_000:
+        raise ValueError('Valor fora do intervalo permitido.')
+    if valor != valor.quantize(Decimal('0.01')):
+        raise ValueError('Informe um valor com no máximo duas casas decimais.')
     with _LOCK:
         v=vida(); f=v.setdefault('financeiro',{'saldo':0,'movimentacoes':[]})
-        f['saldo']=round(float(f.get('saldo',0))+(valor if tipo=='entrada' else -valor),2)
-        f.setdefault('movimentacoes',[]).append({'data':dt.datetime.now().strftime('%d/%m/%Y %H:%M'),'tipo':tipo,'valor':valor,'descricao':str(descricao)[:150],'categoria':'Manual'})
+        try:
+            saldo=Decimal(str(f.get('saldo',0)))
+            if not saldo.is_finite():raise InvalidOperation
+            saldo=(saldo+(valor if tipo=='entrada' else -valor)).quantize(Decimal('0.01'),rounding=ROUND_HALF_UP)
+        except InvalidOperation as e:
+            raise ValueError('Saldo armazenado inválido; confira o arquivo financeiro antes de lançar valores.') from e
+        f['saldo']=float(saldo)
+        f.setdefault('movimentacoes',[]).append({'data':dt.datetime.now().strftime('%d/%m/%Y %H:%M'),'tipo':tipo,'valor':float(valor),'descricao':str(descricao)[:150],'categoria':'Manual'})
         gravar_json('gestao_vida.json',v)
     aprender('financeiro_'+tipo)
     return f['saldo']
@@ -288,13 +312,14 @@ def gerar_notebook():
 
 def exportacao_segura():
     """Exporta só dados allowlisted, omite credenciais, arquivos externos e logs antigos."""
-    destino=DADOS/('exportacao_'+dt.datetime.now().strftime('%Y%m%d_%H%M%S')+'.zip')
+    DADOS.mkdir(parents=True,exist_ok=True)
+    destino=DADOS/('exportacao_'+dt.datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex+'.zip')
     nomes=['gestao_vida.json','minhas_macros.json','base_auto_aprendizado.json','robotask_conhecimento.json','log_acoes_e_erros.json']
     with zipfile.ZipFile(destino,'w',zipfile.ZIP_DEFLATED) as z:
         for nome in nomes:
             p=DADOS/nome
             if not p.exists():continue
-            try: obj=json.loads(p.read_text(encoding='utf-8'))
+            try: obj=ler_json(nome,{})
             except (ValueError,OSError): continue
             z.writestr(nome,json.dumps(redigir(obj),ensure_ascii=False,indent=2))
     aprender('exportar_logs')
