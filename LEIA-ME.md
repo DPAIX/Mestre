@@ -1,3 +1,5 @@
+> **v2.5.2:** [Perfil CPU para o Llama](GUIA_PERFIL_CPU.md) · [Mudanças e reversão](REVISAO_V2_5_2.md). Ative pelo Telegram com `/modelos perfil cpu` e confirme; configuração e dados continuam em F:.
+
 > **v2.5.1:** [Correção dos hábitos legados e dos testes de instalação](REVISAO_V2_5_1.md). Atualize as fontes; preserve `gestao_vida.json`, `.env` e demais dados existentes. Inicie por `iniciar_redirecionado.bat`.
 
 > **v2.5.0:** [Equipe paralela de modelos Ollama](GUIA_EQUIPE_PARALELA.md) · [Auditoria e correções](AUDITORIA_ASSISTENTE_V2_5_0.md) · [Mudanças, testes e reversão](REVISAO_V2_5_0.md). Para executar o código do GitHub em C: usando `.env` e dados de F:, inicie por `iniciar_redirecionado.bat`: [guia](GUIA_REDIRECIONAMENTO.md).

@@ -125,7 +125,8 @@ def memoria_local():
 
 def _executar(comando,*,url=None):
     # Não herdar credenciais, PYTHONPATH ou parâmetros externos dos provedores.
-    permitidas={'PATH','SYSTEMROOT','WINDIR','COMSPEC','PATHEXT','TEMP','TMP','LANG','LC_ALL'}
+    permitidas={'PATH','SYSTEMROOT','WINDIR','COMSPEC','PATHEXT','TEMP','TMP','LANG','LC_ALL',
+                'USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','LOCALAPPDATA','APPDATA'}
     ambiente={k:v for k,v in os.environ.items() if k.upper() in permitidas}
     if url is not None:ambiente['OLLAMA_HOST']=validar_url(url)
     try:
@@ -139,7 +140,9 @@ def versao_cli(url=URL_PADRAO):
     caminho=shutil.which('ollama')
     if not caminho:return {'ok':False,'categoria':'ferramenta_ausente'}
     r=_executar([caminho,'--version'],url=url)
-    if r is None or r.returncode:return {'ok':False,'categoria':'consulta_indisponivel'}
+    if r is None or r.returncode:
+        return {'ok':False,'categoria':'consulta_indisponivel',
+                **({'codigo_saida':r.returncode} if r is not None and isinstance(r.returncode,int) else {})}
     # Algumas versões imprimem primeiro a versão do servidor e depois a do cliente.
     texto=(r.stdout+'\n'+r.stderr)[:4000]
     achado=re.search(r'client version is\s+([0-9]+(?:\.[0-9]+){1,3})',texto,re.I)
@@ -152,7 +155,9 @@ def gpu_local():
     if not caminho:return {'ok':False,'categoria':'ferramenta_ausente'}
     r=_executar([caminho,'--query-gpu=memory.total,memory.free,utilization.gpu,driver_version',
                  '--format=csv,noheader,nounits'])
-    if r is None or r.returncode:return {'ok':False,'categoria':'consulta_indisponivel'}
+    if r is None or r.returncode:
+        return {'ok':False,'categoria':'consulta_indisponivel',
+                **({'codigo_saida':r.returncode} if r is not None and isinstance(r.returncode,int) else {})}
     placas=[]
     for linha in r.stdout.splitlines()[:16]:
         colunas=[c.strip() for c in linha.split(',')]
@@ -188,7 +193,7 @@ def coletar(url=URL_PADRAO,*,testar_cpu=False):
     url=validar_url(url)
     if not isinstance(testar_cpu,bool):raise ValueError('Opção de teste inválida.')
     inicio_coleta=time.monotonic()
-    relatorio={'versao_diagnostico':1,'coletado_em_utc':dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
+    relatorio={'versao_diagnostico':2,'coletado_em_utc':dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                'url_local':url,'memoria':memoria_local(),'gpu':gpu_local(),'cli':versao_cli(url)}
     versao=consultar(url,'/api/version')
     if versao.get('ok'):

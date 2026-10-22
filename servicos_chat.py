@@ -7,8 +7,9 @@ import colaboracao_chats as central
 
 _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
+_CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -128,6 +129,34 @@ def texto_equipe(resultado):
 
 
 def executar_acao(acao,obj,contexto,roteador):
+    # Disco, ambiente e seleção do chat devem observar a mesma configuração.
+    if acao in ('ollama_perfil','modelo_padrao'):
+        with _CONFIG_OLLAMA_LOCK:
+            return _executar_acao(acao,obj,contexto,roteador)
+    return _executar_acao(acao,obj,contexto,roteador)
+
+
+def _executar_acao(acao,obj,contexto,roteador):
+    if acao=='ollama_perfil':
+        perfil=campo_texto(obj,'perfil',20).casefold()
+        if perfil not in ('cpu','padrao'):raise ValueError('Escolha o perfil cpu ou padrao.')
+        if obj.get('confirmacao')!='CONFIGURAR '+perfil.upper():raise ValueError('Confirme a configuração do perfil Ollama.')
+        chat=central.obter_chat_ativo(contexto)
+        if obj.get('chat_id') and obj['chat_id']!=chat['id']:
+            raise ValueError('Volte à conversa de origem antes de configurar o perfil.')
+        from configurar_ia_local import configurar_perfil
+        from multi_ia import endpoint_ollama
+        url=endpoint_ollama().removesuffix('/api/chat')
+        modelo=configurar_perfil(perfil,url,caminho=nucleo.arquivo_env(nucleo.BASE))
+        os.environ.update({'OLLAMA_HABILITADO':'1','OLLAMA_URL':url,'OLLAMA_MODEL':modelo,'OLLAMA_PERFIL':perfil})
+        roteador.atualizar_configuracao_ollama()
+        central.configurar_chat(contexto,chat['id'],provedor='Ollama',modelo_ollama=modelo,modo_conversa=True)
+        nucleo.registrar('ollama_perfil','configurado','Perfil '+perfil+'; modelo '+modelo,'Ollama')
+        return ('Perfil '+perfil+' do Ollama salvo e aplicado. Modelo individual desta conversa: '+modelo+
+                '. Equipe desativada nesta conversa; histórico preservado. '+
+                ('O perfil CPU usa contexto pequeno e respostas curtas. ' if perfil=='cpu' else 'O serviço volta a escolher a execução nas próximas chamadas. ')+
+                'Esse perfil vale globalmente para as próximas consultas Ollama deste assistente. '
+                'Não houve geração, download ou alteração de driver. Envie uma mensagem curta para testar.')
     if acao=='chat_equipe':
         ativo=obj.get('ativo')
         if not isinstance(ativo,bool):raise ValueError('O modo equipe deve ser verdadeiro ou falso.')

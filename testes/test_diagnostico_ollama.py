@@ -350,6 +350,18 @@ class DiagnosticoOllamaTeste(unittest.TestCase):
                 diagnostico._executar(['fixture-ollama', '--version'], url='https://example.invalid')
             executar.assert_not_called()
 
+    def test_comandos_preservam_perfil_do_windows_sem_herdar_segredos(self):
+        perfil = {nome: 'fixture-' + nome for nome in (
+            'USERPROFILE', 'HOME', 'HOMEDRIVE', 'HOMEPATH', 'LOCALAPPDATA', 'APPDATA')}
+        with patch.dict(os.environ, {**perfil, 'OPENAI_API_KEY': self.segredo,
+                                    'PYTHONPATH': self.segredo, 'OLLAMA_HOST': self.segredo}), \
+                patch.object(diagnostico.subprocess, 'run') as executar:
+            diagnostico._executar(['fixture-ollama', '--version'], url=diagnostico.URL_PADRAO)
+        ambiente = {k.upper(): v for k, v in executar.call_args.kwargs['env'].items()}
+        self.assertEqual({k: ambiente[k] for k in perfil}, perfil)
+        self.assertEqual(ambiente['OLLAMA_HOST'], diagnostico.URL_PADRAO)
+        self.assertNotIn(self.segredo, json.dumps(ambiente))
+
     def test_versao_cli_prioriza_cliente_e_descarta_saida_e_erros_brutos(self):
         retorno = SimpleNamespace(returncode=0, stdout=(
             'ollama version is 0.39.1\n' + self.segredo),
@@ -375,7 +387,16 @@ class DiagnosticoOllamaTeste(unittest.TestCase):
             with self.subTest(retorno=retorno is None), \
                     patch.object(diagnostico.shutil, 'which', return_value='fixture-ollama'), \
                     patch.object(diagnostico, '_executar', return_value=retorno):
-                self.assertEqual(diagnostico.versao_cli(), {'ok': False, 'categoria': 'consulta_indisponivel'})
+                esperado = {'ok': False, 'categoria': 'consulta_indisponivel'}
+                if retorno is not None: esperado['codigo_saida'] = 1
+                self.assertEqual(diagnostico.versao_cli(), esperado)
+
+    def test_falha_gpu_informa_so_codigo_de_saida_sem_diagnosticar_driver(self):
+        retorno = SimpleNamespace(returncode=17, stdout=self.segredo, stderr=self.segredo)
+        with patch.object(diagnostico.shutil, 'which', return_value='fixture-gpu'), \
+                patch.object(diagnostico, '_executar', return_value=retorno):
+            self.assertEqual(diagnostico.gpu_local(), {
+                'ok': False, 'categoria': 'consulta_indisponivel', 'codigo_saida': 17})
 
     def test_gpu_filtra_csv_e_retorna_so_metricas_conhecidas(self):
         retorno = SimpleNamespace(returncode=0, stdout=(

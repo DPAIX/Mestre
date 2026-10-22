@@ -69,7 +69,7 @@ def _argumentos_permitidos(modo, argumentos):
             raise FalhaRedirecionamento('Use inicio-automatico --ativar ou --desativar explicitamente.')
     elif modo == 'ollama':
         opcoes = {'--listar': 0, '--detalhes': 1, '--usar-existente': 0,
-                  '--modelo': 1, '--baixar-modelo': 1, '--url': 1}
+                  '--modelo': 1, '--baixar-modelo': 1, '--url': 1,'--perfil-cpu':0,'--perfil-padrao':0}
         quantidade_acoes = 0
         indice = 0
         while indice < len(argumentos):

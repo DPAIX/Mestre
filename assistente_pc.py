@@ -299,7 +299,7 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.5.1 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.5.2 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
             'Pedidos de alteração mostram uma confirmação. Você pode responder sim/cancele ou usar os botões.\n'
@@ -310,6 +310,7 @@ def mensagem_ajuda():
             '/ia pergunta | /pesquisar assunto | /modelos\n'
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
             '/chat modelo qwen3.5:4b | /modelos ollama\n'
+            '/modelos perfil cpu ativa Llama local em CPU; /modelos perfil padrao reverte o perfil\n'
             '/chat equipe on consulta todos os modelos Ollama em paralelo; /chat equipe off volta ao individual\n'
             '/modelos preparar mistral,llama3.2 | /modelos detalhes NOME | /modelos testar NOME\n'
             '/modelos padrao NOME corrige o padrão usando um modelo instalado\n'
@@ -355,7 +356,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.5.1'
+    server_version='MeuControlePC/2.5.2'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -674,6 +675,14 @@ def contexto_mensagem(m):
 def tratar_comandos_novos(m,chave,args,contexto):
     chat=m.chat.id;usuario=m.from_user.id
     if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/modelos' and args.casefold() in ('perfil cpu','perfil padrao','perfil padrão'):
+        perfil='cpu' if args.casefold()=='perfil cpu' else 'padrao'
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        confirmar(chat,usuario,'ollama_perfil',
+            ('Salvar o perfil CPU compacto e selecionar llama3.2:latest nesta conversa?' if perfil=='cpu' else
+             'Voltar às opções padrão de execução do Ollama?')+
+            ' O perfil vale para o Ollama do assistente; a equipe desta conversa será desativada. Nenhuma geração ou download agora. Confirme em até 90 segundos.',
+            {'perfil':perfil,'confirmacao':'CONFIGURAR '+perfil.upper(),'contexto':contexto,'chat_id':atual['id']})
     elif chave=='/modelos' and (args.casefold().startswith('padrao ') or args.casefold().startswith('padrão ')):
         modelo=args.partition(' ')[2].strip()
         enviar_texto_grande(chat,SERVICOS.executar_acao('modelo_padrao',{'modelo':modelo},contexto,ROTEADOR))
@@ -700,6 +709,7 @@ def tratar_comandos_novos(m,chave,args,contexto):
             linhas.append('• '+item['nome']+' | '+item.get('familia','')+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
         if not catalogo['modelos']:linhas.append('Nenhum modelo registrado. Confira ollama list no PC.')
         linhas.append('Padrão: '+catalogo['padrao']+'. Integração '+('habilitada.' if catalogo['habilitado'] else 'desabilitada; execute configurar_ia_local.bat.'))
+        linhas.append('Perfil de execução: '+('CPU compacto.' if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' else 'padrão do serviço.'))
         linhas.extend(['/chat modelo NOME seleciona para esta conversa. /modelos padrao NOME define o padrão do Ollama.',
                        'Somente catálogo consultado; a geração de respostas não foi testada.'])
         enviar_texto_grande(chat,'\n'.join(linhas))
@@ -987,7 +997,7 @@ def configurar_bot():
                     dados=pend['dados']
                     resultado=executar_plano_natural(dados['plano'],dados['contexto'],dados['chat_id'],c.message.chat.id)
                     enviar_texto_grande(c.message.chat.id,resultado['mensagem']);return
-                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao'):
+                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao','ollama_perfil'):
                     dados=pend.get('dados',{})
                     enviar_texto_grande(c.message.chat.id,SERVICOS.executar_acao(acao,dados,dados.get('contexto',f'{c.from_user.id}:{c.message.chat.id}:0'),ROTEADOR))
                     return
@@ -1033,7 +1043,7 @@ def main():
     ler_env()
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.5.1')
+        print('MeuControlePC v2.5.2')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)

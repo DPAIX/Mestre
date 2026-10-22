@@ -230,6 +230,39 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertEqual(executar.call_args.args[0],'equipe_ia')
             self.assertEqual(executar.call_args.args[1]['confirmacao'],'CONSULTAR EQUIPE')
 
+    def test_perfil_cpu_exige_dono_confirmacao_e_nao_repete(self):
+        with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao',return_value='Perfil aplicado') as executar:
+            app.tratar_pedido(self.mensagem('/modelos perfil cpu',usuario=3))
+            self.assertFalse(app.PENDENTES)
+            app.tratar_pedido(self.mensagem('/modelos perfil cpu',topico=4))
+            executar.assert_not_called()
+            token=next(iter(app.PENDENTES))
+            chamada=self.chamada(usuario=2);chamada.data='ok:'+token
+            self.callback(chamada)
+            executar.assert_not_called()
+            self.assertIn(token,app.PENDENTES)
+            chamada.from_user.id=1
+            self.callback(chamada);self.callback(chamada)
+            executar.assert_called_once()
+            acao,dados,contexto,_=executar.call_args.args
+            self.assertEqual(acao,'ollama_perfil')
+            self.assertEqual(contexto,'1:10:4')
+            self.assertEqual(dados['confirmacao'],'CONFIGURAR CPU')
+            self.assertEqual(dados['perfil'],'cpu')
+            self.assertEqual(dados['chat_id'],app.CENTRAL.obter_chat_ativo(contexto)['id'])
+
+    def test_perfil_expirado_ou_cancelado_nao_altera_configuracao(self):
+        with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao') as executar:
+            for tipo in ('cancelar','expirado'):
+                app.PENDENTES.clear()
+                app.tratar_pedido(self.mensagem('/modelos perfil padrao'))
+                token=next(iter(app.PENDENTES))
+                if tipo=='expirado':app.PENDENTES[token]['expira']=time.monotonic()-1
+                chamada=self.chamada(tipo='cancelar' if tipo=='cancelar' else 'ok')
+                chamada.data=chamada.data.partition(':')[0]+':'+token
+                self.callback(chamada)
+            executar.assert_not_called()
+
     def test_documento_nao_autorizado_nao_baixa(self):
         mensagem=self.mensagem('',usuario=3)
         mensagem.document=SimpleNamespace(file_name='proposta.md',file_size=10,file_id='id')

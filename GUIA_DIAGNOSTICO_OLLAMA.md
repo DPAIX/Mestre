@@ -2,7 +2,7 @@
 
 O catálogo do PC lista quatro tags e a equipe foi ativada. As gerações do bot expiraram; depois, o comando nativo `ollama run llama3.2:latest "Responda apenas OK"` também ficou sem resposta durante a observação. Isso coloca o problema de geração abaixo do fluxo Telegram. Ainda não identifica memória, GPU, fila ou tempo de carregamento como causa.
 
-A v2.5.1 corrigiu os hábitos e os testes de instalação do assistente. Esse diagnóstico é um complemento independente; não requer reinstalar ou reconfigurar o bot.
+A v2.5.1 corrigiu os hábitos e os testes de instalação do assistente. Esse diagnóstico continua independente; não requer reinstalar ou reconfigurar o bot. Está incluído na v2.5.2 junto ao novo [perfil CPU do assistente](GUIA_PERFIL_CPU.md).
 
 ## Executar a leitura
 
@@ -30,6 +30,8 @@ Somente IP literal de loopback é aceito. O programa não consulta hosts remotos
 - `gpu`: VRAM total/livre, utilização e versão do driver obtidas por `nvidia-smi`. Ausência ou falha da ferramenta deixa essa informação desconhecida; não prova ausência ou defeito da GPU.
 - `cli`: versão extraída da saída de `ollama --version`; quando há versão explícita do cliente, ela tem preferência. `servico.versao` vem de `/api/version` e permite comparar.
 
+No diagnóstico v2, os comandos preservam variáveis públicas do perfil Windows necessárias ao runtime. A filtragem do v1 podia impedir sua execução. `codigo_saida`, quando disponível, é apenas o número devolvido pelo comando; stderr e caminhos do perfil não aparecem no relatório. Falha dessa consulta permanece uma informação desconhecida, sem concluir defeito de GPU.
+
 `tamanho_gib` em `catalogo` é o tamanho registrado do modelo. Em `carregados`, vem do campo `size` de `/api/ps`; `vram_gib` vem de `size_vram`. Esses números não são uma medição completa de toda a memória usada pelo processo.
 
 O modelo de 27B informado ocupa cerca de 17 GB e não cabe integralmente nos 6 GB de VRAM da GTX 1660. Ele pode usar RAM/CPU; isso não prova que seja impossível executar nem explica sozinho a falta de resposta do Llama menor. Não aumente paralelismo, contexto ou número de modelos residentes antes de observar os recursos.
@@ -40,7 +42,7 @@ Abra `testar_ollama_cpu.bat` para solicitar explicitamente **uma** geração cur
 
 Essas opções valem somente para a chamada de teste. Nenhum `.env` ou limite global é gravado. O relatório informa se recebeu texto, sem incluir o texto gerado. Metadados mais o teste podem levar aproximadamente cinquenta segundos. Um timeout, mesmo nesse teste, ainda não prova travamento infinito ou falha permanente.
 
-Se o teste CPU responder e a geração padrão não, isso ajuda a investigar GPU/carga/contexto; sozinho não prova defeito do driver, porque o contexto e a quantidade de saída também foram reduzidos. Não há fallback automático do assistente para CPU.
+Se o teste CPU responder e a geração padrão não, isso ajuda a investigar GPU/carga/contexto; sozinho não prova defeito do driver, porque o contexto e a quantidade de saída também foram reduzidos. Na v2.5.2, `/modelos perfil cpu` permite escolher esse caminho explicitamente no assistente, com saída de até 128 tokens para conversar. Veja [ativação e reversão](GUIA_PERFIL_CPU.md). Não há fallback automático para CPU.
 
 ## Recuperação manual com o mínimo de mudanças
 
@@ -52,6 +54,6 @@ Não foram modificados drivers, paginação, diretório de modelos ou inicializa
 
 ## Validação e remoção
 
-O código é independente da aplicação e usa somente a biblioteca padrão. Passaram 25 testes específicos, incluindo HTTP em loopback com cabeçalhos/corpos lentos, limites de resposta, campos filtrados, teste CPU com uma tentativa e simulação de GPU/memória Windows. Nenhuma inferência real ou API paga foi usada. A suíte integrada passou com 398 testes Python e 56 verificações JavaScript; a matriz CI Windows/Linux fica registrada no PR.
+O código é independente da aplicação e usa somente a biblioteca padrão. Os testes específicos incluem HTTP em loopback com cabeçalhos/corpos lentos, limites de resposta, campos filtrados, teste CPU com uma tentativa, ambiente público do runtime e simulação de GPU/memória Windows. Nenhuma inferência real ou API paga é usada nos testes. Os resultados integrados e a matriz CI Windows/Linux ficam registrados no PR.
 
-O ZIP original do assistente v2.5.1 contém 373 testes; os 25 novos pertencem a este complemento. O bot permanece v2.5.1. Para remover o diagnóstico, exclua apenas os quatro arquivos extraídos. Isso não altera o assistente, `.env`, dados, modelos ou serviço.
+O ZIP original do assistente v2.5.1 contém 373 testes; o diagnóstico v1 acrescentou 25. O pacote completo v2.5.2 incorpora o diagnóstico v2 e testes adicionais. Para remover somente o diagnóstico independente, exclua os quatro arquivos extraídos. Isso não altera o assistente, `.env`, dados, modelos ou serviço.

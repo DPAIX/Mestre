@@ -33,6 +33,8 @@ def assinatura_configuracao_ollama():
     """Identifica a configuração local sem persistir URL ou credenciais."""
     valores=[os.getenv('OLLAMA_URL','http://127.0.0.1:11434'),
              os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip(),os.getenv('OLLAMA_HABILITADO')=='1']
+    perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
+    if perfil!='padrao':valores.append(perfil)
     return hashlib.sha256(json.dumps(valores,ensure_ascii=True).encode('utf-8')).hexdigest()
 
 def limitar_retry(valor):
@@ -445,11 +447,27 @@ class Roteador:
         except ValueError:timeout=90
         if not math.isfinite(timeout):timeout=90
         timeout=max(5,min(120,timeout))
+        perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
+        if perfil not in ('cpu','padrao'):
+            raise FalhaAPI('Ollama',0,'OLLAMA_PERFIL inválido; escolha cpu ou padrao.','configuracao')
+        payload={'model':modelo,'stream':False,
+                 'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)}
+        if perfil=='cpu':
+            from configurar_ia_local import modelo_em_nuvem,listar_catalogo,modelo_instalado,FalhaConfiguracao
+            if modelo_em_nuvem(modelo):
+                raise FalhaAPI('Ollama',0,'O perfil CPU não se aplica a tags cloud. Selecione um modelo local ou o perfil padrao.','configuracao')
+            try:
+                catalogo=listar_catalogo(endpoint.removesuffix('/api/chat'))
+            except (ValueError,FalhaConfiguracao):
+                raise FalhaAPI('Ollama',0,'Não foi possível confirmar o modelo local do perfil CPU no catálogo. Nenhuma geração enviada.','configuracao') from None
+            local=modelo_instalado(modelo,[m['nome'] for m in catalogo if not m['nuvem']])
+            if local is None:
+                raise FalhaAPI('Ollama',0,'O perfil CPU exige uma tag confirmada como local no catálogo. Nenhuma geração enviada.','configuracao')
+            payload['model']=local
+            payload.update({'keep_alive':0,'options':{'num_gpu':0,'num_ctx':1024,'num_predict':128}})
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),SemRedirecionamento())
         try:
-            dados=postar(endpoint,'',{'model':modelo,'stream':False,
-                'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)},
-                'Ollama',timeout=timeout,opener=opener)
+            dados=postar(endpoint,'',payload,'Ollama',timeout=timeout,opener=opener)
         except FalhaAPI as erro:raise self._explicar_404_ollama(modelo,erro) from None
         mensagem=dados.get('message')
         texto=mensagem.get('content') if isinstance(mensagem,dict) else None

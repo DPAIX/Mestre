@@ -1,4 +1,6 @@
-# MeuControlePC v2.5.1
+# MeuControlePC v2.5.2
+
+Se o teste isolado do Llama respondeu em CPU, ative o mesmo caminho no assistente com `/modelos perfil cpu` e confirme no Telegram. O perfil seleciona Llama, usa CPU/contexto pequeno e desativa a equipe desta conversa. [Ativação, limites e reversão](GUIA_PERFIL_CPU.md) · [Revisão v2.5.2](REVISAO_V2_5_2.md).
 
 Para timeouts também reproduzidos no comando nativo do Ollama, há um [diagnóstico independente de RAM, GPU e modelos carregados](GUIA_DIAGNOSTICO_OLLAMA.md). A leitura padrão não gera texto nem altera a configuração.
 
