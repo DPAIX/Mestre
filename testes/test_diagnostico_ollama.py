@@ -323,7 +323,9 @@ class DiagnosticoOllamaTeste(unittest.TestCase):
         self.assertEqual(opcoes['timeout'], 5)
         self.assertIs(opcoes['shell'], False)
         self.assertEqual(opcoes['stdin'], subprocess.DEVNULL)
-        self.assertEqual(opcoes['env'], {'PATH': 'fixture-path', 'SystemRoot': 'fixture-windows'})
+        # os.environ normaliza nomes para maiúsculas no Windows.
+        self.assertEqual({chave.upper():valor for chave,valor in opcoes['env'].items()},
+                         {'PATH':'fixture-path','SYSTEMROOT':'fixture-windows'})
         self.assertNotIn(self.segredo, json.dumps(opcoes['env']))
 
     def test_timeout_ou_falta_de_ferramenta_gpu_nao_expoem_saida_bruta(self):
