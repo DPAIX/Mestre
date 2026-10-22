@@ -3,6 +3,7 @@ Limites e créditos são distinguidos. Provedores sem créditos ficam suspensos 
 """
 from __future__ import annotations
 import json
+import hashlib
 import ipaddress
 import math
 import os
@@ -27,6 +28,12 @@ DESCRICOES_FALHA={
 }
 SISTEMA='Responda em português do Brasil com precisão. Não simule execução de comandos no computador.'
 PROVEDORES_RESPOSTA=('Gemini','OpenAI','Claude','Ollama')
+
+def assinatura_configuracao_ollama():
+    """Identifica a configuração local sem persistir URL ou credenciais."""
+    valores=[os.getenv('OLLAMA_URL','http://127.0.0.1:11434'),
+             os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip(),os.getenv('OLLAMA_HABILITADO')=='1']
+    return hashlib.sha256(json.dumps(valores,ensure_ascii=True).encode('utf-8')).hexdigest()
 
 def limitar_retry(valor):
     try:
@@ -160,7 +167,25 @@ class Roteador:
         self.sucessos={}
         self.ultimo_provedor='local'
         self.mutex=threading.RLock()
+        self._assinatura_ollama=assinatura_configuracao_ollama()
+        self._pausa_ollama_pendente=None
         self._recuperar_bloqueios()
+
+    def _restaurar_bloqueio(self,nome,item):
+        if not isinstance(item,dict):return
+        try:limite=float(item.get('ate',0))
+        except (ValueError,TypeError):return
+        if not time.time()<limite<time.time()+86460:return
+        categoria=str(item.get('categoria','temporario'))
+        if categoria not in DESCRICOES_FALHA:categoria='temporario'
+        self.bloqueados[nome]=limite
+        self.motivos[nome]=categoria
+        codigo=item.get('codigo')
+        if not isinstance(codigo,int) or not 0<=codigo<=599:codigo=None
+        quando=item.get('falha_em')
+        if not isinstance(quando,(int,float)) or not 0<quando<=time.time()+60:quando=None
+        self.falhas[nome]={'categoria':categoria,'codigo':codigo,'falha_em':quando}
+
     def _recuperar_bloqueios(self):
         """Restaura somente bloqueios com prazo válido, sem carregar credenciais."""
         try:
@@ -168,30 +193,44 @@ class Roteador:
             if not isinstance(dados,dict):return
             for nome,item in dados.items():
                 if nome not in (*PROVEDORES_RESPOSTA,'Exa') or not isinstance(item,dict):continue
-                try:limite=float(item.get('ate',0))
-                except (ValueError,TypeError):continue
-                categoria=str(item.get('categoria','temporario'))
-                if categoria not in DESCRICOES_FALHA:categoria='temporario'
-                if time.time()<limite<time.time()+86460:
-                    self.bloqueados[nome]=limite
-                    self.motivos[nome]=categoria
-                    codigo=item.get('codigo')
-                    if not isinstance(codigo,int) or not 0<=codigo<=599:codigo=None
-                    quando=item.get('falha_em')
-                    if not isinstance(quando,(int,float)) or not 0<quando<=time.time()+60:quando=None
-                    self.falhas[nome]={'categoria':categoria,'codigo':codigo,'falha_em':quando}
+                if nome=='Ollama':
+                    assinatura=item.get('configuracao')
+                    if not isinstance(assinatura,str) or not re.fullmatch(r'[a-f0-9]{64}',assinatura):continue
+                    # O roteador global pode ser importado antes de ler_env().
+                    # Só consome esse candidato na primeira observação da configuração.
+                    self._pausa_ollama_pendente=dict(item)
+                    if assinatura!=self._assinatura_ollama:continue
+                self._restaurar_bloqueio(nome,item)
         except (ValueError,TypeError,OSError):pass
+
+    def atualizar_configuracao_ollama(self):
+        """Esquece apenas observações do padrão Ollama cuja configuração mudou."""
+        assinatura=assinatura_configuracao_ollama()
+        with self.mutex:
+            mudou=assinatura!=self._assinatura_ollama
+            if mudou:
+                for estados in (self.bloqueados,self.motivos,self.falhas,self.sucessos):estados.pop('Ollama',None)
+                self._assinatura_ollama=assinatura
+            pendente=self._pausa_ollama_pendente
+            self._pausa_ollama_pendente=None
+            if pendente and pendente.get('configuracao')==assinatura:
+                self._restaurar_bloqueio('Ollama',pendente)
+            if mudou:self._salvar_bloqueios()
+            return mudou
 
     def _salvar_bloqueios(self):
         try:
             gravar_json('estado_ia.json',{nome:{'ate':ate,'categoria':self.motivos.get(nome,'temporario'),
                                              'codigo':self.falhas.get(nome,{}).get('codigo'),
-                                             'falha_em':self.falhas.get(nome,{}).get('falha_em')}
+                                             'falha_em':self.falhas.get(nome,{}).get('falha_em'),
+                                             **({'configuracao':self._assinatura_ollama} if nome=='Ollama' else {})}
                          for nome,ate in self.bloqueados.items() if ate>time.time()})
         except (OSError,ValueError):pass
 
-    def _registrar_sucesso(self,provedor):
+    def _registrar_sucesso(self,provedor,assinatura_ollama=None):
+        if provedor=='Ollama':self.atualizar_configuracao_ollama()
         with self.mutex:
+            if provedor=='Ollama' and assinatura_ollama is not None and assinatura_ollama!=self._assinatura_ollama:return
             self.bloqueados.pop(provedor,None)
             self.motivos.pop(provedor,None)
             self.sucessos[provedor]=time.time()
@@ -203,6 +242,7 @@ class Roteador:
         """
         with self.mutex:
             antigos=len(self.bloqueados)
+            self._pausa_ollama_pendente=None
             self.bloqueados.clear()
             self.motivos.clear()
             self._salvar_bloqueios()
@@ -210,14 +250,17 @@ class Roteador:
         return f'{antigos} pausa(s) locais removidas. A próxima /ia ou /pesquisar tentará uma chamada normal, sujeita a saldo e limites.'
 
     def disponivel(self,provedor):
+        if provedor=='Ollama':self.atualizar_configuracao_ollama()
         with self.mutex:return time.time()>=self.bloqueados.get(provedor,0)
-    def registrar_falha(self,erro):
+    def registrar_falha(self,erro,assinatura_ollama=None):
+        if erro.provedor=='Ollama':self.atualizar_configuracao_ollama()
         duracao={'sem_creditos':24*3600,'autenticacao':24*3600,'modelo_indisponivel':24*3600,
                  'requisicao_invalida':3600,'limite_temporario':120,'cota_temporaria':120,
                  'servidor_ocupado':60,'rede':60}.get(erro.categoria,90)
         if erro.categoria in ('limite_temporario','cota_temporaria','servidor_ocupado'):
             duracao=limitar_retry(erro.retry_after) or duracao
         with self.mutex:
+            if erro.provedor=='Ollama' and assinatura_ollama is not None and assinatura_ollama!=self._assinatura_ollama:return
             agora=time.time()
             self.bloqueados[erro.provedor]=agora+duracao
             self.motivos[erro.provedor]=erro.categoria
@@ -225,6 +268,7 @@ class Roteador:
             self._salvar_bloqueios()
         registrar('api_'+erro.provedor,'indisponivel',str(erro),erro.provedor)
     def _configurados(self):
+        self.atualizar_configuracao_ollama()
         config={'Gemini':bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
                 'OpenAI':bool(os.getenv('OPENAI_API_KEY')),
                 'Claude':bool(os.getenv('ANTHROPIC_API_KEY')),
@@ -271,7 +315,8 @@ class Roteador:
         elif categoria=='autenticacao':
             orientacao='Confira a credencial desse provedor; após corrigir, use /reativar_ias.'
         elif categoria=='modelo_indisponivel':
-            orientacao='Confira o nome e o acesso ao modelo; após corrigir, use /reativar_ias.'
+            orientacao=('Use /modelos ollama e selecione uma tag presente com /modelos padrao NOME ou /chat modelo NOME.'
+                        if nome=='Ollama' else 'Confira o nome e o acesso ao modelo; após corrigir, use /reativar_ias.')
         elif categoria=='configuracao':
             orientacao='Use /verificar para conferir a configuração local.'
         elif espera:
@@ -372,6 +417,21 @@ class Roteador:
         except FalhaConfiguracao as exc:
             raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
 
+    def _explicar_404_ollama(self,modelo,erro):
+        if erro.codigo!=404:return erro
+        from configurar_ia_local import listar_modelos,modelo_instalado,FalhaConfiguracao
+        base=endpoint_ollama().removesuffix('/api/chat')
+        try:
+            nomes=listar_modelos(base)
+            if modelo_instalado(modelo,nomes):
+                detalhe=f'O modelo {modelo} está no catálogo, mas a rota /api/chat retornou HTTP 404. Confira o serviço/versão e OLLAMA_URL.'
+            else:
+                detalhe=f'O modelo configurado {modelo} não consta no catálogo Ollama. Disponíveis: '+(', '.join(nomes[:6]) or 'nenhum')+'.'
+        except (FalhaConfiguracao,ValueError):
+            detalhe=f'Ollama retornou HTTP 404 para {modelo}; não foi possível conferir o catálogo. Confira o serviço e OLLAMA_URL.'
+        detalhe+=' Use /modelos ollama e /modelos padrao NOME com uma tag instalada. Nenhum modelo foi baixado nem outra geração tentada.'
+        return FalhaAPI('Ollama',404,detalhe,'modelo_indisponivel')
+
     def ollama(self,pergunta,historico=None,modelo=None):
         if os.getenv('OLLAMA_HABILITADO')!='1':
             raise FalhaAPI('Ollama',0,'Integração local desabilitada. Configure Ollama e habilite OLLAMA_HABILITADO=1.','configuracao')
@@ -386,9 +446,11 @@ class Roteador:
         if not math.isfinite(timeout):timeout=90
         timeout=max(5,min(120,timeout))
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),SemRedirecionamento())
-        dados=postar(endpoint,'',{'model':modelo,'stream':False,
-            'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)},
-            'Ollama',timeout=timeout,opener=opener)
+        try:
+            dados=postar(endpoint,'',{'model':modelo,'stream':False,
+                'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)},
+                'Ollama',timeout=timeout,opener=opener)
+        except FalhaAPI as erro:raise self._explicar_404_ollama(modelo,erro) from None
         mensagem=dados.get('message')
         texto=mensagem.get('content') if isinstance(mensagem,dict) else None
         if not isinstance(texto,str) or not texto.strip():
@@ -434,6 +496,7 @@ class Roteador:
                  'Ollama':self.ollama,'Exa':self.pesquisa_exa}
         resultado={}
         for nome in nomes:
+            assinatura=assinatura_configuracao_ollama() if nome=='Ollama' else None
             if not config.get(nome,False):
                 resultado[nome]={'ok':False,'categoria':'configuracao','codigo':0,
                     'mensagem':'Integração local desabilitada.' if nome=='Ollama' else 'Chave não configurada.',
@@ -443,17 +506,18 @@ class Roteador:
                 texto=funcoes[nome]('Python documentação oficial' if nome=='Exa' else 'Responda somente OK.')
                 if not isinstance(texto,str) or not texto.strip():
                     raise FalhaAPI(nome,0,'Resposta vazia.','resposta_invalida')
-                self._registrar_sucesso(nome)
+                self._registrar_sucesso(nome,assinatura_ollama=assinatura)
                 registrar('teste_conexao','sucesso','Resposta recebida nesta solicitação explícita.',nome)
                 resultado[nome]={'ok':True,'categoria':'sucesso','codigo':200,
                     'mensagem':'Resposta recebida nesta solicitação; isso não informa créditos disponíveis.',
                     'verificado_em':time.time()}
             except Exception as exc:
                 erro=exc if isinstance(exc,FalhaAPI) else FalhaAPI(nome,0,str(redigir(exc))[:180])
-                self.registrar_falha(erro)
+                self.registrar_falha(erro,assinatura_ollama=assinatura)
                 resultado[nome]={'ok':False,'categoria':erro.categoria,'codigo':erro.codigo,
                     'mensagem':DESCRICOES_FALHA.get(erro.categoria,'falha temporária')+
-                        (f' (HTTP {erro.codigo})' if erro.codigo else ''),
+                        (f' (HTTP {erro.codigo})' if erro.codigo else '')+
+                        (' — '+erro.detalhe if nome=='Ollama' else ''),
                     'verificado_em':time.time()}
         return resultado
 
@@ -501,17 +565,18 @@ class Roteador:
         funcoes={'Gemini':self.gemini,'OpenAI':self.openai,'Claude':self.claude,'Ollama':self.ollama}
         for prov in selecionados:
             if not config.get(prov,False) or not self.disponivel(prov):continue
+            assinatura=assinatura_configuracao_ollama() if prov=='Ollama' else None
             try:
                 texto=funcoes[prov](pergunta) if historico is None else funcoes[prov](pergunta,historico=historico)
                 if not isinstance(texto,str) or not texto.strip():raise FalhaAPI(prov,0,'Resposta vazia.','resposta_invalida')
                 self.ultimo_provedor=prov
-                self._registrar_sucesso(prov)
+                self._registrar_sucesso(prov,assinatura_ollama=assinatura)
                 registrar('pergunta','sucesso',pergunta[:120],prov)
                 return texto,prov
             except FalhaAPI as e:
-                self.registrar_falha(e)
+                self.registrar_falha(e,assinatura_ollama=assinatura)
             except Exception as e:
-                self.registrar_falha(FalhaAPI(prov,0,str(redigir(e))[:180]))
+                self.registrar_falha(FalhaAPI(prov,0,str(redigir(e))[:180]),assinatura_ollama=assinatura)
         estados=self.estado_local()
         explicacao='\n'.join(self._explicar_indisponibilidade(nome,estados.get(nome,{'configurado':False})) for nome in selecionados)
         if escolhido=='auto' and estados['Exa']['configurado']:

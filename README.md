@@ -1,6 +1,10 @@
-# MeuControlePC v2.3.2
+# MeuControlePC v2.4.0
 
 Assistente Python para Windows com bot Telegram, painel local, rotina, finanças, catálogo RoboTask e provedores de IA configuráveis.
+
+Converse por mensagens comuns para pedir ajuda e preparar ações: “mostre minha rotina”, “abra o VS Code”, “gastei 15,50 com almoço”. Consultas locais funcionam sem IA; pedidos mais livres podem ser interpretados pelo provedor escolhido. Alterações são propostas para confirmação, com histórico separado por conversa. Veja [o guia de conversa e controle](GUIA_CONVERSA.md) e [mudanças, testes e reversão](REVISAO_V2_4_0.md).
+
+Inclui seleção do padrão Ollama no painel/Telegram sem reinício, diagnóstico 404 com catálogo real e assistente de seleção de arquivo OAuth para [Google Agenda](GOOGLE_AGENDA.md).
 
 Conversas com histórico, contribuições de vários chats, equipe de IAs e opção de inferência local por Ollama. Também inclui rotina editável, Kanban e lembretes opcionais. Veja [como começar e usar os três modos de chats](GUIA_MULTIPLOS_CHATS.md).
 

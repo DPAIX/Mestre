@@ -1,4 +1,6 @@
-> **v2.3.2:** [Guia de Mistral, Llama e Qwen](GUIA_MULTIPLOS_CHATS.md) · [Mudanças, testes e reversão](REVISAO_V2_3_2.md).
+> **v2.4.0:** [Conversa e controle por linguagem natural](GUIA_CONVERSA.md) · [Google Agenda](GOOGLE_AGENDA.md) · [Mudanças, testes e reversão](REVISAO_V2_4_0.md).
+
+> **v2.3.2:** [Relatório de Mistral, Llama e Qwen](REVISAO_V2_3_2.md).
 
 > **v2.3.1:** [Relatório dos modelos por conversa e colaboração com Manus](REVISAO_V2_3_1.md).
 

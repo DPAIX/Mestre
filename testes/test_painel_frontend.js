@@ -358,3 +358,167 @@ test('teste de resposta aguarda confirmação e envia uma consulta sem históric
  assert.deepEqual(JSON.parse(posts[0].opt.body),{acao:'modelo_testar',modelo:'qwen3.8:27b',confirmacao:'TESTAR MODELO'});
  assert.match(p.obter('teste-modelo-ollama').textContent,/não mede saldo nem garante disponibilidade futura/);
 });
+
+test('definir padrão usa o modelo listado e atualiza estado e catálogo sem repetir escrita',async()=>{
+ const p=await painel(),chamadas=[];let liberar;
+ p.executar("catalogoOllama={padrao:'ausente:3b',habilitado:true,modelos:[{nome:'mistral:latest',nuvem:false}]}");
+ p.obter('chat-modelo-ollama').value='mistral:latest';
+ p.contexto.centro={chats:[{id:'chat_a',titulo:'Conversa',provedor:'Ollama',modelo_ollama:''}],chat_ativo:{id:'chat_a',titulo:'Conversa',provedor:'Ollama',modelo_ollama:'',mensagens:[]},tarefas:[],contribuicoes:[]};
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  if(opt.method==='POST')return new Promise(resolve=>{liberar=resolve});
+  if(url==='/api/modelos_ollama')return resposta({padrao:'mistral:latest',habilitado:true,modelos:[{nome:'mistral:latest',nuvem:false}]});
+  return resposta({...estado,colaboracao:p.contexto.centro});
+ };
+ const primeira=p.obter('chat-modelo-padrao').eventos.click();
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(chamadas.length,1);
+ liberar(resposta({ok:true,mensagem:'Padrão alterado sem gerar resposta'}));await primeira;
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/acao','/api/estado','/api/modelos_ollama']);
+ const pedido=chamadas[0];
+ assert.deepEqual(JSON.parse(pedido.opt.body),{acao:'modelo_padrao',modelo:'mistral:latest'});
+ assert.equal(pedido.opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(chamadas[2].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.match(p.obter('chat-modelo-ollama').children[0].textContent,/Padrão do \.env: mistral:latest/);
+ assert.match(p.obter('aviso').textContent,/Padrão alterado sem gerar resposta/);
+});
+
+test('padrão exige catálogo e tag presente, inclusive ao usar a opção padrão',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST')posts.push(JSON.parse(opt.body));return resposta(url==='/api/modelos_ollama'?{padrao:'mistral:latest',habilitado:true,modelos:[{nome:'mistral:latest',nuvem:false}]}:opt.method==='POST'?{mensagem:'Padrão salvo'}:estado)};
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(posts.length,0);assert.match(p.obter('aviso').textContent,/Atualize a lista.*presente no catálogo/);
+ p.executar("catalogoOllama={padrao:'ausente:3b',modelos:[{nome:'mistral:latest',nuvem:false}]}");
+ p.obter('chat-modelo-ollama').value='salvo-mas-ausente:7b';
+ await p.obter('chat-modelo-padrao').eventos.click();
+ p.obter('chat-modelo-ollama').value='';
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(posts.length,0);
+ p.executar("catalogoOllama.padrao='mistral:latest'");
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(posts.length,1);assert.equal(posts[0].modelo,'mistral:latest');
+});
+
+test('falha ao salvar padrão mantém aviso e não recarrega catálogo como se tivesse sucesso',async()=>{
+ const p=await painel(),chamadas=[];
+ p.executar("catalogoOllama={padrao:'antigo:3b',modelos:[{nome:'mistral:latest',nuvem:false}]}");
+ p.obter('chat-modelo-ollama').value='mistral:latest';
+ p.contexto.fetch=async(url,opt)=>{chamadas.push(url);return resposta({erro:'O modelo saiu do catálogo; atualize a lista.'},400)};
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.deepEqual(chamadas,['/api/acao']);
+ assert.match(p.obter('aviso').textContent,/modelo saiu do catálogo/);
+ assert.equal(p.executar('catalogoOllama.padrao'),'antigo:3b');
+});
+
+test('falha Ollama 404 orienta definir um modelo listado no relatório e nos provedores',async()=>{
+ const p=await painel();
+ p.contexto.comFalha={...estado,provedores:{Ollama:'modelo não acessível (HTTP 404)'},autoanalise:{estado_local:'sem falhas locais',avisos_externos:[{provedor:'Ollama',codigo:404,orientacao:'Confira a conta e use reativar.'}]}};
+ p.executar('render(comFalha)');
+ const orientacao=p.obter('provedores').children[1].textContent;
+ assert.match(orientacao,/Atualize|atualize/);assert.match(orientacao,/tag presente.*Definir como padrão do Ollama/);
+ const relatorio=p.obter('resumo-analise').textContent;
+ assert.match(relatorio,/Ollama retornou HTTP 404/);assert.match(relatorio,/Testar resposta deste modelo/);
+ assert.doesNotMatch(relatorio,/Confira a conta e use reativar/);
+});
+
+test('mensagem natural mostra proposta como texto e só envia nonce após confirmar',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const corpo=JSON.parse(opt.body);posts.push({corpo,opt});
+  return resposta(corpo.acao==='pergunta'?{ok:true,mensagem:'Entendi seu pedido.',pedido:{id:'pedido_opaco',descricao:'Abrir <img onerror=x> VS Code',acao:'ignorada',campos:{comando:'ignorado'}}}:{ok:true,mensagem:'Abertura do VS Code solicitada.'});
+ };
+ p.contexto.confirm=()=>{throw Error('A proposta já oferece os botões de confirmação')};
+ p.obter('chat-texto').value='Abra o VS Code';await p.obter('chat-enviar').eventos.click();
+ assert.equal(posts.length,1);assert.equal(posts[0].corpo.acao,'pergunta');
+ assert.equal(p.obter('chat-resposta').textContent,'Entendi seu pedido.');
+ const cartao=p.obter('chat-pedido').children[0];
+ assert.equal(cartao.children[1].textContent,'Abrir <img onerror=x> VS Code');
+ await cartao.children[3].children[0].eventos.click();
+ assert.equal(posts.length,2);
+ assert.deepEqual(posts[1].corpo,{acao:'pedido_confirmar',id:'pedido_opaco'});
+ assert.equal(posts[1].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(p.obter('chat-pedido').children.length,0);
+ assert.equal(p.obter('chat-resposta').textContent,'Abertura do VS Code solicitada.');
+});
+
+test('cancelamento de proposta envia só o identificador e remove o cartão',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const corpo=JSON.parse(opt.body);posts.push(corpo);
+  return resposta(corpo.acao==='pergunta'?{mensagem:'Revise a movimentação.',pedido:{id:'financeiro_1',descricao:'Registrar saída de R$15,00 com almoço'}}:{mensagem:'Pedido cancelado.'});
+ };
+ p.obter('pergunta').value='Registre um gasto de 15 reais com almoço';await p.obter('consultar').eventos.click();
+ const cancelar=p.obter('pedido-resposta').children[0].children[3].children[1];
+ await cancelar.eventos.click();
+ assert.deepEqual(posts,[{acao:'pergunta',texto:'Registre um gasto de 15 reais com almoço'},{acao:'pedido_cancelar',id:'financeiro_1'}]);
+ assert.equal(p.obter('pedido-resposta').children.length,0);
+ assert.equal(p.obter('resposta').textContent,'Pedido cancelado.');
+});
+
+test('confirmação não repete o nonce em duplo clique ou após falha expirada',async()=>{
+ const p=await painel(),posts=[];let liberar;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const corpo=JSON.parse(opt.body);posts.push(corpo);
+  if(corpo.acao==='pergunta')return resposta({mensagem:'Confira a ação.',pedido:{id:'expirado',descricao:'Abrir calculadora'}});
+  return new Promise(resolve=>{liberar=resolve});
+ };
+ p.obter('chat-texto').value='Abra a calculadora';await p.obter('chat-enviar').eventos.click();
+ const botao=p.obter('chat-pedido').children[0].children[3].children[0];
+ const primeira=botao.eventos.click();await botao.eventos.click();
+ assert.equal(posts.length,2);
+ liberar(resposta({erro:'Pedido expirado ou já utilizado.'},400));await primeira;
+ await botao.eventos.click();assert.equal(posts.length,2);
+ assert.equal(p.obter('chat-pedido').children.length,0);
+ assert.match(p.obter('aviso').textContent,/expirado ou já utilizado/);
+ assert.match(p.obter('chat-resposta').textContent,/Confira o aviso e o estado/);
+});
+
+test('resposta comum e proposta inválida não criam botões de execução',async()=>{
+ const p=await painel();let pedido;
+ p.contexto.fetch=async(_url,opt)=>resposta(opt.method==='POST'?{mensagem:'Posso ajudar a planejar seu dia.',pedido}:estado);
+ p.obter('pergunta').value='Olá, pode me ajudar?';await p.obter('consultar').eventos.click();
+ assert.equal(p.obter('resposta').textContent,'Posso ajudar a planejar seu dia.');
+ assert.equal(p.obter('pedido-resposta').children.length,0);
+ pedido={id:'qualquer',descricao:42,acao:'pc'};
+ await p.obter('consultar').eventos.click();
+ assert.equal(p.obter('pedido-resposta').children.length,1);
+ assert.match(p.obter('pedido-resposta').children[0].textContent,/solicitação inválida/);
+ assert.equal(p.obter('pedido-resposta').children[0].children.length,0);
+});
+
+test('trocar de conversa remove propostas visíveis da conversa anterior',async()=>{
+ const p=await painel();
+ p.contexto.centro={chats:[],chat_ativo:{id:'chat_a',titulo:'A',modo_conversa:true},tarefas:[],contribuicoes:[]};
+ p.executar('renderColaboracao(centro)');
+ p.executar("exibirPedidoConversa('chat-resposta',{id:'anterior',descricao:'Abrir VS Code'})");
+ assert.equal(p.obter('chat-pedido').children.length,1);
+ p.contexto.centro.chat_ativo={id:'chat_b',titulo:'B',modo_conversa:false};p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-pedido').children.length,0);
+ assert.equal(p.obter('chat-modo-conversa').checked,false);
+ assert.match(p.obter('chat-modo-status').textContent,/desativada nesta sessão/);
+});
+
+test('modo conversa usa a sessão ativa e o serviço existente de configuração',async()=>{
+ const p=await painel(),posts=[];
+ const centro={chats:[],chat_ativo:{id:'chat_a',titulo:'A',modo_conversa:true},tarefas:[],contribuicoes:[]};
+ p.contexto.centro=centro;p.executar('renderColaboracao(centro)');
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){const corpo=JSON.parse(opt.body);posts.push(corpo);centro.chat_ativo.modo_conversa=corpo.ativo;return resposta({mensagem:'Modo atualizado.'})}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-modo-conversa').checked=false;await p.obter('chat-modo-conversa').eventos.change();
+ assert.deepEqual(posts,[{acao:'chat_modo',id:'chat_a',ativo:false}]);
+ assert.equal(p.obter('chat-modo-conversa').checked,false);
+});
+
+test('captura confirmada aparece como imagem e não como HTML',async()=>{
+ const p=await painel(),imagem='data:image/png;base64,AAAA';
+ p.contexto.fetch=async(_url,opt)=>resposta(opt.method==='POST'?{mensagem:'Captura obtida.',imagem}:estado);
+ p.executar("exibirPedidoConversa('chat-resposta',{id:'captura',descricao:'Capturar tela'})");
+ await p.obter('chat-pedido').children[0].children[3].children[0].eventos.click();
+ assert.equal(p.obter('chat-resposta').children.at(-1).src,imagem);
+ assert.equal(p.obter('chat-resposta').children.at(-1).alt,'Captura de tela solicitada');
+});

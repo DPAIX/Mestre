@@ -3,6 +3,7 @@ Configure .env. Nenhum token ou chave é embutido neste arquivo.
 """
 from __future__ import annotations
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -33,6 +34,8 @@ PEND_LOCK=threading.RLock()
 TOKEN_PAINEL=secrets.token_urlsafe(32)
 CONFIRMACOES_WINDOWS={}
 SAIDA_AGENDADA=threading.Event()
+PEDIDOS_PAINEL={}
+LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda'}
 
 
 def encerrar_para_reiniciar():
@@ -174,8 +177,116 @@ def interpretar_comando(texto,contexto=None):
         return ('⚠️ Não consegui responder pela API neste momento. '+str(e)+
                 '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
 
+
+def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
+    from interpretacao_natural import validar_plano
+    plano=validar_plano(plano);acao=plano['acao'];campos=plano['campos']
+    if chat_id and CENTRAL.obter_chat_ativo(contexto)['id']!=chat_id:
+        raise ValueError('Este pedido pertence a outra conversa. Volte à conversa de origem ou envie novamente o que deseja fazer.')
+    leituras={'status':mostrar_status,'rotina':mostrar_rotina,'financas':mostrar_financeiro,
+              'kanban':mostrar_kanban,'robotask':mostrar_robotask,'agenda':mostrar_agenda}
+    extra={}
+    if acao in leituras:resultado=leituras[acao]()
+    elif acao=='pc':
+        if campos['comando']=='print':
+            foto=captura()
+            if telegram_chat is not None:BOT.send_photo(telegram_chat,foto)
+            else:
+                conteudo=foto.getvalue()
+                if len(conteudo)>8_000_000:raise ValueError('Captura muito grande para o painel; use /print no Telegram.')
+                extra['imagem']='data:image/png;base64,'+base64.b64encode(conteudo).decode('ascii')
+            resultado='Captura de tela obtida após sua confirmação.'
+        else:resultado=executar(campos['comando'])
+    elif acao in ('financeiro','rotina_criar','kanban_adicionar','modelo_padrao'):
+        resultado=SERVICOS.executar_acao(acao,campos,contexto,ROTEADOR)
+    elif acao=='concluir':
+        tarefa=next((t for t in vida().get('rotina',[]) if str(t.get('id'))==campos['id']),None)
+        if tarefa and str(tarefa.get('status','')).casefold() in ('concluído','concluido'):
+            resultado='A atividade '+campos['id']+' já está concluída.'
+        else:resultado='Tarefa: '+concluir_tarefa(campos['id'])
+    elif acao=='agua':resultado='💧 Água: %d/%d'%registrar_agua()
+    elif acao=='pomodoro':
+        if telegram_chat is not None:iniciar_pomodoro(telegram_chat,25,5)
+        else:
+            with PEND_LOCK:
+                if 'painel' in POMODOROS_ATIVOS:raise ValueError('Já existe um Pomodoro ativo no painel.')
+                POMODOROS_ATIVOS.add('painel')
+            def concluir_foco():
+                try:registrar_pomodoro()
+                finally:
+                    with PEND_LOCK:POMODOROS_ATIVOS.discard('painel')
+            timer=threading.Timer(25*60,concluir_foco);timer.daemon=True;timer.start()
+        resultado='Pomodoro de 25 minutos iniciado. Mantenha o assistente aberto para registrar a conclusão.'
+    else:raise ValueError('Pedido não permitido.')
+    if chat_id:
+        CENTRAL.registrar_troca(contexto,'Confirmação/consulta: '+plano['descricao'],str(resultado),'auto',chat_id=chat_id)
+    return {'mensagem':str(resultado),**extra}
+
+
+def preparar_pedido_natural(texto,contexto):
+    from interpretacao_natural import interpretar_local
+    if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma mensagem.')
+    tipo=classificar_texto(texto)
+    if tipo in ('desligamento_bloqueado','pedido_melhoria','pedido_reinicio_windows','pedido_reinicio_bot','reparo','menu','pesquisa'):
+        return {'mensagem':interpretar_comando(texto),'plano':None,'chat_id':None}
+    plano=interpretar_local(texto)
+    chat=CENTRAL.obter_chat_ativo(contexto)
+    if plano:resultado={'texto':'Entendi: '+plano['descricao']+'.','plano':plano,'chat_id':chat['id']}
+    else:
+        try:resultado=SERVICOS.conversar(texto,contexto,ROTEADOR,retornar_plano=True)
+        except FalhaAPI as exc:
+            return {'mensagem':'⚠️ '+str(exc)+'\nPosso consultar sua rotina, saldo e status, ou preparar ações locais por mensagens diretas.','plano':None,'chat_id':chat['id']}
+    plano=resultado.get('plano')
+    if plano and plano['acao'] in LEITURAS_NATURAIS:
+        return {**executar_plano_natural(plano,contexto,resultado['chat_id']),'plano':None,'chat_id':resultado['chat_id']}
+    return {'mensagem':resultado['texto'],'plano':plano,'chat_id':resultado['chat_id']}
+
+
+def responder_natural_telegram(m,texto):
+    contexto=contexto_mensagem(m);resultado=preparar_pedido_natural(texto,contexto)
+    if resultado.get('plano'):
+        plano=resultado['plano']
+        confirmar(m.chat.id,m.from_user.id,'pedido_natural',plano['descricao']+'? Ainda não foi executado.',
+                  {'plano':plano,'contexto':contexto,'chat_id':resultado['chat_id']})
+    else:enviar_texto_grande(m.chat.id,resultado['mensagem'])
+
+
+def confirmar_pedido_por_texto(m,texto):
+    normal=texto.strip().casefold().rstrip('.!')
+    if normal not in ('sim','confirmo','pode executar','execute','cancelar','cancele'):return False
+    contexto=contexto_mensagem(m)
+    with PEND_LOCK:
+        candidatos=[(token,pend) for token,pend in PENDENTES.items()
+                    if pend['acao']=='pedido_natural' and pend['user']==m.from_user.id and pend['chat']==m.chat.id
+                    and pend.get('dados',{}).get('contexto')==contexto and time.monotonic()<=pend['expira']]
+        if not candidatos:return False
+        if len(candidatos)>1:
+            BOT.send_message(m.chat.id,'Há mais de um pedido pendente. Use o botão do pedido que deseja confirmar ou cancelar.');return True
+        token,pend=candidatos[0];PENDENTES.pop(token)
+    if normal in ('cancelar','cancele'):BOT.send_message(m.chat.id,'Pedido cancelado. Nenhuma ação foi executada.');return True
+    dados=pend['dados'];res=executar_plano_natural(dados['plano'],contexto,dados['chat_id'],m.chat.id)
+    enviar_texto_grande(m.chat.id,res['mensagem']);return True
+
+
+def responder_natural_painel(texto):
+    resultado=preparar_pedido_natural(texto,'painel');plano=resultado.pop('plano',None);chat_id=resultado.pop('chat_id',None)
+    if plano:
+        token=secrets.token_urlsafe(18)
+        with PEND_LOCK:
+            agora=time.monotonic()
+            for chave,pend in list(PEDIDOS_PAINEL.items()):
+                if pend['expira']<agora:PEDIDOS_PAINEL.pop(chave,None)
+            if len(PEDIDOS_PAINEL)>=100:raise ValueError('Conclua ou cancele os pedidos pendentes antes de continuar.')
+            PEDIDOS_PAINEL[token]={'plano':plano,'contexto':'painel','chat_id':chat_id,'expira':agora+180}
+        resultado['pedido']={'id':token,'descricao':plano['descricao']}
+        resultado['mensagem']+=' Confirme o pedido abaixo para executar.'
+    return resultado
+
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.3.2\n'
+    return ('🤖 MeuControlePC v2.4.0 — converse por mensagens comuns\n'
+            'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
+            'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
+            'Pedidos de alteração mostram uma confirmação. Você pode responder sim/cancele ou usar os botões.\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
@@ -184,6 +295,7 @@ def mensagem_ajuda():
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
             '/chat modelo qwen3.5:4b | /modelos ollama\n'
             '/modelos preparar mistral,llama3.2 | /modelos detalhes NOME | /modelos testar NOME\n'
+            '/modelos padrao NOME corrige o padrão usando um modelo instalado\n'
             '/chat modo on|off /projeto /contexto /contribuir /equipe objetivo /conexoes\n'
             '/atividade Dia | HH:MM | Atividade /lembretes on|off\n'
             '/agenda /furg /notebook /painel /id /macros /ecossistema /evoluir\n'
@@ -196,7 +308,7 @@ def rejeitar_constante_json(valor):
     raise ValueError('Número JSON inválido: '+valor)
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.3.0'
+    server_version='MeuControlePC/2.4.0'
     def log_message(self,*args):pass
     def _headers(self,codigo,tipo):
         self.send_response(codigo)
@@ -206,9 +318,15 @@ class PainelHandler(BaseHTTPRequestHandler):
         self.send_header('X-Frame-Options','DENY')
         self.send_header('Referrer-Policy','no-referrer')
         self.end_headers()
-    def _json(self,obj,codigo=200):
+    def _json(self,obj,codigo=200,*,imagem=None):
+        seguro=redigir(obj)
+        if imagem is not None:
+            if (not isinstance(seguro,dict) or not isinstance(imagem,str) or len(imagem)>11000000
+                    or not re.fullmatch(r'data:image/png;base64,[A-Za-z0-9+/=]+',imagem)):
+                raise ValueError('Captura de tela inválida.')
+            seguro['imagem']=imagem
         self._headers(codigo,'application/json; charset=utf-8')
-        self.wfile.write(json.dumps(redigir(obj),ensure_ascii=False).encode('utf-8'))
+        self.wfile.write(json.dumps(seguro,ensure_ascii=False).encode('utf-8'))
     def autenticado(self):
         recebido=self.headers.get('X-Painel-Token','').encode('utf-8')
         return secrets.compare_digest(recebido,TOKEN_PAINEL.encode('utf-8'))
@@ -285,6 +403,20 @@ class PainelHandler(BaseHTTPRequestHandler):
             obj=json.loads(self.rfile.read(tamanho),parse_constant=rejeitar_constante_json)
             if not isinstance(obj,dict):raise ValueError('O pedido deve ser um objeto JSON.')
             acao=obj.get('acao')
+            if acao in ('pedido_confirmar','pedido_cancelar'):
+                token=obj.get('id')
+                if not isinstance(token,str) or len(token)>100:raise ValueError('Pedido inválido.')
+                with PEND_LOCK:
+                    pend=PEDIDOS_PAINEL.get(token)
+                    if not pend or pend['contexto']!='painel' or time.monotonic()>pend['expira']:
+                        PEDIDOS_PAINEL.pop(token,None);raise ValueError('Pedido expirado ou já processado; envie sua solicitação novamente.')
+                    if CENTRAL.obter_chat_ativo('painel')['id']!=pend['chat_id']:
+                        raise ValueError('O pedido pertence a outra conversa. Volte à conversa de origem ou envie uma nova solicitação.')
+                    PEDIDOS_PAINEL.pop(token)
+                if acao=='pedido_cancelar':return self._json({'ok':True,'mensagem':'Pedido cancelado. Nenhuma ação foi executada.'})
+                resultado=executar_plano_natural(pend['plano'],'painel',pend['chat_id'])
+                imagem=resultado.pop('imagem',None)
+                return self._json({'ok':True,**resultado},imagem=imagem)
             if acao in SERVICOS.ACOES_CENTRAL:resultado=SERVICOS.executar_acao(acao,obj,'painel',ROTEADOR)
             elif acao=='agua':r=registrar_agua(); resultado=f'Água: {r[0]}/{r[1]}'
             elif acao=='concluir':resultado='Tarefa: '+concluir_tarefa(str(obj.get('id','')))
@@ -316,7 +448,7 @@ class PainelHandler(BaseHTTPRequestHandler):
             elif acao=='pergunta':
                 texto=obj.get('texto','')
                 if not isinstance(texto,str):raise ValueError('A pergunta deve ser texto.')
-                resultado=interpretar_comando(texto[:12000],contexto='painel')
+                return self._json({'ok':True,**responder_natural_painel(texto[:12000])})
             elif acao=='pc' and obj.get('comando') in ('f8','f9','f10','desktop','taskmgr','furg','agenda','colab'):
                 # Requer confirmação no próprio HTML antes da chamada.
                 resultado=executar(obj['comando'])
@@ -417,6 +549,9 @@ def contexto_mensagem(m):
 def tratar_comandos_novos(m,chave,args,contexto):
     chat=m.chat.id;usuario=m.from_user.id
     if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/modelos' and (args.casefold().startswith('padrao ') or args.casefold().startswith('padrão ')):
+        modelo=args.partition(' ')[2].strip()
+        enviar_texto_grande(chat,SERVICOS.executar_acao('modelo_padrao',{'modelo':modelo},contexto,ROTEADOR))
     elif chave=='/modelos' and args.casefold().startswith('preparar '):
         modelos=[nome.strip() for nome in args[9:].split(',')]
         enviar_texto_grande(chat,SERVICOS.executar_acao('chats_modelos_ollama',{'modelos':modelos},contexto,ROTEADOR))
@@ -440,7 +575,7 @@ def tratar_comandos_novos(m,chave,args,contexto):
             linhas.append('• '+item['nome']+' | '+item.get('familia','')+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
         if not catalogo['modelos']:linhas.append('Nenhum modelo registrado. Confira ollama list no PC.')
         linhas.append('Padrão: '+catalogo['padrao']+'. Integração '+('habilitada.' if catalogo['habilitado'] else 'desabilitada; execute configurar_ia_local.bat.'))
-        linhas.extend(['/chat modelo NOME seleciona para esta conversa.',
+        linhas.extend(['/chat modelo NOME seleciona para esta conversa. /modelos padrao NOME define o padrão do Ollama.',
                        'Somente catálogo consultado; a geração de respostas não foi testada.'])
         enviar_texto_grande(chat,'\n'.join(linhas))
     elif chave=='/chat':
@@ -549,6 +684,7 @@ def tratar_pedido(m):
     if not autenticado(usuario):
         BOT.reply_to(m,'⛔ Acesso negado. Use /id e configure o seu identificador no .env do computador.')
         return
+    if confirmar_pedido_por_texto(m,texto):return
     if texto==MENU_BOTOES[14]:return enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto)+'\n\n'+SERVICOS.resumo_projeto(contexto))
     if texto in MENU_BOTOES:return menu_secundario(chat,texto,usuario)
     t=texto.casefold()
@@ -637,15 +773,17 @@ def tratar_pedido(m):
         with nb.open('rb') as fp:BOT.send_document(chat,fp,caption='Notebook para VS Code/Jupyter/Colab')
     elif chave=='/agenda':BOT.send_message(chat,mostrar_agenda())
     elif chave=='/furg':BOT.send_message(chat,'🎓 https://sistemas.furg.br\n'+mostrar_rotina())
-    elif chave in ('/ia','/perguntar'):enviar_texto_grande(chat,interpretar_comando(args,contexto=contexto) if args else 'Use /ia sua pergunta. /chats lista conversas; /chat modo on permite conversar por mensagens comuns.')
+    elif chave in ('/ia','/perguntar'):
+        if args:responder_natural_telegram(m,args)
+        else:BOT.send_message(chat,'Pode escrever sua pergunta normalmente. Também entendo pedidos como mostre minha rotina, qual meu saldo e abra o VS Code.')
     elif chave in ('/pesquisar','/exa'):enviar_texto_grande(chat,interpretar_comando('pesquise '+args))
     elif chave=='/scanrt':BOT.send_message(chat,f'🤖 {len(catalogo_robotask())} tarefas catalogadas.')
     else:
-        if classificar_texto(texto)=='conversa' and CENTRAL.obter_chat_ativo(contexto).get('modo_conversa'):
-            enviar_texto_grande(chat,interpretar_comando(texto,contexto=contexto))
-        elif classificar_texto(texto)=='conversa':
-            BOT.send_message(chat,'💬 Para consultar uma IA, use /ia sua pergunta; para pesquisar, /pesquisar assunto. Comandos locais: /menu. Isso evita cobranças ou chamadas de API acidentais.')
-        else:enviar_texto_grande(chat,interpretar_comando(texto))
+        from interpretacao_natural import interpretar_local
+        if texto.startswith('/'):BOT.send_message(chat,'Comando não reconhecido. Use /ajuda ou escreva o que precisa por mensagem comum.')
+        elif (not CENTRAL.obter_chat_ativo(contexto).get('modo_conversa') and classificar_texto(texto)=='conversa' and interpretar_local(texto) is None):
+            BOT.send_message(chat,'Conversa contínua pausada neste chat. Use /chat modo on para retomar ou /ia sua pergunta. Os pedidos locais continuam disponíveis.')
+        else:responder_natural_telegram(m,texto)
 
 
 def configurar_bot():
@@ -709,9 +847,13 @@ def configurar_bot():
                     BOT.answer_callback_query(c.id,'Solicitação expirada ou não autorizada.');return
                 if tipo=='cancelar':BOT.answer_callback_query(c.id,'Cancelado');return
                 acao=pend['acao']
-                if acao in ('conexoes_ia','equipe_ia','modelo_testar'):
+                if acao=='pedido_natural':
+                    dados=pend['dados'];BOT.answer_callback_query(c.id,'Executando o pedido confirmado.')
+                    resultado=executar_plano_natural(dados['plano'],dados['contexto'],dados['chat_id'],c.message.chat.id)
+                    enviar_texto_grande(c.message.chat.id,resultado['mensagem']);return
+                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao'):
                     dados=pend.get('dados',{})
-                    BOT.answer_callback_query(c.id,'Consulta iniciada; aguarde o resultado.')
+                    BOT.answer_callback_query(c.id,'Configuração solicitada.' if acao=='modelo_padrao' else 'Consulta iniciada; aguarde o resultado.')
                     enviar_texto_grande(c.message.chat.id,SERVICOS.executar_acao(acao,dados,dados.get('contexto',f'{c.from_user.id}:{c.message.chat.id}:0'),ROTEADOR))
                     return
                 if acao=='print':

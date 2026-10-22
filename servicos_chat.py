@@ -1,5 +1,6 @@
 """Serviços de conversas e projeto compartilhado, sem dependência do Telegram."""
 from __future__ import annotations
+import os
 import threading
 import nucleo
 import colaboracao_chats as central
@@ -7,7 +8,7 @@ import colaboracao_chats as central
 _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chats_modelos_ollama','modelo_testar','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chats_modelos_ollama','modelo_testar','modelo_padrao','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -22,9 +23,10 @@ def campo_texto(obj,nome,limite=200,obrigatorio=True):
     return valor
 
 
-def conversar(texto,contexto,roteador):
+def conversar(texto,contexto,roteador,retornar_plano=False):
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma pergunta para a conversa.')
     if len(texto)>12000:raise ValueError('A mensagem deve ter até 12000 caracteres.')
+    if retornar_plano and len(texto)>8000:raise ValueError('Envie mensagens de até 8000 caracteres para interpretar pedidos.')
     chat=central.obter_chat_ativo(contexto)
     chave=(contexto,chat['id'])
     with _TRAVAS_LOCK:
@@ -41,9 +43,23 @@ def conversar(texto,contexto,roteador):
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
         if modelo:opcoes['modelo_ollama']=modelo
-        resposta,provedor=roteador.responder(texto.strip(),**opcoes)
+        pergunta=texto.strip()
+        if retornar_plano:
+            from interpretacao_natural import instrucoes_ia,extrair_resposta
+            import datetime
+            from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
+            try:agora=datetime.datetime.now(ZoneInfo('America/Sao_Paulo'))
+            except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
+            pergunta=(instrucoes_ia()+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
+                      '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'+pergunta[:8000])
+        resposta,provedor=roteador.responder(pergunta,**opcoes)
+        plano=None
+        if retornar_plano:
+            resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
+            if plano:resposta='Entendi: '+plano['descricao']+'. O pedido ainda não foi executado.'
         central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo)
         rotulo=provedor+(' / '+modelo if modelo else '')
+        if retornar_plano:return {'texto':f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta,'plano':plano,'chat_id':chat['id']}
         return f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta
     finally:trava.release()
 
@@ -101,6 +117,21 @@ def texto_equipe(resultado):
 
 
 def executar_acao(acao,obj,contexto,roteador):
+    if acao=='modelo_padrao':
+        from configurar_ia_local import configurar_modelo
+        from multi_ia import endpoint_ollama
+        modelo=campo_texto(obj,'modelo',200)
+        chat=central.obter_chat_ativo(contexto)
+        url=endpoint_ollama().removesuffix('/api/chat')
+        encontrado=configurar_modelo(modelo,url,caminho=nucleo.BASE/'.env')
+        os.environ.update({'OLLAMA_HABILITADO':'1','OLLAMA_URL':url,'OLLAMA_MODEL':encontrado})
+        roteador.atualizar_configuracao_ollama()
+        central.configurar_chat(contexto,chat['id'],provedor='Ollama',modelo_ollama='')
+        nucleo.registrar('modelo_padrao','configurado','Modelo Ollama selecionado: '+encontrado,'Ollama')
+        return ('Padrão do Ollama atualizado: '+encontrado+'. Esta conversa agora usa Ollama com esse padrão; seu histórico foi preservado. '
+                'Configuração salva e carregada. Pausas de outros provedores não foram alteradas. '
+                'A presença no catálogo foi verificada, sem gerar resposta nem baixar modelos. Use /modelos testar '+encontrado+
+                ' ou /ia para testar. Modelos cloud dependem de conta, internet e cota.')
     if acao=='chats_modelos_ollama':
         from configurar_ia_local import validar_modelo,modelo_instalado
         modelos=obj.get('modelos')

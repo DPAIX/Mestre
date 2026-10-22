@@ -107,6 +107,39 @@ class TelegramConfirmacoes(unittest.TestCase):
             app.tratar_pedido(self.mensagem('/ia Outro tópico',topico=5))
             self.assertEqual(responder.call_args.kwargs['historico'],[])
 
+    def test_conversa_comum_padrao_e_pedido_pc_confirmado_por_texto(self):
+        with patch.object(app.ROTEADOR,'responder',return_value=('Olá, como posso ajudar?','Ollama')) as ia,\
+                patch.object(app,'executar',return_value='VS Code solicitado') as executar,patch.object(app,'inline',return_value=None):
+            app.tratar_pedido(self.mensagem('Olá, me ajude a organizar o dia'))
+            ia.assert_called_once()
+            app.tratar_pedido(self.mensagem('abra o VS Code'))
+            executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('sim',usuario=3));executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('sim',chat=11));executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('sim'))
+            executar.assert_called_once_with('vscode_pc')
+            app.tratar_pedido(self.mensagem('/chat modo off'))
+            antes=ia.call_count
+            app.tratar_pedido(self.mensagem('Vamos conversar mais'))
+            self.assertEqual(ia.call_count,antes)
+
+    def test_cancelamento_natural_e_confirmacao_outro_dono_nao_executam(self):
+        with patch.object(app,'executar') as executar,patch.object(app,'inline',return_value=None),\
+                patch.object(app.ROTEADOR,'responder',return_value=('Não há pedido seu para confirmar.','Ollama')):
+            app.tratar_pedido(self.mensagem('abra a calculadora'))
+            app.tratar_pedido(self.mensagem('sim',usuario=2))
+            executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('cancele'))
+            self.assertFalse(app.PENDENTES);executar.assert_not_called()
+
+    def test_pedido_natural_nao_executa_em_outra_conversa_telegram(self):
+        with patch.object(app,'executar') as executar,patch.object(app,'inline',return_value=None):
+            app.tratar_pedido(self.mensagem('abra a calculadora'))
+            token=next(iter(app.PENDENTES));app.tratar_pedido(self.mensagem('/chat novo Outra'))
+            chamada=self.chamada();chamada.data='ok:'+token;self.callback(chamada)
+            executar.assert_not_called()
+            self.assertIn('outra conversa',self.bot.send_message.call_args.args[1])
+
     def test_novo_chat_nao_autorizado_nao_grava(self):
         app.tratar_pedido(self.mensagem('/chat novo Invasor',usuario=3))
         self.assertFalse((Path(self.tmp.name)/'colaboracao_chats.json').exists())

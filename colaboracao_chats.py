@@ -27,14 +27,14 @@ MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
     'assistente_pc.py','nucleo.py','multi_ia.py','colaboracao_chats.py',
-    'servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py',
-    'GUIA_MULTIPLOS_CHATS.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md','REVISAO_V2_3_2.md',
+    'servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','autorizar_google.py',
+    'GUIA_MULTIPLOS_CHATS.md','GUIA_CONVERSA.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md','REVISAO_V2_3_2.md','REVISAO_V2_4_0.md','GOOGLE_AGENDA.md',
     'automacao_pc.py','evolucao_segura.py','reinicio_seguro.py',
     'reiniciar_assistente.py','agenda_google.py','verificacao_ambiente.py',
     'configurar_telegram.py','startup_windows.py','ponte_robotask.py',
     'painel_rotina.html','requirements.txt','requirements-google.txt',
     'README.md','README_CODEX.md','LEIA-ME.md','AGENTS.md',
-    'testes/test_colaboracao_chats.py','testes/test_nucleo.py',
+    'testes/test_colaboracao_chats.py','testes/test_nucleo.py','testes/test_interpretacao_natural.py','testes/test_fluxos_colaboracao.py','testes/test_agenda_google.py','testes/test_ollama_configuracao.py',
     'testes/test_multi_ia_regressoes.py','testes/test_diagnostico_provedores.py',
 )
 _NOMES_SEGREDOS = r'(?:TELEGRAM_TOKEN|GEMINI_API_KEY|GOOGLE_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|CLAUDE_API_KEY|EXA_API_KEY|API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|AUTHORIZATION|X-API-KEY)'
@@ -110,7 +110,7 @@ def _novo_chat(dados,espaco,titulo,provedor):
     if len(espaco['chats'])>=limite or total>=MAX_CHATS:raise ValueError('Limite de conversas atingido. Use uma conversa existente.')
     agora=_agora()
     chat={'id':'chat_'+uuid.uuid4().hex[:16],'titulo':titulo,'provedor':provedor,'modelo_ollama':'',
-          'modo_conversa':False,'criado_em':agora,'atualizado_em':agora,'mensagens':[]}
+          'modo_conversa':True,'conversa_v240':True,'criado_em':agora,'atualizado_em':agora,'mensagens':[]}
     espaco['chats'].append(chat);espaco['ativo']=chat['id']
     return chat
 
@@ -160,7 +160,10 @@ def obter_chat_ativo(contexto):
         dados=_ler();espaco=_espaco(dados,chave)
         if not espaco['chats']:
             chat=_novo_chat(dados,espaco,'Conversa principal','auto');_salvar(dados)
-        else:chat=_achar_chat(espaco)
+        else:
+            chat=_achar_chat(espaco)
+            if not chat.get('conversa_v240'):
+                chat['modo_conversa']=True;chat['conversa_v240']=True;_salvar(dados)
         return copy.deepcopy(chat)
 
 
@@ -182,7 +185,7 @@ def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_oll
     with nucleo._LOCK:
         dados=_ler();chat=_achar_chat(_espaco(dados,chave),chat_id)
         if provedor is not None:chat['provedor']=provedor
-        if modo_conversa is not None:chat['modo_conversa']=modo_conversa
+        if modo_conversa is not None:chat['modo_conversa']=modo_conversa;chat['conversa_v240']=True
         if modelo_ollama is not None:chat['modelo_ollama']=modelo_ollama
         chat['atualizado_em']=_agora();_salvar(dados)
         return copy.deepcopy(chat)
