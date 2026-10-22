@@ -25,6 +25,7 @@ from evolucao_segura import analisar as autoanalisar, melhorar as aplicar_melhor
 from reinicio_seguro import preparar_reinicio_assistente, reiniciar_windows, cancelar_reinicio_windows
 import colaboracao_chats as CENTRAL
 import servicos_chat as SERVICOS
+from idempotencia_painel import ControleAcoes,FalhaControle
 
 ROTEADOR=Roteador()
 BOT=None
@@ -36,6 +37,7 @@ CONFIRMACOES_WINDOWS={}
 SAIDA_AGENDADA=threading.Event()
 PEDIDOS_PAINEL={}
 LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda'}
+CONTROLE_PAINEL=ControleAcoes()
 
 
 def encerrar_para_reiniciar():
@@ -283,7 +285,7 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.4.0 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.4.1 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
             'Pedidos de alteração mostram uma confirmação. Você pode responder sim/cancele ou usar os botões.\n'
@@ -308,7 +310,7 @@ def rejeitar_constante_json(valor):
     raise ValueError('Número JSON inválido: '+valor)
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.4.0'
+    server_version='MeuControlePC/2.4.1'
     def log_message(self,*args):pass
     def _headers(self,codigo,tipo):
         self.send_response(codigo)
@@ -318,15 +320,27 @@ class PainelHandler(BaseHTTPRequestHandler):
         self.send_header('X-Frame-Options','DENY')
         self.send_header('Referrer-Policy','no-referrer')
         self.end_headers()
-    def _json(self,obj,codigo=200,*,imagem=None):
-        seguro=redigir(obj)
+    def _json(self,obj,codigo=200,*,imagem=None,ja_redigido=False):
+        seguro=obj if ja_redigido else redigir(obj)
         if imagem is not None:
             if (not isinstance(seguro,dict) or not isinstance(imagem,str) or len(imagem)>11000000
                     or not re.fullmatch(r'data:image/png;base64,[A-Za-z0-9+/=]+',imagem)):
                 raise ValueError('Captura de tela inválida.')
             seguro['imagem']=imagem
-        self._headers(codigo,'application/json; charset=utf-8')
-        self.wfile.write(json.dumps(seguro,ensure_ascii=False).encode('utf-8'))
+        chave=getattr(self,'_chave_acao',None)
+        if chave is not None:
+            # Registrar o resultado antes de qualquer byte da resposta HTTP.
+            codigo,seguro=CONTROLE_PAINEL.finalizar(chave,codigo,seguro)
+            self._chave_acao=None
+        elif getattr(self,'_legado_ativo',False):
+            seguro['versao_estado']=CONTROLE_PAINEL.finalizar_legado()
+            self._legado_ativo=False
+        try:
+            self._headers(codigo,'application/json; charset=utf-8')
+            self.wfile.write(json.dumps(seguro,ensure_ascii=False).encode('utf-8'))
+        except OSError:
+            # Perda da conexão não desfaz uma ação já concluída nem a repete.
+            return
     def autenticado(self):
         recebido=self.headers.get('X-Painel-Token','').encode('utf-8')
         return secrets.compare_digest(recebido,TOKEN_PAINEL.encode('utf-8'))
@@ -349,16 +363,28 @@ class PainelHandler(BaseHTTPRequestHandler):
             self.wfile.write(html.encode('utf-8'))
         elif caminho=='/api/estado':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            versao=CONTROLE_PAINEL.versao()
             try:
                 estado={'vida':vida(),'resumo':resumo_status(),
                          'provedores':ROTEADOR.status(),
                          'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
                          'robotask':ler_json('robotask_conhecimento.json',{}).get('tarefas',[])[:100],
                          'autoanalise':ler_json('ultima_autoanalise.json',{}),
-                         'colaboracao':CENTRAL.estado_central('painel')}
+                         'colaboracao':CENTRAL.estado_central('painel'),'versao_estado':versao}
             except (ValueError,OSError,TypeError,AttributeError):
                 return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
             self._json(estado)
+        elif caminho=='/api/resultado_acao':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            origem=self.headers.get('Origin','')
+            if origem and origem not in {'http://'+h for h in self._hosts_locais()}:
+                return self._json({'erro':'acesso negado'},403)
+            try:
+                ids=parse_qs(urlparse(self.path).query).get('id',[])
+                if len(ids)!=1:raise ValueError('Informe uma única chave de ação.')
+                return self._json(CONTROLE_PAINEL.consultar(ids[0]),ja_redigido=True)
+            except FalhaControle as erro:return self._json(erro.resposta,erro.codigo)
+            except ValueError as erro:return self._json({'erro':str(erro),'versao_estado':CONTROLE_PAINEL.versao()},400)
         elif caminho=='/api/modelo_ollama':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             try:
@@ -403,6 +429,17 @@ class PainelHandler(BaseHTTPRequestHandler):
             obj=json.loads(self.rfile.read(tamanho),parse_constant=rejeitar_constante_json)
             if not isinstance(obj,dict):raise ValueError('O pedido deve ser um objeto JSON.')
             acao=obj.get('acao')
+            chaves=self.headers.get_all('X-Idempotency-Key',[])
+            versoes=self.headers.get_all('X-Estado-Versao',[])
+            if chaves or versoes:
+                if len(chaves)!=1 or len(versoes)!=1:raise ValueError('Envie uma chave de idempotência e uma versão de estado por pedido.')
+                versao=CONTROLE_PAINEL.validar_versao(versoes[0])
+                reserva=CONTROLE_PAINEL.reservar(chaves[0],obj,versao,prioridade=acao=='cancelar_reinicio_windows')
+                if not reserva['executar']:
+                    return self._json(reserva['resposta'],reserva['codigo_http'],ja_redigido=True)
+                self._chave_acao=chaves[0]
+            else:
+                CONTROLE_PAINEL.iniciar_legado();self._legado_ativo=True
             if acao in ('pedido_confirmar','pedido_cancelar'):
                 token=obj.get('id')
                 if not isinstance(token,str) or len(token)>100:raise ValueError('Pedido inválido.')
@@ -454,6 +491,7 @@ class PainelHandler(BaseHTTPRequestHandler):
                 resultado=executar(obj['comando'])
             else:return self._json({'erro':'ação não permitida'},400)
             self._json({'ok':True,'mensagem':resultado})
+        except FalhaControle as e:self._json(e.resposta,e.codigo)
         except (ValueError,RuntimeError,KeyError,UnicodeError,TypeError,OverflowError,FalhaAPI) as e:self._json({'erro':str(redigir(e))},400)
         except Exception as e:
             registrar('painel','falha',str(e))
@@ -897,6 +935,12 @@ def main():
     p.add_argument('--diagnostico',action='store_true')
     opt=p.parse_args()
     ler_env()
+    if not opt.diagnostico:
+        from caminhos_instalacao import arquivo_env
+        print('MeuControlePC v2.4.1')
+        print('Código:',BASE)
+        print('Configuração:',arquivo_env(BASE))
+        print('Dados:',DADOS)
     inicializar(opt.migrar or os.environ.get('CAMINHO_LEGADO'))
     if opt.diagnostico:
         print(json.dumps(diagnostico(),ensure_ascii=False,indent=2));return

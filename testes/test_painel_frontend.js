@@ -5,10 +5,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
+const {webcrypto}=require('node:crypto');
 
 const html=fs.readFileSync(path.join(__dirname,'..','painel_rotina.html'),'utf8');
 const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const estado={vida:{rotina:[],kanban:{},habitos_saude:{},financeiro:{}},resumo:{},provedores:{},logs:[],robotask:[]};
+const estado={vida:{rotina:[],kanban:{},habitos_saude:{},financeiro:{}},resumo:{},provedores:{},logs:[],robotask:[],versao_estado:0};
 const resposta=(body,status=200)=>({ok:status<400,status,json:async()=>body});
 function elemento(id=''){
  return {value:'',reportValidity(){return true},id,disabled:false,textContent:'',style:{},dataset:{},children:[],eventos:{},classList:{toggle(){}},
@@ -16,14 +17,14 @@ function elemento(id=''){
   append(...filhos){this.children.push(...filhos)},replaceChildren(){this.children=[]},
   set innerHTML(_valor){throw Error('HTML dinâmico não permitido neste teste')}};
 }
-async function painel(){
+async function painel({estadoInicial=estado}={}){
  const ids=new Map(),botoes=[];
  const obter=id=>{if(!ids.has(id))ids.set(id,elemento(id));return ids.get(id)};
  botoes.push(obter('consultar'),obter('cancelar-windows'));
  const contexto=vm.createContext({
   document:{getElementById:obter,createElement:tag=>{const e=elemento();if(tag==='button')botoes.push(e);return e},
    querySelectorAll:seletor=>seletor==='button:not([data-tab])'?botoes:[]},
-  fetch:async()=>resposta(estado),AbortController,setTimeout,clearTimeout,setInterval:()=>0,
+  fetch:async()=>resposta(estadoInicial),AbortController,crypto:webcrypto,setTimeout,clearTimeout,setInterval:()=>0,
   confirm:()=>true,prompt:()=>null
  });
  vm.runInContext(script,contexto,{filename:'painel_rotina.html'});
@@ -62,16 +63,17 @@ test('perguntas repetidas não geram consultas pagas concorrentes',async()=>{
 });
 
 test('cancelar reinício continua disponível durante outra ação',async()=>{
- const p=await painel();let liberar;
+ const p=await painel();let liberar,versaoCancelamento;
  p.contexto.fetch=async(_url,opt)=>{
   if(opt.method!=='POST')return resposta(estado);
-  if(JSON.parse(opt.body).acao==='cancelar_reinicio_windows')return resposta({mensagem:'Cancelado'});
+  if(JSON.parse(opt.body).acao==='cancelar_reinicio_windows'){versaoCancelamento=opt.headers['X-Estado-Versao'];return resposta({mensagem:'Cancelado'})}
   return new Promise(resolve=>{liberar=resolve});
  };
  const pendente=p.executar("enviarAcao('pergunta',{texto:'teste'})");
  assert.equal(p.obter('cancelar-windows').disabled,false);
  const cancelado=await p.executar("enviarAcao('cancelar_reinicio_windows')");
  assert.equal(cancelado.mensagem,'Cancelado');
+ assert.equal(versaoCancelamento,'0');
  assert.equal(p.obter('consultar').disabled,true);
  liberar(resposta({mensagem:'Fim'}));await pendente;
 });
@@ -81,8 +83,8 @@ test('uma leitura antiga não sobrescreve o estado mais recente',async()=>{
  p.executar('render=s=>{globalThis.renderizado=s.valor}');
  p.contexto.fetch=()=>new Promise(resolve=>leituras.push(resolve));
  const antiga=p.executar('atualizar()'),recente=p.executar('atualizar()');
- leituras[1](resposta({valor:'recente'}));await recente;
- leituras[0](resposta({valor:'antiga'}));await antiga;
+ leituras[1](resposta({...estado,valor:'recente'}));await recente;
+ leituras[0](resposta({...estado,valor:'antiga'}));await antiga;
  assert.equal(p.contexto.renderizado,'recente');
 });
 
@@ -521,4 +523,177 @@ test('captura confirmada aparece como imagem e não como HTML',async()=>{
  await p.obter('chat-pedido').children[0].children[3].children[0].eventos.click();
  assert.equal(p.obter('chat-resposta').children.at(-1).src,imagem);
  assert.equal(p.obter('chat-resposta').children.at(-1).alt,'Captura de tela solicitada');
+});
+
+test('escritas enviam chave única por intenção e a versão do último estado',async()=>{
+ const p=await painel(),posts=[];let versao=7;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push({url,opt});versao++;return resposta({ok:true,mensagem:'Registrado',versao_estado:versao})}
+  assert.equal(url,'/api/estado');return resposta({...estado,versao_estado:versao});
+ };
+ await p.executar('atualizar()');
+ await p.executar("enviarAcao('agua')");await p.executar("enviarAcao('agua')");
+ assert.equal(posts.length,2);
+ assert.match(posts[0].opt.headers['X-Idempotency-Key'],/^[a-z0-9-]{36}$/i);
+ assert.notEqual(posts[0].opt.headers['X-Idempotency-Key'],posts[1].opt.headers['X-Idempotency-Key']);
+ assert.equal(posts[0].opt.headers['X-Estado-Versao'],'7');assert.equal(posts[1].opt.headers['X-Estado-Versao'],'8');
+ assert.equal(posts[0].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+});
+
+test('resposta HTTP perdida recupera pergunta e proposta sem repetir chamada à IA',async()=>{
+ const p=await painel(),posts=[],consultas=[];let chave;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));chave=opt.headers['X-Idempotency-Key'];throw new TypeError('Conexão perdida depois de executar')}
+  if(url.startsWith('/api/resultado_acao')){consultas.push({url,opt});return resposta({estado:'concluido',codigo_http:200,versao_estado:2,resposta:{ok:true,mensagem:'Entendi: abrir VS Code.',pedido:{id:'acao_aprovavel',descricao:'Abrir VS Code'}}})}
+  return resposta({...estado,versao_estado:2});
+ };
+ p.obter('chat-texto').value='Abra o VS Code';await p.obter('chat-enviar').eventos.click();
+ assert.deepEqual(posts,[{acao:'pergunta',texto:'Abra o VS Code'}]);
+ assert.equal(consultas.length,1);assert.equal(consultas[0].url,'/api/resultado_acao?id='+chave);
+ assert.equal(consultas[0].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(consultas[0].opt.method,undefined);
+ assert.equal(p.obter('chat-resposta').textContent,'Entendi: abrir VS Code.');
+ assert.equal(p.obter('chat-pedido').children[0].children[1].textContent,'Abrir VS Code');
+ assert.equal(p.obter('chat-texto').value,'');
+});
+
+test('HTTP202 consulta resultado até concluir e não reenvia o POST',async()=>{
+ const p=await painel(),posts=[],consultas=[];let chave;
+ p.executar('aguardarRecuperacao=async()=>{}');
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));chave=opt.headers['X-Idempotency-Key'];return resposta({estado:'em_andamento',id:chave,versao_estado:1},202)}
+  if(url.startsWith('/api/resultado_acao')){
+   consultas.push(url);
+   return resposta(consultas.length===1?{estado:'em_andamento',id:chave,versao_estado:1}:{estado:'concluido',codigo_http:200,versao_estado:2,resposta:{mensagem:'Contribuição salva.'}});
+  }
+  return resposta({...estado,versao_estado:2});
+ };
+ const resultado=await p.executar("agir('pergunta',{texto:'Planeje meu dia'})");
+ assert.equal(posts.length,1);assert.equal(consultas.length,2);
+ assert.equal(consultas[0],'/api/resultado_acao?id='+chave);assert.equal(consultas[1],consultas[0]);
+ assert.equal(resultado.mensagem,'Contribuição salva.');
+ assert.equal(p.obter('aviso').textContent,'Contribuição salva.');
+});
+
+test('estado obsoleto409 atualiza painel sem consultar resultado ou repetir a escrita',async()=>{
+ const p=await painel(),chamadas=[];let versao=5;
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  if(opt.method==='POST'){versao=6;return resposta({erro:'Estado mudou.',versao_estado:6},409)}
+  assert.equal(url,'/api/estado');return resposta({...estado,versao_estado:versao});
+ };
+ await p.executar('atualizar()');chamadas.length=0;
+ assert.equal(await p.executar("agir('agua')"),null);
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/acao','/api/estado']);
+ assert.equal(chamadas[0].opt.headers['X-Estado-Versao'],'5');
+ assert.equal(p.executar('versaoServidor'),6);
+ assert.match(p.obter('aviso').textContent,/estado mudou.*ação não foi repetida/);
+ assert.equal(p.obter('consultar').disabled,false);
+});
+
+test('resultado desconhecido mantém chave e novo clique igual só consulta o resultado',async()=>{
+ const p=await painel(),posts=[],consultas=[];let recuperavel=false;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(opt.headers['X-Idempotency-Key']);const erro=Error('tempo esgotado');erro.name='AbortError';throw erro}
+  if(url.startsWith('/api/resultado_acao')){consultas.push(url);return resposta(recuperavel?{estado:'concluido',codigo_http:200,versao_estado:2,resposta:{mensagem:'Um copo registrado.'}}:{erro:'Resultado desconhecido.',versao_estado:1},recuperavel?200:404)}
+  return resposta({...estado,versao_estado:recuperavel?2:1});
+ };
+ assert.equal(await p.executar("agir('agua')"),null);
+ assert.match(p.obter('aviso').textContent,/consultarão o resultado sem repetir a ação/);
+ recuperavel=true;
+ const d=await p.executar("agir('agua')");
+ assert.equal(posts.length,1);assert.equal(consultas.length,2);assert.equal(consultas[0],consultas[1]);
+ assert.equal(consultas[0],'/api/resultado_acao?id='+posts[0]);
+ assert.equal(d.mensagem,'Um copo registrado.');
+});
+
+test('recuperação em andamento para após limite curto e preserva a intenção',async()=>{
+ const p=await painel();let posts=0,consultas=0;
+ p.executar('aguardarRecuperacao=async()=>{}');
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts++;return resposta({estado:'em_andamento'},202)}
+  if(url.startsWith('/api/resultado_acao')){consultas++;return resposta({estado:'em_andamento',versao_estado:1})}
+  return resposta({...estado,versao_estado:1});
+ };
+ assert.equal(await p.executar("agir('pergunta',{texto:'Objetivo longo'})"),null);
+ assert.equal(posts,1);assert.equal(consultas,6);
+ assert.equal(p.executar('resultadosPendentes.size'),1);
+ assert.match(p.obter('aviso').textContent,/sem repetir a ação/);
+ assert.equal(p.obter('consultar').disabled,false);
+});
+
+test('erro final recuperado conserva a mensagem do servidor e atualiza estado',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push(url);
+  if(opt.method==='POST')throw new TypeError('Resposta perdida');
+  if(url.startsWith('/api/resultado_acao'))return resposta({estado:'concluido',codigo_http:400,versao_estado:3,resposta:{erro:'A atividade informada é inválida.'}});
+  return resposta({...estado,versao_estado:3});
+ };
+ assert.equal(await p.executar("agir('pergunta',{texto:'Cadastre atividade'})"),null);
+ assert.equal(chamadas.filter(c=>c==='/api/acao').length,1);
+ assert.equal(chamadas.at(-1),'/api/estado');
+ assert.match(p.obter('aviso').textContent,/atividade informada é inválida/);
+ assert.equal(p.executar('resultadosPendentes.size'),0);
+});
+
+test('corpo perdido apósHTTP200 também usa a consulta idempotente sem novoPOST',async()=>{
+ const p=await painel();let posts=0,leituras=0;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts++;return {ok:true,status:200,json:async()=>{throw SyntaxError('corpo incompleto')}}}
+  if(url.startsWith('/api/resultado_acao')){leituras++;return resposta({estado:'concluido',codigo_http:200,versao_estado:4,resposta:{mensagem:'Movimentação registrada uma vez.'}})}
+  return resposta({...estado,versao_estado:4});
+ };
+ const d=await p.executar("agir('financeiro',{tipo:'saida',valor:'15',descricao:'Almoço'})");
+ assert.equal(posts,1);assert.equal(leituras,1);assert.equal(d.mensagem,'Movimentação registrada uma vez.');
+});
+
+test('snapshot mais antigo não reduz versão usada para autorizar a próxima escrita',async()=>{
+ const p=await painel();let versao=10,header;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){header=opt.headers['X-Estado-Versao'];return resposta({mensagem:'Atualizado'})}
+  return resposta({...estado,versao_estado:versao});
+ };
+ await p.executar('atualizar()');versao=9;await p.executar('atualizar()');
+ assert.equal(p.executar('versaoServidor'),10);
+ await p.executar("enviarAcao('agua')");assert.equal(header,'10');
+});
+
+test('primeira mutação aguarda um snapshot válido e envia os dois headers juntos',async()=>{
+ const p=await painel(),chamadas=[];
+ p.executar('estadoRecebido=false;versaoServidor=null;protocoloIdempotencia=null');
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  return resposta(opt.method==='POST'?{mensagem:'Registrado'}:{...estado,versao_estado:12});
+ };
+ await p.executar("enviarAcao('agua')");
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/estado','/api/acao','/api/estado']);
+ assert.equal(chamadas[1].opt.headers['X-Estado-Versao'],'12');
+ assert.match(chamadas[1].opt.headers['X-Idempotency-Key'],/^[a-z0-9-]{36}$/i);
+});
+
+test('versão ausente ou inválida depois de observar protocolo novo impede nova escrita',async()=>{
+ for(const versao of [undefined,-1,1.5,'8',false,Number.MAX_SAFE_INTEGER+1]){
+  const p=await painel(),invalido={...estado};let posts=0;
+  if(versao===undefined)delete invalido.versao_estado;else invalido.versao_estado=versao;
+  p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts++;return resposta(invalido)};
+  await p.executar('atualizar()');
+  assert.equal(await p.executar("agir('agua')"),null);
+  assert.equal(posts,0,'Versão inválida não deve autorizar POST: '+String(versao));
+  assert.equal(p.executar('versaoServidor'),0);
+  assert.match(p.obter('aviso').textContent,/Nenhuma ação foi enviada/);
+ }
+});
+
+test('snapshot legado é aceito sem enviar uma chave de idempotência isolada',async()=>{
+ const legado={...estado};delete legado.versao_estado;
+ const p=await painel({estadoInicial:legado});let headers;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){headers=opt.headers;return resposta({mensagem:'Registrado pelo servidor legado'})}
+  return resposta(legado);
+ };
+ const d=await p.executar("enviarAcao('agua')");
+ assert.equal(d.mensagem,'Registrado pelo servidor legado');
+ assert.equal(headers['X-Idempotency-Key'],undefined);assert.equal(headers['X-Estado-Versao'],undefined);
+ assert.equal(headers['X-Painel-Token'],'__PAINEL_TOKEN__');
 });

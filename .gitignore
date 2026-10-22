@@ -6,7 +6,9 @@
 *.p12
 *.pfx
 credentials.json
+client_secret*.json
 token.json
+token_google*.json
 secrets*.json
 config_apis.json
 

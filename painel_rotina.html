@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.4.0 · Centro de comando</title>
+<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.4.1 · Centro de comando</title>
 <style>
 :root{color-scheme:dark;--bg:#090f1c;--panel:#151f31;--inner:#0e1727;--border:#29384c;--text:#eaf1fa;--muted:#95a9c1;--accent:#5caafc;--success:#6dd8b3;--warn:#e0ba69}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,'Segoe UI',sans-serif}
@@ -13,7 +13,7 @@ input[type=checkbox]{min-width:0;width:auto;margin:0 5px 0 0}fieldset{border:1px
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-size:12px}td button{padding:5px 9px}.scroll{overflow:auto}.status{border-left:3px solid var(--accent);background:var(--inner);border-radius:8px;padding:10px;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere} .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.flex{flex:1;min-width:160px}.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kcol{min-width:0;background:var(--inner);border:1px solid var(--border);border-radius:12px;padding:14px}.item{background:#1d2b40;padding:9px;margin-bottom:8px;border-radius:8px;overflow-wrap:anywhere}.pill{font-size:11px;padding:4px 7px;background:#264564;border-radius:20px;white-space:nowrap}#aviso{white-space:pre-wrap;position:sticky;bottom:12px;background:#11304e;border:1px solid #4f83b7;border-radius:9px;padding:12px;max-width:700px;display:none;margin:10px auto}
 @media(max-width:800px){main{padding:12px}header{padding:15px}.duo{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}table{min-width:700px}} 
 </style></head>
-<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.4.0</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
+<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.4.1</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
 <main>
 <div class="grid"><div class="tile">Rotina concluída<strong id="progresso">—</strong></div><div class="tile">Saldo registrado<strong id="saldo">—</strong></div><div class="tile">Ações aprendidas<strong id="aprendizado">—</strong></div><div class="tile">Disco livre<strong id="disco">—</strong></div></div>
 <nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="colaboracao">💬 Chats e projeto</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
@@ -55,34 +55,82 @@ const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'B
 function el(tag,content,cls){const x=document.createElement(tag);if(content!==undefined)x.textContent=String(content);if(cls)x.className=cls;return x}
 function aviso(mensagem){const a=$('aviso');text(a,mensagem);a.style.display='block'}
 const pedidosAtivos=new Set();
+const resultadosPendentes=new Map();
 let versaoEstado=0;
+let versaoServidor=null;
+let estadoRecebido=false;
+let protocoloIdempotencia=null;
 let chatAtivoId='';
 let chatModeloAtual='';
 let catalogoOllama=null;
 function atualizarBotoes(){document.querySelectorAll('button:not([data-tab])').forEach(b=>{b.disabled=b.id==='cancelar-windows'?pedidosAtivos.has('cancelar'):pedidosAtivos.size>0})}
-async function api(caminho,body){
+function erroHTTP(mensagem,codigo){const erro=Error(mensagem);erro.codigoHTTP=codigo;return erro}
+function chaveIdempotencia(){
+ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')return crypto.randomUUID();
+ if(typeof crypto!=='undefined'&&typeof crypto.getRandomValues==='function')return 'acao_'+Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
+ throw Error('Este navegador não conseguiu identificar a solicitação. Recarregue o painel em um navegador atualizado.');
+}
+async function api(caminho,body,opcoes={}){
  const controle=new AbortController();
- const opt={headers:{'X-Painel-Token':token},signal:controle.signal};
+ const opt={headers:{'X-Painel-Token':token,...opcoes.headers},signal:controle.signal};
  if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
- const espera=body?(body.acao==='equipe_ia'?540000:body.acao==='conexoes_ia'?240000:180000):10000;
+ const espera=opcoes.timeout??(body?(body.acao==='equipe_ia'?540000:body.acao==='conexoes_ia'?240000:180000):10000);
  const prazo=setTimeout(()=>controle.abort(),espera);
  try{
   const r=await fetch(caminho,opt);
-  if(r.status===403)throw Error('Sessão inválida. Recarregue o painel para renovar o acesso.');
-  let d;try{d=await r.json()}catch{throw Error('Resposta inválida do painel (HTTP '+r.status+').')}
-  if(!r.ok)throw Error(d?.erro||'Falha no pedido (HTTP '+r.status+').');
-  if(!d||typeof d!=='object'||Array.isArray(d))throw Error('Resposta inválida do painel.');
+  if(opcoes.receberStatus)opcoes.receberStatus(r.status);
+  if(r.status===403)throw erroHTTP('Sessão inválida. Recarregue o painel para renovar o acesso.',403);
+  let d;try{d=await r.json()}catch{const erro=erroHTTP('Resposta inválida do painel (HTTP '+r.status+').',r.status);erro.resultadoIncerto=!!body;throw erro}
+  if(!r.ok){const erro=erroHTTP(d?.erro||'Falha no pedido (HTTP '+r.status+').',r.status);erro.resultadoIncerto=!!body&&r.status>=500;throw erro}
+  if(!d||typeof d!=='object'||Array.isArray(d)){const erro=Error('Resposta inválida do painel.');erro.resultadoIncerto=!!body;throw erro}
   return d;
  }catch(e){
-  if(e.name==='AbortError'||e instanceof TypeError)throw Error(body?'Não foi possível confirmar a ação. Confira o estado antes de tentar novamente.':'Sem conexão com o painel. Verifique se o assistente está em execução.');
+  if(e.name==='AbortError'||e.name==='TypeError'||e instanceof TypeError){const erro=Error(body?'Não foi possível confirmar a ação. Confira o estado antes de tentar novamente.':'Sem conexão com o painel. Verifique se o assistente está em execução.');erro.resultadoIncerto=!!body;throw erro}
   throw e;
  }finally{clearTimeout(prazo)}
+}
+async function aguardarRecuperacao(){await new Promise(resolve=>setTimeout(resolve,400))}
+async function recuperarResultadoAcao(chave){
+ for(let tentativa=0;tentativa<6;tentativa++){
+  const consulta=await api('/api/resultado_acao?id='+encodeURIComponent(chave),undefined,{timeout:2500});
+  if(consulta.estado==='concluido'){
+   if(!Number.isInteger(consulta.codigo_http)||consulta.codigo_http<200||consulta.codigo_http>599||!consulta.resposta||typeof consulta.resposta!=='object'||Array.isArray(consulta.resposta))throw Error('O painel retornou um resultado incompleto.');
+   if(consulta.codigo_http>=400){const erro=erroHTTP(consulta.resposta.erro||'A solicitação terminou com uma falha (HTTP '+consulta.codigo_http+').',consulta.codigo_http);erro.resultadoConhecido=true;throw erro}
+   return consulta.resposta;
+  }
+  if(consulta.estado!=='em_andamento')throw Error('O painel não confirmou o resultado desta solicitação.');
+  if(tentativa<5)await aguardarRecuperacao();
+ }
+ throw Error('A solicitação continua em andamento. Confira o estado antes de tentar novamente; a ação não foi repetida.');
 }
 async function enviarAcao(acao,campos={}){
  const chave=acao==='cancelar_reinicio_windows'?'cancelar':'acao';
  if(pedidosAtivos.has(chave)||(pedidosAtivos.size&&chave!=='cancelar'))return null;
  pedidosAtivos.add(chave);atualizarBotoes();
- try{const d=await api('/api/acao',{acao,...campos});await atualizar();return d}
+ let id,identidade;
+ try{
+  const corpo={acao,...campos};identidade=JSON.stringify(corpo);
+  id=resultadosPendentes.get(identidade)||chaveIdempotencia();
+  if(chave!=='cancelar'&&resultadosPendentes.size>=64&&!resultadosPendentes.has(identidade))throw Error('Há solicitações aguardando resultado. Confira o estado antes de enviar outra ação.');
+  let d;
+  if(resultadosPendentes.has(identidade))d=await recuperarResultadoAcao(id);
+  else{
+   if(!estadoRecebido)await atualizar();
+   if(!estadoRecebido)throw Error('Aguarde o carregamento do estado do painel antes de enviar a ação. Nenhuma ação foi enviada.');
+   const headers=protocoloIdempotencia===true?{'X-Idempotency-Key':id,'X-Estado-Versao':String(versaoServidor)}:{};
+   let codigo,recuperado=false;
+   try{d=await api('/api/acao',corpo,{headers,receberStatus:valor=>{codigo=valor}})}
+   catch(erro){if(!erro.resultadoIncerto)throw erro;resultadosPendentes.set(identidade,id);d=await recuperarResultadoAcao(id);recuperado=true}
+   if(!recuperado&&(codigo===202||d.estado==='em_andamento')){resultadosPendentes.set(identidade,id);d=await recuperarResultadoAcao(id)}
+  }
+  resultadosPendentes.delete(identidade);await atualizar();return d;
+ }catch(erro){
+  if(erro.resultadoConhecido)resultadosPendentes.delete(identidade);
+  if(erro.codigoHTTP===409||erro.resultadoConhecido||resultadosPendentes.has(identidade))await atualizar();
+  if(erro.codigoHTTP===409)throw Error('O estado mudou ou a solicitação está em conflito. O painel foi atualizado; a ação não foi repetida. Revise os dados antes de enviar outro pedido.');
+  if(resultadosPendentes.has(identidade)&&!erro.resultadoConhecido&&erro.codigoHTTP!==403)throw Error('Não foi possível confirmar o resultado da ação. Confira o estado antes de tentar novamente. Novas tentativas deste mesmo pedido consultarão o resultado sem repetir a ação.');
+  throw erro;
+ }
  finally{pedidosAtivos.delete(chave);atualizarBotoes()}
 }
 async function agir(acao,campos={}){try{const d=await enviarAcao(acao,campos);if(!d)return null;aviso(d.mensagem||'Executado');return d}catch(e){aviso('⚠️ '+e.message);return null}}
@@ -282,7 +330,20 @@ function render(s){const {vida:v,resumo:r,provedores:p,logs,robotask,autoanalise
  const rt=$('tarefas-robotask');rt.replaceChildren();for(const t of robotask){rt.append(el('div',`${t.nome} · ${t.external_name||'sem ID'}`,'item'))}if(!robotask.length)rt.append(el('div','Sem tarefas mapeadas. Use /scanrt no Telegram ou ponte_robotask.py.'));
  const prov=$('provedores');prov.replaceChildren();for(const [nome,sit] of Object.entries(p)){const d=el('p');d.append(el('b',nome+': '));d.append(el('span',sit));prov.append(d);if(nome==='Ollama'&&/\b404\b/.test(String(sit)))prov.append(el('p',orientacaoOllama404,'muted'))}
  const ev=$('eventos');ev.replaceChildren();for(const log of logs.slice().reverse()){ev.append(el('div',`${log.timestamp||''} · ${log.acao||log.categoria||''} · ${log.status||''} · ${log.detalhes||''}`,'status'))}}
-async function atualizar(){const versao=++versaoEstado;try{const estado=await api('/api/estado');if(versao===versaoEstado)render(estado)}catch(e){if(versao===versaoEstado)text($('rede'),'⚠️ '+e.message)}}
+async function atualizar(){
+ const versao=++versaoEstado;
+ try{
+  const estado=await api('/api/estado');if(versao!==versaoEstado)return false;
+  if(!estado.vida||typeof estado.vida!=='object'||Array.isArray(estado.vida)||!estado.resumo||typeof estado.resumo!=='object'||Array.isArray(estado.resumo)||!estado.provedores||typeof estado.provedores!=='object'||Array.isArray(estado.provedores)||!Array.isArray(estado.logs)||!Array.isArray(estado.robotask))throw Error('O painel retornou um estado incompleto. Recarregue antes de enviar uma ação.');
+  if('versao_estado' in estado){
+   if(!Number.isSafeInteger(estado.versao_estado)||estado.versao_estado<0)throw Error('A versão do estado recebida é inválida. Nenhuma nova ação será enviada sem atualizar o painel.');
+   if(versaoServidor!==null&&estado.versao_estado<versaoServidor)return false;
+   versaoServidor=estado.versao_estado;protocoloIdempotencia=true;
+  }else if(protocoloIdempotencia===true)throw Error('O painel não informou a versão do estado. Atualize antes de enviar outra ação.');
+  else protocoloIdempotencia=false;
+  render(estado);estadoRecebido=true;return true;
+ }catch(e){if(versao===versaoEstado){estadoRecebido=false;text($('rede'),'⚠️ '+e.message)}return false}
+}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===b.dataset.tab))}));
 document.querySelectorAll('[data-acao]').forEach(b=>b.addEventListener('click',()=>agir(b.dataset.acao)));
 document.querySelectorAll('[data-pc]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Executar no computador: '+b.textContent+'?'))agir('pc',{comando:b.dataset.pc})}));

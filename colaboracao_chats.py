@@ -28,18 +28,17 @@ MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
     'assistente_pc.py','nucleo.py','multi_ia.py','colaboracao_chats.py',
     'servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','autorizar_google.py',
+    'caminhos_instalacao.py','redirecionar_assistente.py','iniciar_redirecionado.bat','idempotencia_painel.py',
     'GUIA_MULTIPLOS_CHATS.md','GUIA_CONVERSA.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md','REVISAO_V2_3_2.md','REVISAO_V2_4_0.md','GOOGLE_AGENDA.md',
     'automacao_pc.py','evolucao_segura.py','reinicio_seguro.py',
     'reiniciar_assistente.py','agenda_google.py','verificacao_ambiente.py',
     'configurar_telegram.py','startup_windows.py','ponte_robotask.py',
     'painel_rotina.html','requirements.txt','requirements-google.txt',
-    'README.md','README_CODEX.md','LEIA-ME.md','AGENTS.md',
+    'README.md','README_CODEX.md','LEIA-ME.md','AGENTS.md','GUIA_REDIRECIONAMENTO.md','REVISAO_V2_4_1.md',
+    'testes/test_caminhos_instalacao.py','testes/test_redirecionar_assistente.py','testes/test_configuracao_externa.py','testes/test_idempotencia_painel.py','testes/test_redacao_inline.py',
     'testes/test_colaboracao_chats.py','testes/test_nucleo.py','testes/test_interpretacao_natural.py','testes/test_fluxos_colaboracao.py','testes/test_agenda_google.py','testes/test_ollama_configuracao.py',
     'testes/test_multi_ia_regressoes.py','testes/test_diagnostico_provedores.py',
 )
-_NOMES_SEGREDOS = r'(?:TELEGRAM_TOKEN|GEMINI_API_KEY|GOOGLE_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|CLAUDE_API_KEY|EXA_API_KEY|API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|AUTHORIZATION|X-API-KEY)'
-_SEGREDO_CITADO = re.compile(r'(?i)([\"\']?\b'+_NOMES_SEGREDOS+r'\b[\"\']?\s*[:=]\s*)([\"\'])([^\r\n]*?)\2')
-_SEGREDO_LINHA = re.compile(r'(?im)(^\s*'+_NOMES_SEGREDOS+r'\s*=\s*)([^\r\n#]+)')
 
 
 def _agora():
@@ -47,9 +46,7 @@ def _agora():
 
 
 def _seguro(texto):
-    texto=str(nucleo.redigir(texto))
-    texto=_SEGREDO_CITADO.sub(lambda m:m[1]+m[2]+'[CREDENCIAL-REDACTADA]'+m[2],texto)
-    return _SEGREDO_LINHA.sub(lambda m:m[1]+'[CREDENCIAL-REDACTADA]',texto)
+    return str(nucleo.redigir(texto))
 
 
 def _texto(valor,nome,limite,*,vazio=False,truncar=False):

@@ -17,19 +17,76 @@ import shutil
 import threading
 import uuid
 import zipfile
+from caminhos_instalacao import arquivo_env, diretorio_dados, ancestral_existente, SELETORES
 
 BASE = Path(__file__).resolve().parent
-DADOS = BASE / 'dados'
+DADOS = diretorio_dados(BASE)
 _LOG = logging.getLogger('meucontrolepc')
 _LOCK = threading.RLock()
 SENSITIVE = re.compile(r'(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{14,}|(?<!\d)\d{5,15}:[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|\bBearer\s+\S+)',re.I)
 CONFIG_KEYS = {'telegram_token','gemini_api_key','google_api_key','pool_chaves_api','openai_api_key','claude_api_key','anthropic_api_key','exa_api_key','token','api_key','authorization','x-api-key','access_token','refresh_token','client_secret'}
+ATRIBUICAO_SENSIVEL = re.compile(
+    r'(?<![\w-])(?P<aspas>[\"\']?)(?:' +
+    '|'.join(re.escape(chave) for chave in sorted(CONFIG_KEYS, key=len, reverse=True)) +
+    r')(?P=aspas)\s*[:=]\s*', re.I)
 
 def redigir(value):
     if isinstance(value, BaseException):
         return redigir(str(value))
     if isinstance(value, str):
-        return SENSITIVE.sub('[CREDENCIAL-REDACTADA]', value)
+        # Campos nomeados também cobrem chaves sem um prefixo reconhecível
+        # (por exemplo, Exa/OAuth). A varredura respeita aspas escapadas e
+        # coleções JSON, sem deixar partes do segredo após a primeira vírgula.
+        partes = []
+        anterior = 0
+        for campo in ATRIBUICAO_SENSIVEL.finditer(value):
+            if campo.start() < anterior or campo.end() == len(value):
+                continue
+            inicio = campo.end()
+            fim = inicio
+            aspas_valor = value[inicio] if value[inicio] in ('\"', "'") else ''
+            if aspas_valor or value[inicio] in ('[', '{'):
+                pilha = []
+                citacao = ''
+                while fim < len(value):
+                    caractere = value[fim]
+                    if citacao:
+                        if caractere == '\\':
+                            fim += 2
+                            continue
+                        if caractere == citacao:
+                            citacao = ''
+                            if aspas_valor:
+                                fim += 1
+                                break
+                    elif caractere in ('\"', "'"):
+                        citacao = caractere
+                    elif caractere in ('[', '{'):
+                        pilha.append(']' if caractere == '[' else '}')
+                    elif caractere in (']', '}'):
+                        if not pilha or pilha.pop() != caractere:
+                            fim = len(value)
+                            break
+                        if not pilha:
+                            fim += 1
+                            break
+                    fim += 1
+                fim = min(fim, len(value))
+            else:
+                esquema = re.match(r'(?i)(?:Bearer|Basic|Digest|ApiKey|Token)\s+', value[inicio:])
+                fim = inicio + (esquema.end() if esquema else 0)
+                while fim < len(value) and not value[fim].isspace() and value[fim] not in ',;#]})(\"\'':
+                    fim += 1
+            if fim == inicio:
+                continue
+            partes.append(value[anterior:inicio])
+            citacao_saida = aspas_valor
+            if not citacao_saida and campo.group(0).rstrip().endswith(':'):
+                citacao_saida = campo.group('aspas')
+            partes.append(citacao_saida + '[CREDENCIAL-REDACTADA]' + citacao_saida)
+            anterior = fim
+        partes.append(value[anterior:])
+        return SENSITIVE.sub('[CREDENCIAL-REDACTADA]', ''.join(partes))
     if isinstance(value, (list,tuple)):
         return [redigir(x) for x in value]
     if isinstance(value, dict):
@@ -50,14 +107,18 @@ def _float_json_finito(valor):
 
 def ler_env(caminho=None):
     """Carrega .env sem substituir variáveis do ambiente. Não imprime valores."""
-    caminho = Path(caminho or BASE / '.env')
-    if not caminho.exists(): return
+    selecionado = caminho is None and 'MEUCONTROLEPC_ENV' in os.environ
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
+    if not caminho.is_file():
+        if selecionado:
+            raise RuntimeError('O .env externo selecionado não foi encontrado. Confira MEUCONTROLEPC_ENV; nenhuma configuração local foi usada.')
+        return
     for linha in caminho.read_text(encoding='utf-8-sig').splitlines():
         linha = linha.strip()
         if not linha or linha.startswith('#') or '=' not in linha: continue
         chave, valor = linha.split('=',1)
         chave = chave.strip()
-        if re.fullmatch(r'[A-Z][A-Z0-9_]*',chave):
+        if re.fullmatch(r'[A-Z][A-Z0-9_]*',chave) and chave not in SELETORES:
             valor = valor.strip().strip('"\'')
             os.environ.setdefault(chave,valor)
 
@@ -228,7 +289,7 @@ def resumo_status():
     v=vida(); tarefas=v.get('rotina',[])
     feito=sum(x.get('status')=='Concluído' for x in tarefas)
     base=ler_json('base_auto_aprendizado.json',{})
-    disk=shutil.disk_usage(BASE)
+    disk=shutil.disk_usage(ancestral_existente(DADOS))
     cpu=None;ram=None
     try:
         import psutil

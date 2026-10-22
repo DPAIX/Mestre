@@ -1,3 +1,5 @@
+> **v2.4.1:** [Executar o código do GitHub em C: usando o .env e dados de F:](GUIA_REDIRECIONAMENTO.md) · [Mudanças, testes e reversão](REVISAO_V2_4_1.md). Para essa instalação, inicie por `iniciar_redirecionado.bat`.
+
 > **v2.4.0:** [Conversa e controle por linguagem natural](GUIA_CONVERSA.md) · [Google Agenda](GOOGLE_AGENDA.md) · [Mudanças, testes e reversão](REVISAO_V2_4_0.md).
 
 > **v2.3.2:** [Relatório de Mistral, Llama e Qwen](REVISAO_V2_3_2.md).

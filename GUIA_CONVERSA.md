@@ -1,5 +1,7 @@
 # Conversar e controlar o MeuControlePC v2.4.0
 
+Na v2.4.1, para executar o código em C: com configuração/dados em F:, siga primeiro [GUIA_REDIRECIONAMENTO.md](GUIA_REDIRECIONAMENTO.md) e use `iniciar_redirecionado.bat`. O fluxo de conversa abaixo permanece disponível.
+
 ## Começar
 
 Atualize em pasta nova seguindo o LEIA-ME, preserve sua configuração e dados locais, encerre o processo antigo e inicie a versão nova. No Telegram, escreva normalmente: “Olá, me ajude a organizar meu dia”. Não precisa começar com `/ia`. No painel, use a caixa de mensagem em **Chats e projeto**.

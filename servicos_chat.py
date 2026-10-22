@@ -27,6 +27,7 @@ def conversar(texto,contexto,roteador,retornar_plano=False):
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma pergunta para a conversa.')
     if len(texto)>12000:raise ValueError('A mensagem deve ter até 12000 caracteres.')
     if retornar_plano and len(texto)>8000:raise ValueError('Envie mensagens de até 8000 caracteres para interpretar pedidos.')
+    texto=str(nucleo.redigir(texto.strip()))
     chat=central.obter_chat_ativo(contexto)
     chave=(contexto,chat['id'])
     with _TRAVAS_LOCK:
@@ -53,6 +54,7 @@ def conversar(texto,contexto,roteador,retornar_plano=False):
             pergunta=(instrucoes_ia()+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
                       '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'+pergunta[:8000])
         resposta,provedor=roteador.responder(pergunta,**opcoes)
+        resposta=nucleo.redigir(resposta)
         plano=None
         if retornar_plano:
             resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
@@ -123,7 +125,7 @@ def executar_acao(acao,obj,contexto,roteador):
         modelo=campo_texto(obj,'modelo',200)
         chat=central.obter_chat_ativo(contexto)
         url=endpoint_ollama().removesuffix('/api/chat')
-        encontrado=configurar_modelo(modelo,url,caminho=nucleo.BASE/'.env')
+        encontrado=configurar_modelo(modelo,url,caminho=nucleo.arquivo_env(nucleo.BASE))
         os.environ.update({'OLLAMA_HABILITADO':'1','OLLAMA_URL':url,'OLLAMA_MODEL':encontrado})
         roteador.atualizar_configuracao_ollama()
         central.configurar_chat(contexto,chat['id'],provedor='Ollama',modelo_ollama='')

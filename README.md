@@ -1,4 +1,8 @@
-# MeuControlePC v2.4.0
+# MeuControlePC v2.4.1
+
+**Código em C: e configuração em F:** execute `iniciar_redirecionado.bat` para usar as fontes em `C:\Users\Mestre\Documents\GitHub\Mestre`, o `.env` em `F:\MeuControlePC_v2\.env` e os dados em `F:\MeuControlePC_v2\dados`. O redirecionador reaproveita o Python instalado, preserva os caminhos nos reinícios e nos configuradores e não copia credenciais para o repositório. Veja [preparação, comandos e reversão](GUIA_REDIRECIONAMENTO.md).
+
+O painel passa a identificar cada pedido no servidor, rejeitar alterações com estado antigo entre abas e recuperar resultados por consulta após perda de resposta HTTP, sem reenviar a ação. [Mudanças e validação](REVISAO_V2_4_1.md).
 
 Assistente Python para Windows com bot Telegram, painel local, rotina, finanças, catálogo RoboTask e provedores de IA configuráveis.
 
@@ -28,7 +32,7 @@ python -m unittest discover -s testes -v
 python -m compileall -q .
 ```
 
-Node.js 18 ou superior habilita também as dezesseis verificações comportamentais do painel. Sem Node, o teste correspondente informa que foi ignorado; o uso normal do assistente não depende de Node. O CI instala Node e executa a suíte em Linux e Windows, com Python 3.11, 3.12 e 3.14.
+Node.js 18 ou superior habilita também as verificações comportamentais do painel. Sem Node, o teste correspondente informa que foi ignorado; o uso normal do assistente não depende de Node. O CI instala Node e executa a suíte em Linux e Windows, com Python 3.11, 3.12 e 3.14.
 
 Os testes usam arquivos temporários e serviços simulados. A conexão real com Telegram, provedores de IA e RoboTask deve ser verificada no seu computador.
 

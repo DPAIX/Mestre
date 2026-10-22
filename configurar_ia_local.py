@@ -19,8 +19,10 @@ import tempfile
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
+from caminhos_instalacao import arquivo_env
 
-ENV = Path(__file__).resolve().parent / '.env'
+BASE = Path(__file__).resolve().parent
+ENV = BASE / '.env'
 URL_PADRAO = 'http://127.0.0.1:11434'
 MODELO_PADRAO = 'qwen2.5:3b'
 CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL')
@@ -197,9 +199,9 @@ def modelo_instalado(modelo, modelos):
     return next((nome for nome in candidatos if nome in modelos), None)
 
 
-def valores_env(caminho=ENV):
+def valores_env(caminho=None):
     """Lê somente as três opções de Ollama; nunca imprime conteúdo do .env."""
-    caminho = Path(caminho)
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     if not caminho.exists():
         return {}
     valores = {}
@@ -212,11 +214,11 @@ def valores_env(caminho=ENV):
     return valores
 
 
-def atualizar_env(modelo, url=URL_PADRAO, caminho=ENV):
+def atualizar_env(modelo, url=URL_PADRAO, caminho=None):
     """Substitui só as três opções locais, preservando as outras linhas e segredos."""
     modelo = validar_modelo(modelo)
     url = validar_url(url)
-    caminho = Path(caminho)
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     bruto = caminho.read_bytes() if caminho.exists() else b''
     bom = '\ufeff' if bruto.startswith(b'\xef\xbb\xbf') else ''
     original = bruto.decode('utf-8-sig')
@@ -287,7 +289,8 @@ def verificar(modelo=MODELO_PADRAO, url=URL_PADRAO):
     return False
 
 
-def configurar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
+def configurar_modelo(modelo, url=URL_PADRAO, caminho=None):
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     modelo = validar_modelo(modelo)
     url = validar_url(url)
     encontrado = modelo_instalado(modelo, listar_modelos(url))
@@ -297,8 +300,9 @@ def configurar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
     return encontrado
 
 
-def usar_existente(url=URL_PADRAO, caminho=ENV, preferido=MODELO_PADRAO):
+def usar_existente(url=URL_PADRAO, caminho=None, preferido=MODELO_PADRAO):
     """Reaproveita um modelo local sem pull; nunca escolhe cloud automaticamente."""
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     url = validar_url(url)
     catalogo = listar_catalogo(url)
     locais = [item['nome'] for item in catalogo if not item['nuvem']]
@@ -313,8 +317,9 @@ def usar_existente(url=URL_PADRAO, caminho=ENV, preferido=MODELO_PADRAO):
     return escolhido
 
 
-def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
+def baixar_modelo(modelo, url=URL_PADRAO, caminho=None):
     """Download explícito com progresso; nunca usa shell nem instala programas."""
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     modelo = validar_modelo(modelo)
     url = validar_url(url)
     encontrado = modelo_instalado(modelo, listar_modelos(url))
@@ -347,7 +352,8 @@ def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
     return encontrado
 
 
-def assistente(url=URL_PADRAO, caminho=ENV, modelo=MODELO_PADRAO):
+def assistente(url=URL_PADRAO, caminho=None, modelo=MODELO_PADRAO):
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     print('=== Modelos Ollama ===')
     catalogo = listar_catalogo(url)
     modelos = [item['nome'] for item in catalogo]
@@ -368,7 +374,7 @@ def assistente(url=URL_PADRAO, caminho=ENV, modelo=MODELO_PADRAO):
     return 0
 
 
-def main(argv=None, caminho=ENV):
+def main(argv=None, caminho=None):
     parser = argparse.ArgumentParser(description=__doc__)
     grupo = parser.add_mutually_exclusive_group()
     grupo.add_argument('--listar', action='store_true', help='Lista modelos locais/cloud registrados, sem alterar configuração.')
@@ -380,6 +386,7 @@ def main(argv=None, caminho=ENV):
     parser.add_argument('--url', help='Endereço HTTP local por IP literal; padrão http://127.0.0.1:11434.')
     args = parser.parse_args(argv)
     try:
+        caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
         atuais = valores_env(caminho)
         url = validar_url(args.url or os.getenv('OLLAMA_URL') or atuais.get('OLLAMA_URL') or URL_PADRAO)
         if args.listar:

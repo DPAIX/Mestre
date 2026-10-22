@@ -9,6 +9,7 @@ import tempfile
 
 import agenda_google as agenda
 from nucleo import BASE, ler_env
+from caminhos_instalacao import arquivo_env as arquivo_env_instalacao
 
 
 def instrucoes():
@@ -23,7 +24,7 @@ def instrucoes():
 def salvar_caminho(caminho, arquivo_env=None):
     """Altera só GOOGLE_OAUTH_CREDENTIALS após validar uma escolha explícita."""
     caminho = agenda.validar_credenciais(caminho)
-    arquivo_env = Path(arquivo_env) if arquivo_env is not None else BASE / '.env'
+    arquivo_env = Path(arquivo_env) if arquivo_env is not None else arquivo_env_instalacao(BASE)
     bruto = arquivo_env.read_bytes() if arquivo_env.exists() else b''
     bom = '\ufeff' if bruto.startswith(b'\xef\xbb\xbf') else ''
     original = bruto.decode('utf-8-sig')
@@ -86,6 +87,9 @@ def main(argv=None, *, interativo=None, arquivo_env=None):
         return 0
     except agenda.FalhaAgenda as erro:
         print('Autorização Google não concluída: ' + str(erro))
+        return 2
+    except ValueError:
+        print('Configuração de caminho inválida. MEUCONTROLEPC_ENV deve indicar um arquivo absoluto; confira a configuração local.')
         return 2
     except (OSError, UnicodeError):
         print('Não foi possível acessar a configuração local. Confira permissões da pasta e espaço disponível.')

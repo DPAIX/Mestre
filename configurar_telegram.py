@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+from caminhos_instalacao import arquivo_env
 
 BASE = Path(__file__).resolve().parent
 ENV = BASE / '.env'
@@ -28,7 +29,8 @@ def validar_ids(texto: str) -> bool:
     return not texto or bool(re.fullmatch(r'[0-9]+(?:\s*[,;]\s*[0-9]+)*', texto.strip()))
 
 
-def valores_env(path: Path = ENV) -> dict[str, str]:
+def valores_env(path: Path | None = None) -> dict[str, str]:
+    path = Path(path) if path is not None else arquivo_env(BASE)
     if not path.is_file():
         return {}
     valores = {}
@@ -40,10 +42,12 @@ def valores_env(path: Path = ENV) -> dict[str, str]:
     return valores
 
 
-def atualizar_env(alteracoes: dict[str, str], path: Path = ENV, exemplo: Path = EXEMPLO) -> None:
+def atualizar_env(alteracoes: dict[str, str], path: Path | None = None, exemplo: Path = EXEMPLO) -> None:
     """Atualiza somente as chaves desejadas; preserva as outras configurações."""
     if any(k not in CHAVES for k in alteracoes):
         raise ValueError('Chave de configuração não permitida.')
+    path = Path(path) if path is not None else arquivo_env(BASE)
+    exemplo = Path(exemplo)
     base = path.read_text(encoding='utf-8-sig') if path.exists() else (exemplo.read_text(encoding='utf-8-sig') if exemplo.exists() else '')
     novo = []
     processadas = set()
@@ -70,7 +74,7 @@ def atualizar_env(alteracoes: dict[str, str], path: Path = ENV, exemplo: Path = 
             os.unlink(temp)
 
 
-def verificar(path: Path = ENV) -> bool:
+def verificar(path: Path | None = None) -> bool:
     configuracao = valores_env(path)
     if not validar_token(configuracao.get('TELEGRAM_TOKEN', '')):
         print('Telegram nao configurado: TELEGRAM_TOKEN ausente ou invalido no .env.')
@@ -88,7 +92,8 @@ def verificar(path: Path = ENV) -> bool:
     return True
 
 
-def assistente(path: Path = ENV) -> int:
+def assistente(path: Path | None = None) -> int:
+    path = Path(path) if path is not None else arquivo_env(BASE)
     print('=== Configuracao segura do Telegram ===')
     print('Revogue o token antigo se ele apareceu em arquivos ou mensagens compartilhados.')
     print('O token sera armazenado apenas em seu arquivo local .env.')
@@ -122,10 +127,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--verificar', action='store_true')
     args = parser.parse_args()
-    if args.verificar:
-        return 0 if verificar() else 2
     try:
+        if args.verificar:
+            return 0 if verificar() else 2
         return assistente()
+    except ValueError:
+        print('Configuracao de caminho invalida. MEUCONTROLEPC_ENV deve indicar um arquivo absoluto; confira a configuracao local.')
+        return 2
+    except (OSError, UnicodeError):
+        print('Nao foi possivel acessar a configuracao local. Confira permissoes da pasta e espaco disponivel.')
+        return 2
     except (KeyboardInterrupt, EOFError):
         print('\nConfiguracao cancelada; nada foi alterado.')
         return 2

@@ -10,6 +10,7 @@ import tempfile
 from urllib.parse import urlsplit
 
 from nucleo import BASE, DADOS, registrar
+from caminhos_instalacao import arquivo_env
 
 ESCOPOS = ['https://www.googleapis.com/auth/calendar.readonly']
 TOKEN = DADOS / 'token_google.json'
@@ -31,7 +32,7 @@ def _caminho(texto):
     texto = re.sub(r'%([^%]+)%', lambda m: os.environ.get(m[1], m[0]), texto)
     caminho = Path(os.path.expandvars(os.path.expanduser(texto)))
     if not caminho.is_absolute():
-        caminho = BASE / caminho
+        caminho = arquivo_env(BASE).parent / caminho
     return caminho.resolve()
 
 
@@ -69,7 +70,7 @@ def validar_credenciais(caminho):
 def encontrar_credenciais(caminho=None):
     """Arquivo explícito, configuração local ou credentials.json junto ao projeto."""
     if caminho is None:
-        caminho = os.environ.get('GOOGLE_OAUTH_CREDENTIALS', '').strip() or BASE / 'credentials.json'
+        caminho = os.environ.get('GOOGLE_OAUTH_CREDENTIALS', '').strip() or arquivo_env(BASE).parent / 'credentials.json'
     return validar_credenciais(caminho)
 
 
