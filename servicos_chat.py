@@ -8,7 +8,7 @@ import colaboracao_chats as central
 _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chats_modelos_ollama','modelo_testar','modelo_padrao','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -53,14 +53,21 @@ def conversar(texto,contexto,roteador,retornar_plano=False):
             except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
             pergunta=(instrucoes_ia()+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
                       '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'+pergunta[:8000])
-        resposta,provedor=roteador.responder(pergunta,**opcoes)
+        equipe=bool(chat.get('equipe_paralela'))
+        if equipe:
+            from conversa_equipe import consultar_modelos
+            equipe_resultado=consultar_modelos(pergunta,historico,chat.get('equipe_modelos'),roteador,interpretar=retornar_plano)
+            resposta=equipe_resultado['texto'];provedor='Ollama'
+        else:resposta,provedor=roteador.responder(pergunta,**opcoes)
         resposta=nucleo.redigir(resposta)
         plano=None
-        if retornar_plano:
+        if retornar_plano and equipe:
+            plano=equipe_resultado['plano']
+        elif retornar_plano:
             resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
             if plano:resposta='Entendi: '+plano['descricao']+'. O pedido ainda não foi executado.'
         central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo)
-        rotulo=provedor+(' / '+modelo if modelo else '')
+        rotulo=('Equipe Ollama' if equipe else provedor+(' / '+modelo if modelo else ''))
         if retornar_plano:return {'texto':f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta,'plano':plano,'chat_id':chat['id']}
         return f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta
     finally:trava.release()
@@ -74,9 +81,11 @@ def resumo_chats(contexto):
         marca='▶' if chat['id']==ativo['id'] else '•'
         modelo=(' / '+chat['modelo_ollama']) if chat.get('modelo_ollama') and chat['provedor']=='Ollama' else ''
         linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
+        if chat.get('equipe_paralela'):linhas.append('  Equipe paralela: '+', '.join(chat['equipe_modelos']))
     linhas.extend(['/chat novo Nome | /chat usar ID | /chat provedor Ollama',
                    '/modelos ollama lista o catálogo; /chat modelo NOME seleciona por conversa; /chat modelo padrao usa a configuração geral.',
                    '/chat modo on ativa conversa por mensagens comuns; /chat modo off desativa.',
+                   '/chat equipe on usa todos os modelos Ollama listados agora; /chat equipe off volta ao modelo individual.',
                    '/ia pergunta usa o histórico da conversa selecionada. /contexto gera um pacote para outros chats.'])
     return '\n'.join(linhas)
 
@@ -119,6 +128,25 @@ def texto_equipe(resultado):
 
 
 def executar_acao(acao,obj,contexto,roteador):
+    if acao=='chat_equipe':
+        ativo=obj.get('ativo')
+        if not isinstance(ativo,bool):raise ValueError('O modo equipe deve ser verdadeiro ou falso.')
+        chat=central.obter_chat_ativo(contexto)
+        if obj.get('id') and obj['id']!=chat['id']:raise ValueError('Selecione a conversa antes de configurar a equipe.')
+        if not ativo:
+            central.configurar_chat(contexto,chat['id'],equipe_paralela=False,equipe_modelos=[])
+            return 'Equipe desativada nesta conversa. O modelo individual será utilizado.'
+        catalogo=roteador.catalogo_ollama()
+        if not catalogo.get('habilitado'):raise ValueError('Habilite a integração Ollama antes de ativar a equipe.')
+        modelos=list(dict.fromkeys(m['nome'] for m in catalogo['modelos']))
+        if not 1<=len(modelos)<=8:raise ValueError('O catálogo precisa ter entre um e oito modelos para ativar todos.')
+        central.configurar_chat(contexto,chat['id'],provedor='Ollama',modo_conversa=True,
+            equipe_modelos=modelos,equipe_paralela=True)
+        nuvem=any(m.get('nuvem') for m in catalogo['modelos'])
+        return ('Equipe paralela ativada nesta conversa: '+', '.join(modelos)+
+            '. Cada mensagem de conversa consulta uma vez cada modelo. O Ollama pode enfileirar conforme a memória. '
+            'Nenhum modelo foi baixado ou consultado nesta ativação.'+
+            (' Há modelos cloud: as mensagens usam a conta, internet e cota Ollama.' if nuvem else ''))
     if acao=='modelo_padrao':
         from configurar_ia_local import configurar_modelo
         from multi_ia import endpoint_ollama

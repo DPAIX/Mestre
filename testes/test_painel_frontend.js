@@ -697,3 +697,127 @@ test('snapshot legado é aceito sem enviar uma chave de idempotência isolada',a
  assert.equal(headers['X-Idempotency-Key'],undefined);assert.equal(headers['X-Estado-Versao'],undefined);
  assert.equal(headers['X-Painel-Token'],'__PAINEL_TOKEN__');
 });
+
+test('equipe da conversa renderiza tags como texto sem iniciar consultas',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',modelo_ollama:'individual:latest',equipe_paralela:true,equipe_modelos:['qwen3.5:4b','<img onerror=x>','gemma4:31b-cloud']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let chamadas=0;
+ p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
+ p.contexto.centro=centro;p.executar('renderColaboracao(centro)');
+ assert.equal(chamadas,0);assert.equal(p.obter('chat-equipe-paralela').checked,true);
+ assert.equal(p.obter('chat-equipe-paralela').disabled,false);assert.equal(p.obter('chat-atualizar-equipe').disabled,false);
+ assert.match(p.obter('chat-equipe-status').textContent,/3 modelo\(s\): qwen3\.5:4b, <img onerror=x>, gemma4:31b-cloud/);
+ assert.match(p.obter('chat-provedor').textContent,/equipe paralela \(3 modelo\(s\)\)/);
+ assert.doesNotMatch(p.obter('chat-provedor').textContent,/individual:latest/);
+ assert.match(p.obter('ia-chat-ativo').textContent,/equipe paralela/);
+ assert.match(html,/Usar todos os modelos nesta conversa/);
+ assert.match(html,/Ollama pode enfileirar conforme a memória disponível/);
+});
+
+test('ativar e desativar equipe envia só configuração da conversa com idempotência',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,versao_estado:12,colaboracao:centro}}),chamadas=[];
+ p.contexto.confirm=()=>{throw Error('Ativar configuração não deve pedir uma inferência ou confirmação extra')};
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  if(opt.method==='POST'){
+   const corpo=JSON.parse(opt.body);centro.chat_ativo.equipe_paralela=corpo.ativo;
+   centro.chat_ativo.equipe_modelos=corpo.ativo?['mistral:latest','llama3.2:latest']:[];
+   return resposta({mensagem:corpo.ativo?'Equipe ativada.':'Equipe desativada.'});
+  }
+  return resposta({...estado,versao_estado:13,colaboracao:centro});
+ };
+ p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
+ const ativacao=chamadas[0];assert.equal(ativacao.url,'/api/acao');
+ assert.deepEqual(JSON.parse(ativacao.opt.body),{acao:'chat_equipe',ativo:true,id:'chat_equipe'});
+ assert.match(ativacao.opt.headers['X-Idempotency-Key'],/^[a-f0-9-]{36}$/);
+ assert.equal(ativacao.opt.headers['X-Estado-Versao'],'12');assert.equal(ativacao.opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);assert.match(p.obter('chat-equipe-status').textContent,/mistral:latest, llama3\.2:latest/);
+ p.obter('chat-equipe-paralela').checked=false;await p.obter('chat-equipe-paralela').eventos.change();
+ const posts=chamadas.filter(c=>c.opt.method==='POST');assert.equal(posts.length,2);
+ assert.deepEqual(JSON.parse(posts[1].opt.body),{acao:'chat_equipe',ativo:false,id:'chat_equipe'});
+ assert.notEqual(posts[1].opt.headers['X-Idempotency-Key'],ativacao.opt.headers['X-Idempotency-Key']);
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.equal(p.obter('chat-atualizar-equipe').disabled,true);
+ assert.match(p.obter('chat-equipe-status').textContent,/Equipe desativada/);
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/acao','/api/estado','/api/acao','/api/estado']);
+});
+
+test('atualizar equipe relê catálogo no servidor e renderiza a lista persistida',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));centro.chat_ativo.equipe_modelos=['mistral:latest','llama3.2:latest','qwen3.5:4b'];return resposta({mensagem:'Catálogo atualizado.'})}
+  assert.equal(url,'/api/estado');return resposta({...estado,colaboracao:centro});
+ };
+ await p.obter('chat-atualizar-equipe').eventos.click();
+ assert.deepEqual(posts,[{acao:'chat_equipe',ativo:true,id:'chat_equipe'}]);
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);assert.match(p.obter('chat-equipe-status').textContent,/3 modelo\(s\).*qwen3\.5:4b/);
+});
+
+test('mensagem em equipe continua um único pedido e preserva confirmação da ação proposta',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modelos:['mistral:latest','llama3.2:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));return resposta({mensagem:'Os modelos sugerem abrir o editor.',pedido:{id:'nonce_equipe',descricao:'Abrir VS Code'}})}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-texto').value='Abra o VS Code';await p.obter('chat-enviar').eventos.click();
+ assert.deepEqual(posts,[{acao:'pergunta',texto:'Abra o VS Code'}]);
+ assert.equal(p.obter('chat-resposta').textContent,'Os modelos sugerem abrir o editor.');
+ assert.equal(p.obter('chat-pedido').children[0].children[1].textContent,'Abrir VS Code');
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);
+});
+
+test('equipe aguarda a primeira configuração sem repetir escrita em duplo clique',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let liberar,posts=0;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){posts++;return new Promise(resolve=>{liberar=resolve})}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-equipe-paralela').checked=true;const ativar=p.obter('chat-equipe-paralela').eventos.change();
+ assert.equal(p.obter('chat-equipe-paralela').disabled,true);assert.equal(p.obter('chat-atualizar-equipe').disabled,true);
+ await p.obter('chat-atualizar-equipe').eventos.click();assert.equal(posts,1);
+ centro.chat_ativo.equipe_paralela=true;centro.chat_ativo.equipe_modelos=['mistral:latest'];
+ liberar(resposta({mensagem:'Equipe ativada.'}));await ativar;
+ assert.equal(p.obter('chat-equipe-paralela').disabled,false);assert.equal(p.obter('chat-equipe-paralela').checked,true);
+ assert.equal(p.obter('chat-atualizar-equipe').disabled,false);
+});
+
+test('falha na ativação restaura a configuração salva e mantém a mensagem do servidor',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let posts=0;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){posts++;return resposta({erro:'O catálogo precisa ter entre um e oito modelos para ativar todos.'},400)}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
+ assert.equal(posts,1);assert.equal(p.obter('chat-equipe-paralela').checked,false);
+ assert.equal(p.obter('chat-atualizar-equipe').disabled,true);assert.match(p.obter('chat-equipe-status').textContent,/desativada/);
+ assert.match(p.obter('aviso').textContent,/entre um e oito modelos/);
+});
+
+test('trocar de conversa ou salvar modelo individual acompanha a equipe do snapshot',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){
+   posts.push(JSON.parse(opt.body));centro.chat_ativo={...centro.chat_ativo,modelo_ollama:'llama3.2:latest',equipe_paralela:false,equipe_modelos:[]};
+   return resposta({mensagem:'Modelo individual salvo.'});
+  }
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-modelo-ollama').value='llama3.2:latest';await p.obter('chat-salvar-modelo').eventos.click();
+ assert.deepEqual(posts,[{acao:'chat_modelo',id:'chat_equipe',modelo:'llama3.2:latest'}]);
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.match(p.obter('chat-provedor').textContent,/llama3\.2:latest/);
+ p.contexto.centro={...centro,chat_ativo:{id:'chat_outra',titulo:'Outra',provedor:'Gemini'}};p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.doesNotMatch(p.obter('chat-equipe-status').textContent,/mistral/);
+});
+
+test('equipe sem conversa fica desabilitada e não escreve mesmo se evento for disparado',async()=>{
+ const p=await painel();let chamadas=0;
+ p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
+ assert.equal(p.obter('chat-equipe-paralela').disabled,true);assert.equal(p.obter('chat-atualizar-equipe').disabled,true);
+ p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
+ assert.equal(chamadas,0);assert.equal(p.obter('chat-equipe-paralela').checked,false);
+ assert.match(p.obter('aviso').textContent,/Crie ou selecione uma conversa/);
+});

@@ -145,7 +145,7 @@ class RedacaoInlineTeste(unittest.TestCase):
         # restaura a imagem interna depois de sanear os outros campos JSON.
         import assistente_pc as app
         imagem = 'data:image/png;base64,iVBORw0KGgoAIza' + 'A' * 40
-        handler = SimpleNamespace(_headers=MagicMock(), wfile=io.BytesIO())
+        handler = SimpleNamespace(_headers=MagicMock(), wfile=io.BytesIO(), _encerrar_prazo_leitura=MagicMock())
         app.PainelHandler._json(handler, {'mensagem': 'EXA_API_KEY=' + self.segredo}, imagem=imagem)
         resposta = json.loads(handler.wfile.getvalue())
         self.assertEqual(resposta['imagem'], imagem)

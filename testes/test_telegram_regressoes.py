@@ -77,6 +77,24 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertIn('pedido',app.PENDENTES)
             executar.assert_not_called()
 
+    def test_equipe_telegram_autorizada_consulta_catalogo_e_conversa_com_quatro_modelos(self):
+        modelos=['qwen3.8:27b','mistral:latest','llama3.2:latest','qwen3.5:4b']
+        roteador=MagicMock()
+        roteador.catalogo_ollama.return_value={'habilitado':True,'modelos':[{'nome':m,'nuvem':False} for m in modelos]}
+        roteador.responder.side_effect=lambda texto,**opcoes:('Olá de '+opcoes['modelo_ollama'],'Ollama')
+        with patch.object(app,'ROTEADOR',roteador):
+            app.tratar_pedido(self.mensagem('/chat equipe on',usuario=3))
+            roteador.catalogo_ollama.assert_not_called()
+            app.tratar_pedido(self.mensagem('/chat equipe on',topico=4))
+            roteador.catalogo_ollama.assert_called_once_with()
+            roteador.responder.assert_not_called()
+            app.tratar_pedido(self.mensagem('Explique planejamento semanal',topico=4))
+            self.assertEqual(roteador.responder.call_count,4)
+            self.assertEqual({c.kwargs['modelo_ollama'] for c in roteador.responder.call_args_list},set(modelos))
+            self.assertTrue(all(c.kwargs['provedor']=='Ollama' for c in roteador.responder.call_args_list))
+            app.tratar_pedido(self.mensagem('/chat equipe off',topico=4))
+            self.assertFalse(app.CENTRAL.obter_chat_ativo('1:10:4')['equipe_paralela'])
+
     def test_codigo_windows_invalido_preserva_confirmacao(self):
         app.CONFIRMACOES_WINDOWS[1]={'chat':10,'codigo':'123456','expira':time.monotonic()+90}
         mensagem=SimpleNamespace(chat=SimpleNamespace(id=10),from_user=SimpleNamespace(id=1),text='/confirmar_windows inválido')

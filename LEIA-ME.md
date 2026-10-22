@@ -1,4 +1,4 @@
-> **v2.4.1:** [Executar o código do GitHub em C: usando o .env e dados de F:](GUIA_REDIRECIONAMENTO.md) · [Mudanças, testes e reversão](REVISAO_V2_4_1.md). Para essa instalação, inicie por `iniciar_redirecionado.bat`.
+> **v2.5.0:** [Equipe paralela de modelos Ollama](GUIA_EQUIPE_PARALELA.md) · [Auditoria e correções](AUDITORIA_ASSISTENTE_V2_5_0.md) · [Mudanças, testes e reversão](REVISAO_V2_5_0.md). Para executar o código do GitHub em C: usando `.env` e dados de F:, inicie por `iniciar_redirecionado.bat`: [guia](GUIA_REDIRECIONAMENTO.md).
 
 > **v2.4.0:** [Conversa e controle por linguagem natural](GUIA_CONVERSA.md) · [Google Agenda](GOOGLE_AGENDA.md) · [Mudanças, testes e reversão](REVISAO_V2_4_0.md).
 

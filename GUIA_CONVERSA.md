@@ -1,6 +1,6 @@
 # Conversar e controlar o MeuControlePC v2.4.0
 
-Na v2.4.1, para executar o código em C: com configuração/dados em F:, siga primeiro [GUIA_REDIRECIONAMENTO.md](GUIA_REDIRECIONAMENTO.md) e use `iniciar_redirecionado.bat`. O fluxo de conversa abaixo permanece disponível.
+Na v2.5.0, para executar o código em C: com configuração/dados em F:, siga primeiro [GUIA_REDIRECIONAMENTO.md](GUIA_REDIRECIONAMENTO.md) e use `iniciar_redirecionado.bat`. Para consultar todos os modelos Ollama na conversa, ative `/chat equipe on`: [guia da equipe](GUIA_EQUIPE_PARALELA.md). O fluxo de conversa abaixo permanece disponível.
 
 ## Começar
 

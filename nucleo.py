@@ -204,7 +204,32 @@ def migrar(origem):
 
 
 def vida():
-    return ler_json('gestao_vida.json',{})
+    valor=ler_json('gestao_vida.json',{})
+    def invalido():raise ValueError('Estrutura de gestao_vida.json inválida; confira o arquivo antes de alterá-lo.')
+    if not isinstance(valor,dict):invalido()
+    rotina=valor.get('rotina',[])
+    if not isinstance(rotina,list) or any(not isinstance(item,dict) for item in rotina):invalido()
+    for campo in ('financeiro','kanban','habitos_saude'):
+        if not isinstance(valor.get(campo,{}),dict):invalido()
+    financeiro=valor.get('financeiro',{})
+    movimentos=financeiro.get('movimentacoes',[])
+    if not isinstance(movimentos,list) or any(not isinstance(item,dict) for item in movimentos):invalido()
+    for campo in ('saldo','custo_unitario_ru'):
+        if campo in financeiro:
+            try:
+                if isinstance(financeiro[campo],bool) or not math.isfinite(float(financeiro[campo])):invalido()
+            except (InvalidOperation,ValueError,TypeError,OverflowError):invalido()
+    for itens in valor.get('kanban',{}).values():
+        if not isinstance(itens,list):invalido()
+    for habito in valor.get('habitos_saude',{}).values():
+        if not isinstance(habito,dict):invalido()
+        for campo in ('valor','meta'):
+            if campo in habito:
+                numero=habito[campo]
+                try:
+                    if isinstance(numero,bool) or int(numero)!=float(numero) or int(numero)<0:invalido()
+                except (ValueError,TypeError,OverflowError):invalido()
+    return valor
 
 
 def aprender(acao,ok=True):

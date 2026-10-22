@@ -1,4 +1,6 @@
-# MeuControlePC v2.4.1
+# MeuControlePC v2.5.0
+
+Conversa com todos os modelos Ollama em paralelo: `/chat equipe on`. Respostas identificadas por modelo, histórico por conversa e confirmação de ações preservados. [Guia](GUIA_EQUIPE_PARALELA.md) · [Revisão técnica](REVISAO_V2_5_0.md) · [Auditoria do arquivo enviado](AUDITORIA_ASSISTENTE_V2_5_0.md).
 
 **Código em C: e configuração em F:** execute `iniciar_redirecionado.bat` para usar as fontes em `C:\Users\Mestre\Documents\GitHub\Mestre`, o `.env` em `F:\MeuControlePC_v2\.env` e os dados em `F:\MeuControlePC_v2\dados`. O redirecionador reaproveita o Python instalado, preserva os caminhos nos reinícios e nos configuradores e não copia credenciais para o repositório. Veja [preparação, comandos e reversão](GUIA_REDIRECIONAMENTO.md).
 
