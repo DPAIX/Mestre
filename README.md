@@ -1,5 +1,7 @@
 # MeuControlePC v2.5.1
 
+Para timeouts também reproduzidos no comando nativo do Ollama, há um [diagnóstico independente de RAM, GPU e modelos carregados](GUIA_DIAGNOSTICO_OLLAMA.md). A leitura padrão não gera texto nem altera a configuração.
+
 Corrigida a validação que recusava hábitos textuais/fracionários do próprio projeto e o teste de instalação que confundia uma fixture anterior com nova gravação junto às fontes. [Correções e recuperação sem alterar os dados](REVISAO_V2_5_1.md).
 
 Conversa com todos os modelos Ollama em paralelo: `/chat equipe on`. Respostas identificadas por modelo, histórico por conversa e confirmação de ações preservados. [Guia](GUIA_EQUIPE_PARALELA.md) · [Revisão técnica](REVISAO_V2_5_0.md) · [Auditoria do arquivo enviado](AUDITORIA_ASSISTENTE_V2_5_0.md).
