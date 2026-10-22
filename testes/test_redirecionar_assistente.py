@@ -15,7 +15,7 @@ class RedirecionarAssistente(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.base = Path(self.tmp.name)
+        self.base = Path(self.tmp.name).resolve()
         self.codigo = self.base / 'codigo atualizado'
         self.codigo.mkdir()
         nomes = set(launcher.FONTES_NECESSARIAS) | {x[0] for x in launcher.MODOS.values()}

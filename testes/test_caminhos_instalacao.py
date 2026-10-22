@@ -21,7 +21,7 @@ class CaminhosInstalacaoTeste(unittest.TestCase):
         self.ambiente_original = os.environ.copy()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.pasta = Path(self.tmp.name)
+        self.pasta = Path(self.tmp.name).resolve()
         self.codigo = self.pasta / 'codigo separado'
         self.codigo.mkdir()
         self.privado = self.pasta / 'configuracao privada'
