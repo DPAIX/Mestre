@@ -36,6 +36,7 @@ FONTES_EXPORTAVEIS = (
     'painel_rotina.html','requirements.txt','requirements-google.txt',
     'README.md','README_CODEX.md','LEIA-ME.md','AGENTS.md','GUIA_REDIRECIONAMENTO.md','REVISAO_V2_4_1.md',
     'GUIA_EQUIPE_PARALELA.md','REVISAO_V2_5_0.md','AUDITORIA_ASSISTENTE_V2_5_0.md',
+    'REVISAO_V2_5_1.md','testes/test_vida_legada.py',
     'testes/test_auditoria_v250.py','testes/test_conversa_equipe.py','testes/test_chat_equipe.py',
     'testes/test_caminhos_instalacao.py','testes/test_redirecionar_assistente.py','testes/test_configuracao_externa.py','testes/test_idempotencia_painel.py','testes/test_redacao_inline.py',
     'testes/test_colaboracao_chats.py','testes/test_nucleo.py','testes/test_interpretacao_natural.py','testes/test_fluxos_colaboracao.py','testes/test_agenda_google.py','testes/test_ollama_configuracao.py',

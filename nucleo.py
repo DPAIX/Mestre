@@ -205,30 +205,39 @@ def migrar(origem):
 
 def vida():
     valor=ler_json('gestao_vida.json',{})
-    def invalido():raise ValueError('Estrutura de gestao_vida.json inválida; confira o arquivo antes de alterá-lo.')
-    if not isinstance(valor,dict):invalido()
+    def invalido(campo,esperado):
+        # Somente nomes do esquema; nenhum valor pessoal é incluído no erro.
+        raise ValueError('Estrutura de gestao_vida.json inválida em '+campo+': '+esperado+'. Arquivo preservado.')
+    if not isinstance(valor,dict):invalido('raiz','objeto JSON esperado')
     rotina=valor.get('rotina',[])
-    if not isinstance(rotina,list) or any(not isinstance(item,dict) for item in rotina):invalido()
+    if not isinstance(rotina,list) or any(not isinstance(item,dict) for item in rotina):
+        invalido('rotina','lista de objetos esperada')
     for campo in ('financeiro','kanban','habitos_saude'):
-        if not isinstance(valor.get(campo,{}),dict):invalido()
+        if not isinstance(valor.get(campo,{}),dict):invalido(campo,'objeto esperado')
     financeiro=valor.get('financeiro',{})
     movimentos=financeiro.get('movimentacoes',[])
-    if not isinstance(movimentos,list) or any(not isinstance(item,dict) for item in movimentos):invalido()
+    if not isinstance(movimentos,list) or any(not isinstance(item,dict) for item in movimentos):
+        invalido('financeiro.movimentacoes','lista de objetos esperada')
     for campo in ('saldo','custo_unitario_ru'):
         if campo in financeiro:
             try:
-                if isinstance(financeiro[campo],bool) or not math.isfinite(float(financeiro[campo])):invalido()
-            except (InvalidOperation,ValueError,TypeError,OverflowError):invalido()
+                valido=not isinstance(financeiro[campo],bool) and math.isfinite(float(financeiro[campo]))
+            except (ValueError,TypeError,OverflowError):valido=False
+            if not valido:invalido('financeiro.'+campo,'número finito esperado')
     for itens in valor.get('kanban',{}).values():
-        if not isinstance(itens,list):invalido()
-    for habito in valor.get('habitos_saude',{}).values():
-        if not isinstance(habito,dict):invalido()
+        if not isinstance(itens,list):invalido('kanban.*','lista esperada')
+    for nome,habito in valor.get('habitos_saude',{}).items():
+        if not isinstance(habito,dict):invalido('habitos_saude.*','objeto esperado')
+        # Sono pode ser fracionário; foco e outros hábitos podem ser textuais.
+        # Somente estes dois contadores participam das operações inteiras.
+        if nome not in ('Agua_Copos','Pomodoros_Hoje'):continue
         for campo in ('valor','meta'):
             if campo in habito:
                 numero=habito[campo]
                 try:
-                    if isinstance(numero,bool) or int(numero)!=float(numero) or int(numero)<0:invalido()
-                except (ValueError,TypeError,OverflowError):invalido()
+                    valido=not isinstance(numero,bool) and int(numero)==float(numero) and int(numero)>=0
+                except (ValueError,TypeError,OverflowError):valido=False
+                if not valido:invalido('habitos_saude.'+nome+'.'+campo,'inteiro não negativo esperado')
     return valor
 
 
@@ -260,7 +269,7 @@ def registrar_agua():
         v=vida(); h=v.setdefault('habitos_saude',{}).setdefault('Agua_Copos',{'valor':0,'meta':8,'unidade':'copos'})
         h['valor']=int(h.get('valor',0))+1; gravar_json('gestao_vida.json',v)
     aprender('agua')
-    return h['valor'],h.get('meta',8)
+    return h['valor'],int(h.get('meta',8))
 
 
 def registrar_pomodoro():

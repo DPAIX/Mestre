@@ -1,4 +1,4 @@
-# Conversar com todos os modelos Ollama — v2.5.0
+# Conversar com todos os modelos Ollama — v2.5.1
 
 Com o Ollama aberto e `ollama list` mostrando seus modelos, reinicie o assistente atualizado e envie no Telegram:
 
@@ -27,9 +27,9 @@ Há no máximo uma equipe respondendo por processo, com até oito workers. As co
 
 1. Encerre a instância antiga. Atualize o pacote completo na raiz `C:\Users\Mestre\Documents\GitHub\Mestre`, incluindo `conversa_equipe.py` e os demais módulos. Atualizar apenas `assistente_pc.py` não instala o recurso.
 2. Preserve `F:\MeuControlePC_v2\.env` e `F:\MeuControlePC_v2\dados`. Use `iniciar_redirecionado.bat --verificar`, depois `iniciar_redirecionado.bat`.
-3. Confirme v2.5.0 em `/start`, liste `/modelos ollama`, ative `/chat equipe on` e envie uma pergunta. Confira as quatro tags na resposta e no log do serviço Ollama.
+3. Confirme v2.5.1 em `/start`, liste `/modelos ollama`, ative `/chat equipe on` e envie uma pergunta. Confira as quatro tags na resposta e no log do serviço Ollama.
 4. Teste uma leitura local e, depois, um pedido pequeno que exija confirmação. Verifique que a ação é preparada uma única vez. Use `/chat equipe off` para comparar com o modo individual.
 
 Os testes automatizados usam modelos simulados. A geração real, o tempo de resposta e a memória precisam ser verificados nesse PC. O acesso web ao Manus continua pelo fluxo de exportar/importar contexto; uma sessão web não é uma API configurada no roteador.
 
-Para reverter, encerre a v2.5.0 e restaure as fontes da v2.4.1. Os novos campos de equipe são opcionais e os dados permanecem no mesmo destino externo; versões anteriores ignoram esses campos. Preserve uma cópia dos dados antes de trocar de versão.
+Para reverter, encerre a v2.5.1 e restaure as fontes da v2.4.1. Os novos campos de equipe são opcionais e os dados permanecem no mesmo destino externo; versões anteriores ignoram esses campos. Preserve uma cópia dos dados antes de trocar de versão. A v2.5.0 tem uma regressão na validação de hábitos, corrigida na v2.5.1.

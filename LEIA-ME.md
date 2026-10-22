@@ -1,3 +1,5 @@
+> **v2.5.1:** [Correção dos hábitos legados e dos testes de instalação](REVISAO_V2_5_1.md). Atualize as fontes; preserve `gestao_vida.json`, `.env` e demais dados existentes. Inicie por `iniciar_redirecionado.bat`.
+
 > **v2.5.0:** [Equipe paralela de modelos Ollama](GUIA_EQUIPE_PARALELA.md) · [Auditoria e correções](AUDITORIA_ASSISTENTE_V2_5_0.md) · [Mudanças, testes e reversão](REVISAO_V2_5_0.md). Para executar o código do GitHub em C: usando `.env` e dados de F:, inicie por `iniciar_redirecionado.bat`: [guia](GUIA_REDIRECIONAMENTO.md).
 
 > **v2.4.0:** [Conversa e controle por linguagem natural](GUIA_CONVERSA.md) · [Google Agenda](GOOGLE_AGENDA.md) · [Mudanças, testes e reversão](REVISAO_V2_4_0.md).
