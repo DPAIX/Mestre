@@ -1,3 +1,5 @@
+> **v2.7.0:** a equipe é o padrão e o CPU existente é preservado. A voz usa um transcritor local separado. Veja [a preparação automática](GUIA_AUTOMATICO.md). Os comandos deste guia são opcionais e selecionam a conversa individual.
+
 > A v2.6.0 acrescenta a [equipe cooperativa](GUIA_EQUIPE_COOPERATIVA.md): `/chat equipe on` usa todas as tags sequencialmente, preservando o perfil CPU. Não repita a ativação do perfil depois da equipe, pois ela seleciona o modelo individual.
 
 # Conversar usando o Llama em CPU — v2.5.2

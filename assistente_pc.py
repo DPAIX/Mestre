@@ -272,7 +272,7 @@ def responder_natural_telegram(m,texto):
                 aviso[0]=BOT.send_message(m.chat.id,mensagem)
             else:BOT.edit_message_text(mensagem,chat_id=m.chat.id,message_id=aviso[0].message_id)
         except Exception:pass
-    informar=bool(chat.get('equipe_paralela') and chat.get('equipe_modo')=='cooperativa')
+    informar=bool(chat.get('equipe_politica','automatica')=='automatica' or (chat.get('equipe_paralela') and chat.get('equipe_modo')=='cooperativa'))
     try:resultado=preparar_pedido_natural(texto,contexto,**({'progresso':progresso} if informar else {}))
     finally:
         if aviso[0] is not None:
@@ -318,8 +318,9 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.6.0 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.7.0 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
+            'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
             'Pedidos de alteração mostram uma confirmação. Você pode responder sim/cancele ou usar os botões.\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
@@ -375,7 +376,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.6.0'
+    server_version='MeuControlePC/2.7.0'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -1052,15 +1053,26 @@ def main():
     p.add_argument('--diagnostico',action='store_true')
     opt=p.parse_args()
     ler_env()
+    os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.6.0')
+        print('MeuControlePC v2.7.0')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
-    inicializar(opt.migrar or os.environ.get('CAMINHO_LEGADO'))
     if opt.diagnostico:
+        inicializar(opt.migrar or os.environ.get('CAMINHO_LEGADO'))
         print(json.dumps(diagnostico(),ensure_ascii=False,indent=2));return
+    from instancia_assistente import instancia_unica,InstanciaAtiva
+    try:
+        with instancia_unica(DADOS):
+            inicializar(opt.migrar or os.environ.get('CAMINHO_LEGADO'))
+            _executar_instancia(opt)
+    except InstanciaAtiva as erro:
+        print(str(erro))
+
+
+def _executar_instancia(opt):
     # Validar antes de iniciar o painel evita que um token invalido interrompa o servidor depois.
     if not opt.somente_painel:
         from configurar_telegram import validar_token, validar_ids
@@ -1068,7 +1080,11 @@ def main():
             raise RuntimeError('Token Telegram ausente ou invalido. Execute configurar_telegram.bat para corrigi-lo.')
         if not validar_ids(os.getenv('TELEGRAM_ALLOWED_USER_IDS','')):
             raise RuntimeError('TELEGRAM_ALLOWED_USER_IDS invalido. Corrija no .env.')
-    # Um painel na mesma porta impede inicialização duplicada.
+    if os.name=='nt':
+        from iniciar_servicos_locais import garantir_ollama
+        estado=garantir_ollama()
+        print(estado['mensagem'])
+        registrar('inicio_ollama','pronto' if estado['ok'] else 'aviso',estado['mensagem'])
     servidor=iniciar_painel()
     print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
     try:

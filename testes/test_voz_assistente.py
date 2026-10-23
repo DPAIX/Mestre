@@ -16,7 +16,7 @@ from multi_ia import FalhaAPI
 class VozAssistenteTeste(unittest.TestCase):
     def setUp(self):
         self.chave = 'fixture-chave-privada-nao-exibir'
-        ambiente = patch.dict(os.environ, {'GEMINI_API_KEY': self.chave}, clear=True)
+        ambiente = patch.dict(os.environ, {'GEMINI_API_KEY': self.chave, 'VOZ_PROVEDOR':'gemini'}, clear=True)
         ambiente.start(); self.addCleanup(ambiente.stop)
         self.cliente = MagicMock()
         self.cliente.models.generate_content.return_value = SimpleNamespace(text='Abra o VS Code.')
@@ -27,7 +27,7 @@ class VozAssistenteTeste(unittest.TestCase):
         self.roteador.estado_local.return_value = {'Gemini': {'em_pausa': False}}
 
     def test_sem_chave_nao_tenta_cliente_e_diferencia_modelos_de_texto(self):
-        with patch.dict(os.environ, {}, clear=True), self.assertRaises(FalhaAPI) as erro:
+        with patch.dict(os.environ, {'VOZ_PROVEDOR':'gemini'}, clear=True), self.assertRaises(FalhaAPI) as erro:
             voz.verificar_disponibilidade_voz(self.roteador)
         self.assertEqual(erro.exception.categoria, 'configuracao')
         self.assertIn('não transcrevem', erro.exception.detalhe)
@@ -132,7 +132,7 @@ class VozAssistenteTeste(unittest.TestCase):
         self.roteador.responder.assert_not_called()
 
     def test_alias_google_api_key_e_modelo_configurado_sao_respeitados(self):
-        with patch.dict(os.environ, {'GOOGLE_API_KEY': self.chave, 'GEMINI_MODEL': 'fixture-audio-model'}, clear=True):
+        with patch.dict(os.environ, {'GOOGLE_API_KEY': self.chave, 'GEMINI_MODEL': 'fixture-audio-model', 'VOZ_PROVEDOR':'gemini'}, clear=True):
             self.assertEqual(voz.transcrever_audio(b'fixture-audio', 'audio/wav'), 'Abra o VS Code.')
         self.assertEqual(self.cliente.models.generate_content.call_args.kwargs['model'], 'fixture-audio-model')
         self.assertEqual(self.genai.Client.call_args.kwargs['api_key'], self.chave)

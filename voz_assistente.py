@@ -1,7 +1,6 @@
-"""Transcrição explícita de áudio, separada dos modelos de conversa locais.
+"""Transcrição local por padrão; Gemini somente por escolha explícita.
 
-O áudio vai em memória para o Gemini configurado, sem arquivo temporário nem
-upload persistente. Este módulo não interpreta nem executa o texto transcrito.
+Este módulo não interpreta nem executa o texto transcrito.
 """
 from __future__ import annotations
 
@@ -19,8 +18,21 @@ MIMES = {
 }
 
 
+def provedor_voz():
+    nome=os.getenv('VOZ_PROVEDOR','local').strip().casefold()
+    if nome not in ('local','gemini'):
+        raise FalhaAPI('Voz',0,'VOZ_PROVEDOR deve ser local ou gemini.','configuracao')
+    return nome
+
+
 def verificar_disponibilidade_voz(roteador=None):
     """Verifica configuração/pausa antes de baixar áudio do Telegram."""
+    if provedor_voz()=='local':
+        from transcritor_local import verificar_disponibilidade,FalhaTranscritorLocal
+        try:verificar_disponibilidade()
+        except FalhaTranscritorLocal as erro:
+            raise FalhaAPI('Voz local',0,str(erro),erro.categoria) from None
+        return
     if not (os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')):
         raise FalhaAPI('Gemini', 0,
                        'Transcrição de áudio requer Gemini configurado. Os modelos Ollama de texto não transcrevem áudio; envie texto.',
@@ -76,11 +88,16 @@ def _erro_transcricao(erro, chave):
 
 
 def transcrever_audio(dados, mime_type, roteador=None):
-    """Uma transcrição Gemini finita; não envia o texto a ferramentas."""
+    """Uma transcrição pelo provedor escolhido; não executa o texto."""
     if not isinstance(dados, bytes) or not dados or len(dados) > LIMITE_AUDIO:
         raise ValueError('O áudio deve ter conteúdo e no máximo 8 MB.')
     if mime_type not in MIMES:
         raise ValueError('Formato de áudio não suportado.')
+    if provedor_voz()=='local':
+        from transcritor_local import transcrever_audio as transcrever_local,FalhaTranscritorLocal
+        try:return transcrever_local(dados,mime_type)
+        except FalhaTranscritorLocal as erro:
+            raise FalhaAPI('Voz local',0,str(erro),erro.categoria) from None
     verificar_disponibilidade_voz(roteador)
     try:
         from google import genai

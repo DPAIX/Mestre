@@ -122,10 +122,13 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertEqual(responder.call_args.kwargs['historico'],[])
             app.tratar_pedido(self.mensagem('Continuação',topico=4))
             self.assertEqual(len(responder.call_args.kwargs['historico']),2)
+            app.CENTRAL.configurar_chat('1:10:5',app.CENTRAL.obter_chat_ativo('1:10:5')['id'],equipe_politica='manual')
             app.tratar_pedido(self.mensagem('/ia Outro tópico',topico=5))
             self.assertEqual(responder.call_args.kwargs['historico'],[])
 
     def test_conversa_comum_padrao_e_pedido_pc_confirmado_por_texto(self):
+        catalogo=patch.object(app.ROTEADOR,'catalogo_ollama',return_value={'habilitado':True,'modelos':[{'nome':'llama3.2:latest','nuvem':False}]})
+        catalogo.start();self.addCleanup(catalogo.stop)
         with patch.object(app.ROTEADOR,'responder',return_value=('Olá, como posso ajudar?','Ollama')) as ia,\
                 patch.object(app,'executar',return_value='VS Code solicitado') as executar,patch.object(app,'inline',return_value=None):
             app.tratar_pedido(self.mensagem('Olá, me ajude a organizar o dia'))

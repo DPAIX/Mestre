@@ -1,3 +1,5 @@
+> **v2.7.0:** [Voz local, equipe padrão e início automático](GUIA_AUTOMATICO.md) · [Mudanças e reversão](REVISAO_V2_7_0.md). Abra `ativar_assistente_automatico.bat` uma vez; depois basta enviar texto/áudio. Os próximos logons iniciam o assistente.
+
 > **v2.6.0:** [Todos os modelos em cooperação](GUIA_EQUIPE_COOPERATIVA.md) · [Mudanças e reversão](REVISAO_V2_6_0.md). `/chat equipe on` ativa consulta sequencial e síntese; o modo CPU que funcionou é preservado.
 
 > **v2.5.2:** [Perfil CPU para o Llama](GUIA_PERFIL_CPU.md) · [Mudanças e reversão](REVISAO_V2_5_2.md). Ative pelo Telegram com `/modelos perfil cpu` e confirme; configuração e dados continuam em F:.

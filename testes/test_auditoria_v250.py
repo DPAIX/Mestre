@@ -207,7 +207,7 @@ class AuditoriaV250Teste(unittest.TestCase):
         telebot.TeleBot = MagicMock(return_value=bot)
         ambiente = patch.dict(os.environ, {
             'TELEGRAM_TOKEN': '123456789:' + 'X' * 35,
-            'TELEGRAM_ALLOWED_USER_IDS': '11', 'GEMINI_API_KEY': 'fixture-genai'}, clear=True)
+            'TELEGRAM_ALLOWED_USER_IDS': '11', 'GEMINI_API_KEY': 'fixture-genai', 'VOZ_PROVEDOR':'gemini'}, clear=True)
         ambiente.start(); self.addCleanup(ambiente.stop)
         with patch.dict(sys.modules, {'telebot': telebot}):
             app.configurar_bot()

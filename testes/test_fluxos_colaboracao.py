@@ -121,6 +121,7 @@ class FluxosColaboracao(unittest.TestCase):
             executar.assert_called_once()
 
     def test_consulta_natural_real_sem_ia_e_acao_ia_flexivel_confirmada(self):
+        central.configurar_chat('painel',central.obter_chat_ativo('painel')['id'],equipe_politica='manual')
         with patch.object(app.ROTEADOR,'responder') as ia:
             status,res=self.req({'acao':'pergunta','texto':'qual meu saldo?'})
             self.assertEqual(status,200,res);self.assertIn('10.00',res['mensagem'])
@@ -136,6 +137,7 @@ class FluxosColaboracao(unittest.TestCase):
             self.assertIn('ÚLTIMA MENSAGEM',ia.call_args.args[0])
 
     def test_ia_acao_invalida_e_parametros_ausentes_nao_mudam_dados(self):
+        central.configurar_chat('painel',central.obter_chat_ativo('painel')['id'],equipe_politica='manual')
         antes=nucleo.vida()
         respostas=[{'resposta':'Preciso do valor e da descrição.','acao':'nenhuma','campos':{}},
                    {'resposta':'executar','acao':'shell','campos':{'cmd':'comando arbitrário'}}]

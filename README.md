@@ -1,6 +1,8 @@
-# MeuControlePC v2.6.0
+# MeuControlePC v2.7.0
 
-Todos os modelos instalados podem colaborar com `/chat equipe on`: consultas sequenciais, contribuições compartilhadas e uma resposta consolidada. O perfil CPU existente é preservado. [Ativação e limites](GUIA_EQUIPE_COOPERATIVA.md) · [Revisão v2.6.0](REVISAO_V2_6_0.md). A frase “mostre a minha rotina da semana” agora consulta os registros locais.
+Abra `ativar_assistente_automatico.bat` uma vez para preparar a voz local e o início após o logon. Depois envie texto ou áudio: Whisper local é o transcritor padrão e todos os modelos Ollama cooperam automaticamente, sem comandos de ativação. Código em C:, configuração/dados/pesos em F:. [Guia de preparação e reversão](GUIA_AUTOMATICO.md) · [Revisão v2.7.0](REVISAO_V2_7_0.md).
+
+Histórico v2.6.0: todos os modelos instalados podem colaborar com `/chat equipe on`: consultas sequenciais, contribuições compartilhadas e uma resposta consolidada. O perfil CPU existente é preservado. [Ativação e limites](GUIA_EQUIPE_COOPERATIVA.md) · [Revisão v2.6.0](REVISAO_V2_6_0.md). A frase “mostre a minha rotina da semana” agora consulta os registros locais.
 
 Se o teste isolado do Llama respondeu em CPU, ative o mesmo caminho no assistente com `/modelos perfil cpu` e confirme no Telegram. O perfil seleciona Llama, usa CPU/contexto pequeno e desativa a equipe desta conversa. [Ativação, limites e reversão](GUIA_PERFIL_CPU.md) · [Revisão v2.5.2](REVISAO_V2_5_2.md).
 

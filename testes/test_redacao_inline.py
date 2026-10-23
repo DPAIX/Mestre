@@ -117,6 +117,7 @@ class RedacaoInlineTeste(unittest.TestCase):
             self.assertNotIn('fixture-privada-nao-exportar', conteudo)
 
     def test_resposta_estruturada_ia_sanitizada_antes_do_plano(self):
+        central.configurar_chat(self.contexto,central.obter_chat_ativo(self.contexto)['id'],equipe_politica='manual')
         roteador = MagicMock()
         roteador.responder.return_value = (json.dumps({
             'resposta': 'Veja EXA_API_KEY=' + self.segredo + '; fim.',

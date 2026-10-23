@@ -256,7 +256,7 @@ test('modelo salvo acompanha a conversa e mudar seletor não escreve automaticam
  assert.equal(p.obter('chat-modelo-ollama').value,'gemma4:31b-cloud');
  await p.obter('chat-salvar-modelo').eventos.click();
  assert.equal(posts,1);assert.equal(enviado.acao,'chat_modelo');assert.equal(enviado.id,'chat_a');assert.equal(enviado.modelo,'gemma4:31b-cloud');
- p.contexto.centro.chat_ativo={id:'chat_b',titulo:'Nuvem',provedor:'Ollama',modelo_ollama:'gemma4:31b-cloud'};
+ p.contexto.centro.chat_ativo={id:'chat_b',titulo:'Nuvem',provedor:'Ollama',equipe_politica:'manual',modelo_ollama:'gemma4:31b-cloud'};
  p.executar('renderColaboracao(centro)');assert.equal(p.obter('chat-modelo-ollama').value,'gemma4:31b-cloud');assert.match(p.obter('chat-provedor').textContent,/gemma4:31b-cloud/);
  p.contexto.centro.chat_ativo={id:'chat_a',titulo:'Local',provedor:'Ollama',modelo_ollama:'qwen3.5:4b'};
  p.executar('renderColaboracao(centro)');assert.equal(p.obter('chat-modelo-ollama').value,'qwen3.5:4b');
@@ -699,7 +699,7 @@ test('snapshot legado é aceito sem enviar uma chave de idempotência isolada',a
 });
 
 test('equipe da conversa renderiza tags como texto sem iniciar consultas',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',modelo_ollama:'individual:latest',equipe_paralela:true,equipe_modelos:['qwen3.5:4b','<img onerror=x>','gemma4:31b-cloud']},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',modelo_ollama:'individual:latest',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['qwen3.5:4b','<img onerror=x>','gemma4:31b-cloud']},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let chamadas=0;
  p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
  p.contexto.centro=centro;p.executar('renderColaboracao(centro)');
@@ -714,7 +714,7 @@ test('equipe da conversa renderiza tags como texto sem iniciar consultas',async(
 });
 
 test('equipe cooperativa mostra modo e síntese sem confundir chats legados',async()=>{
- const chat={id:'chat_cooperativa',titulo:'Cooperar',provedor:'Ollama',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest','mistral:latest']};
+ const chat={id:'chat_cooperativa',titulo:'Cooperar',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest','mistral:latest']};
  const centro={chats:[chat],chat_ativo:chat,tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}});
  assert.match(p.obter('chat-equipe-status').textContent,/Equipe cooperativa ativa · 2 modelo\(s\)/);
@@ -730,8 +730,22 @@ test('equipe cooperativa mostra modo e síntese sem confundir chats legados',asy
  assert.match(p.obter('lista-chats').children[0].textContent,/equipe paralela/);
 });
 
+test('conversa automática já aparece ativa antes da primeira consulta ao catálogo',async()=>{
+ const chat={id:'chat_auto',titulo:'Padrão',provedor:'auto',equipe_paralela:false,equipe_modelos:[]};
+ const p=await painel();p.contexto.centro={chats:[chat],chat_ativo:chat,tarefas:[],contribuicoes:[]};
+ p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);
+ assert.match(p.obter('chat-equipe-status').textContent,/Equipe automática: catálogo consultado na próxima pergunta/);
+ assert.doesNotMatch(p.obter('chat-equipe-status').textContent,/Atualize a equipe|precisa ser ativada/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/equipe automática cooperativa/);
+ const prazos=[];p.contexto.setTimeout=(_fn,ms)=>{prazos.push(ms);return 1};p.contexto.clearTimeout=()=>{};
+ p.contexto.fetch=async()=>resposta({mensagem:'fixture'});
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Objetivo'})");
+ assert.deepEqual(prazos,[1200000]);
+});
+
 test('só conversa com equipe ativa recebe prazo de vinte minutos',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest']},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest']},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),prazos=[],posts=[];
  p.contexto.setTimeout=(_fn,prazo)=>{prazos.push(prazo);return 0};
  p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts.push(JSON.parse(opt.body));return resposta({ok:true})};
@@ -740,7 +754,7 @@ test('só conversa com equipe ativa recebe prazo de vinte minutos',async()=>{
  await p.executar("api('/api/acao',{acao:'conexoes_ia'})");
  await p.executar("api('/api/acao',{acao:'equipe_ia'})");
  await p.executar("api('/api/estado')");
- p.contexto.centro={...centro,chat_ativo:{...centro.chat_ativo,equipe_paralela:false}};
+ p.contexto.centro={...centro,chat_ativo:{...centro.chat_ativo,equipe_politica:'manual',equipe_paralela:false}};
  p.executar('renderColaboracao(centro)');
  await p.executar("api('/api/acao',{acao:'pergunta',texto:'Individual'})");
  await p.executar("api('/api/acao',{acao:'pergunta',texto:'Prazo explícito'},{timeout:1234})");
@@ -749,7 +763,7 @@ test('só conversa com equipe ativa recebe prazo de vinte minutos',async()=>{
 });
 
 test('ativar e desativar equipe envia só configuração da conversa com idempotência',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,versao_estado:12,colaboracao:centro}}),chamadas=[];
  p.contexto.confirm=()=>{throw Error('Ativar configuração não deve pedir uma inferência ou confirmação extra')};
  p.contexto.fetch=async(url,opt)=>{
@@ -777,7 +791,7 @@ test('ativar e desativar equipe envia só configuração da conversa com idempot
 });
 
 test('atualizar equipe relê catálogo no servidor e renderiza a lista persistida',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
  p.contexto.fetch=async(url,opt)=>{
   if(opt.method==='POST'){posts.push(JSON.parse(opt.body));centro.chat_ativo.equipe_modelos=['mistral:latest','llama3.2:latest','qwen3.5:4b'];return resposta({mensagem:'Catálogo atualizado.'})}
@@ -789,7 +803,7 @@ test('atualizar equipe relê catálogo no servidor e renderiza a lista persistid
 });
 
 test('mensagem em equipe continua um único pedido e preserva confirmação da ação proposta',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modelos:['mistral:latest','llama3.2:latest']},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['mistral:latest','llama3.2:latest']},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
  p.contexto.fetch=async(url,opt)=>{
   if(opt.method==='POST'){posts.push(JSON.parse(opt.body));return resposta({mensagem:'Os modelos sugerem abrir o editor.',pedido:{id:'nonce_equipe',descricao:'Abrir VS Code'}})}
@@ -803,7 +817,7 @@ test('mensagem em equipe continua um único pedido e preserva confirmação da a
 });
 
 test('equipe aguarda a primeira configuração sem repetir escrita em duplo clique',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let liberar,posts=0;
  p.contexto.fetch=async(_url,opt)=>{
   if(opt.method==='POST'){posts++;return new Promise(resolve=>{liberar=resolve})}
@@ -819,7 +833,7 @@ test('equipe aguarda a primeira configuração sem repetir escrita em duplo cliq
 });
 
 test('falha na ativação restaura a configuração salva e mantém a mensagem do servidor',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let posts=0;
  p.contexto.fetch=async(_url,opt)=>{
   if(opt.method==='POST'){posts++;return resposta({erro:'O catálogo precisa ter entre um e oito modelos para ativar todos.'},400)}
@@ -832,11 +846,11 @@ test('falha na ativação restaura a configuração salva e mantém a mensagem d
 });
 
 test('trocar de conversa ou salvar modelo individual acompanha a equipe do snapshot',async()=>{
- const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
  p.contexto.fetch=async(_url,opt)=>{
   if(opt.method==='POST'){
-   posts.push(JSON.parse(opt.body));centro.chat_ativo={...centro.chat_ativo,modelo_ollama:'llama3.2:latest',equipe_paralela:false,equipe_modelos:[]};
+   posts.push(JSON.parse(opt.body));centro.chat_ativo={...centro.chat_ativo,modelo_ollama:'llama3.2:latest',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]};
    return resposta({mensagem:'Modelo individual salvo.'});
   }
   return resposta({...estado,colaboracao:centro});
@@ -844,7 +858,7 @@ test('trocar de conversa ou salvar modelo individual acompanha a equipe do snaps
  p.obter('chat-modelo-ollama').value='llama3.2:latest';await p.obter('chat-salvar-modelo').eventos.click();
  assert.deepEqual(posts,[{acao:'chat_modelo',id:'chat_equipe',modelo:'llama3.2:latest'}]);
  assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.match(p.obter('chat-provedor').textContent,/llama3\.2:latest/);
- p.contexto.centro={...centro,chat_ativo:{id:'chat_outra',titulo:'Outra',provedor:'Gemini'}};p.executar('renderColaboracao(centro)');
+ p.contexto.centro={...centro,chat_ativo:{id:'chat_outra',titulo:'Outra',provedor:'Gemini',equipe_politica:'manual'}};p.executar('renderColaboracao(centro)');
  assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.doesNotMatch(p.obter('chat-equipe-status').textContent,/mistral/);
 });
 

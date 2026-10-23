@@ -42,6 +42,12 @@ def verificar():
         if importlib.util.find_spec('google.genai'):ok.append('Dependência encontrada: google-genai')
         else:avisos.append('Dependência ausente: google-genai')
     except ModuleNotFoundError:avisos.append('Dependência ausente: google-genai')
+    if os.getenv('VOZ_PROVEDOR','local').strip().casefold()=='local':
+        from transcritor_local import verificar_disponibilidade,FalhaTranscritorLocal
+        try:
+            verificar_disponibilidade()
+            ok.append('Voz local: dependência e pesos presentes; transcrição real ainda não verificada')
+        except FalhaTranscritorLocal as erro:avisos.append('Voz local: '+str(erro))
     if not (BASE/'painel_rotina.html').is_file():avisos.append('Painel HTML ausente')
     if not (BASE/'reiniciar_assistente.py').is_file():avisos.append('Mecanismo de reinício do assistente ausente')
     try:

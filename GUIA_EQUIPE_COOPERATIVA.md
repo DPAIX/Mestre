@@ -1,3 +1,5 @@
+> **v2.7.0:** a equipe é automática nas conversas padrão. Não é necessário enviar `/chat equipe on`. O comando continua como escolha manual opcional. Para voz e início ao logar, siga o [guia atual](GUIA_AUTOMATICO.md).
+
 # Todos os modelos trabalhando no assistente — v2.6.0
 
 O Llama individual em CPU já respondeu no PC. A equipe cooperativa aproveita todos os modelos do catálogo Ollama selecionado, com análise, proposta, revisão e verificação. Cada modelo recebe o pedido e resumos limitados das contribuições anteriores; um coordenador produz a resposta final. O objetivo é combinar contribuições úteis, mantendo visíveis falhas e limitações.

@@ -41,6 +41,20 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
     if not trava.acquire(blocking=False):
         raise RuntimeError('Esta conversa já está respondendo. Aguarde antes de enviar outra pergunta.')
     try:
+        politica=chat.get('equipe_politica','automatica')
+        if politica not in ('automatica','manual'):raise ValueError('Política de equipe inválida nesta conversa; arquivo preservado.')
+        if politica=='automatica':
+            from configurar_ia_local import validar_modelo
+            catalogo=roteador.catalogo_ollama()
+            if not isinstance(catalogo,dict) or catalogo.get('habilitado') is not True:
+                raise ValueError('A equipe automática precisa do serviço Ollama local habilitado. Confira a instalação automática; nenhuma API externa foi consultada.')
+            itens=catalogo.get('modelos')
+            if not isinstance(itens,list):raise ValueError('O catálogo da equipe automática é inválido.')
+            try:modelos=list(dict.fromkeys(validar_modelo(item['nome']) for item in itens))
+            except (KeyError,TypeError):raise ValueError('O catálogo da equipe automática é inválido.') from None
+            if not 1<=len(modelos)<=8:
+                raise ValueError('A equipe automática precisa de um a oito modelos no catálogo Ollama; nenhum participante foi descartado silenciosamente.')
+            chat=central.configurar_equipe_automatica(contexto,chat['id'],modelos)
         historico=central.historico_chat(contexto,chat_id=chat['id'])
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
@@ -85,6 +99,8 @@ def resumo_chats(contexto):
         modelo=(' / '+chat['modelo_ollama']) if chat.get('modelo_ollama') and chat['provedor']=='Ollama' else ''
         linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
         if chat.get('equipe_paralela'):linhas.append('  Equipe '+chat.get('equipe_modo','paralela')+': '+', '.join(chat['equipe_modelos']))
+        if chat.get('equipe_politica','automatica')=='automatica':
+            linhas.append('  Automática: todos os modelos do catálogo serão usados na próxima mensagem que precisar de IA.')
     linhas.extend(['/chat novo Nome | /chat usar ID | /chat provedor Ollama',
                    '/modelos ollama lista o catálogo; /chat modelo NOME seleciona por conversa; /chat modelo padrao usa a configuração geral.',
                    '/chat modo on ativa conversa por mensagens comuns; /chat modo off desativa.',
