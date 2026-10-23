@@ -487,23 +487,7 @@ class Roteador:
         except FalhaConfiguracao as exc:
             raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
 
-    def _explicar_404_ollama(self,modelo,erro):
-        if erro.codigo!=404:return erro
-        from configurar_ia_local import listar_modelos,modelo_instalado,FalhaConfiguracao
-        base=endpoint_ollama().removesuffix('/api/chat')
-        try:
-            nomes=listar_modelos(base)
-            if modelo_instalado(modelo,nomes):
-                detalhe=f'O modelo {modelo} está no catálogo, mas a rota /api/chat retornou HTTP 404. Confira o serviço/versão e OLLAMA_URL.'
-            else:
-                detalhe=f'O modelo configurado {modelo} não consta no catálogo Ollama. Disponíveis: '+(', '.join(nomes[:6]) or 'nenhum')+'.'
-        except (FalhaConfiguracao,ValueError):
-            detalhe=f'Ollama retornou HTTP 404 para {modelo}; não foi possível conferir o catálogo. Confira o serviço e OLLAMA_URL.'
-        detalhe+=' Use /modelos ollama e /modelos padrao NOME com uma tag instalada. Nenhum modelo foi baixado nem outra geração tentada.'
-        return FalhaAPI('Ollama',404,detalhe,'modelo_indisponivel')
-
-    def ollama(self,pergunta,historico=None,modelo=None,*,modo_cooperativo=False):
-        if not isinstance(modo_cooperativo,bool):raise ValueError('Modo cooperativo inválido.')
+    def ollama(self,pergunta,historico=None,modelo=None):
         if os.getenv('OLLAMA_HABILITADO')!='1':
             raise FalhaAPI('Ollama',0,'Integração local desabilitada. Configure Ollama e habilite OLLAMA_HABILITADO=1.','configuracao')
         endpoint=endpoint_ollama()

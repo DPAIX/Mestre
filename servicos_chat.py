@@ -9,7 +9,7 @@ _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 _CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chats_modelos_ollama','modelo_testar','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -149,71 +149,6 @@ def texto_equipe(resultado):
 
 
 def executar_acao(acao,obj,contexto,roteador):
-    # Disco, ambiente e seleção do chat devem observar a mesma configuração.
-    if acao in ('ollama_perfil','modelo_padrao'):
-        with _CONFIG_OLLAMA_LOCK:
-            return _executar_acao(acao,obj,contexto,roteador)
-    return _executar_acao(acao,obj,contexto,roteador)
-
-
-def _executar_acao(acao,obj,contexto,roteador):
-    if acao=='ollama_perfil':
-        perfil=campo_texto(obj,'perfil',20).casefold()
-        if perfil not in ('cpu','padrao'):raise ValueError('Escolha o perfil cpu ou padrao.')
-        if obj.get('confirmacao')!='CONFIGURAR '+perfil.upper():raise ValueError('Confirme a configuração do perfil Ollama.')
-        chat=central.obter_chat_ativo(contexto)
-        if obj.get('chat_id') and obj['chat_id']!=chat['id']:
-            raise ValueError('Volte à conversa de origem antes de configurar o perfil.')
-        from configurar_ia_local import configurar_perfil
-        from multi_ia import endpoint_ollama
-        url=endpoint_ollama().removesuffix('/api/chat')
-        modelo=configurar_perfil(perfil,url,caminho=nucleo.arquivo_env(nucleo.BASE))
-        os.environ.update({'OLLAMA_HABILITADO':'1','OLLAMA_URL':url,'OLLAMA_MODEL':modelo,'OLLAMA_PERFIL':perfil})
-        roteador.atualizar_configuracao_ollama()
-        central.configurar_chat(contexto,chat['id'],provedor='Ollama',modelo_ollama=modelo,modo_conversa=True)
-        nucleo.registrar('ollama_perfil','configurado','Perfil '+perfil+'; modelo '+modelo,'Ollama')
-        return ('Perfil '+perfil+' do Ollama salvo e aplicado. Modelo individual desta conversa: '+modelo+
-                '. Equipe desativada nesta conversa; histórico preservado. '+
-                ('O perfil CPU usa contexto pequeno e respostas curtas. ' if perfil=='cpu' else 'O serviço volta a escolher a execução nas próximas chamadas. ')+
-                'Esse perfil vale globalmente para as próximas consultas Ollama deste assistente. '
-                'Não houve geração, download ou alteração de driver. Envie uma mensagem curta para testar.')
-    if acao=='chat_equipe':
-        ativo=obj.get('ativo')
-        if not isinstance(ativo,bool):raise ValueError('O modo equipe deve ser verdadeiro ou falso.')
-        modo=obj.get('modo','cooperativa')
-        if modo not in ('cooperativa','paralela'):raise ValueError('Escolha equipe cooperativa ou paralela.')
-        chat=central.obter_chat_ativo(contexto)
-        if obj.get('id') and obj['id']!=chat['id']:raise ValueError('Selecione a conversa antes de configurar a equipe.')
-        if not ativo:
-            central.configurar_chat(contexto,chat['id'],equipe_paralela=False,equipe_modelos=[])
-            return 'Equipe desativada nesta conversa. O modelo individual será utilizado.'
-        catalogo=roteador.catalogo_ollama()
-        if not catalogo.get('habilitado'):raise ValueError('Habilite a integração Ollama antes de ativar a equipe.')
-        modelos=list(dict.fromkeys(m['nome'] for m in catalogo['modelos']))
-        if not 1<=len(modelos)<=8:raise ValueError('O catálogo precisa ter entre um e oito modelos para ativar todos.')
-        central.configurar_chat(contexto,chat['id'],provedor='Ollama',modo_conversa=True,
-            equipe_modelos=modelos,equipe_paralela=True,equipe_modo=modo)
-        nuvem=any(m.get('nuvem') for m in catalogo['modelos'])
-        return ('Equipe '+modo+' ativada nesta conversa: '+', '.join(modelos)+
-            ('. Cada mensagem que precisar de IA consulta uma vez cada modelo, um por vez, e pode fazer uma síntese adicional. O perfil CPU atual é preservado. '
-             if modo=='cooperativa' else '. Cada mensagem de conversa consulta uma vez cada modelo simultaneamente. O Ollama pode enfileirar conforme a memória. ')+
-            'Nenhum modelo foi baixado ou consultado nesta ativação.'+
-            (' Há modelos cloud: as mensagens usam a conta, internet e cota Ollama.' if nuvem else ''))
-    if acao=='modelo_padrao':
-        from configurar_ia_local import configurar_modelo
-        from multi_ia import endpoint_ollama
-        modelo=campo_texto(obj,'modelo',200)
-        chat=central.obter_chat_ativo(contexto)
-        url=endpoint_ollama().removesuffix('/api/chat')
-        encontrado=configurar_modelo(modelo,url,caminho=nucleo.arquivo_env(nucleo.BASE))
-        os.environ.update({'OLLAMA_HABILITADO':'1','OLLAMA_URL':url,'OLLAMA_MODEL':encontrado})
-        roteador.atualizar_configuracao_ollama()
-        central.configurar_chat(contexto,chat['id'],provedor='Ollama',modelo_ollama='')
-        nucleo.registrar('modelo_padrao','configurado','Modelo Ollama selecionado: '+encontrado,'Ollama')
-        return ('Padrão do Ollama atualizado: '+encontrado+'. Esta conversa agora usa Ollama com esse padrão; seu histórico foi preservado. '
-                'Configuração salva e carregada. Pausas de outros provedores não foram alteradas. '
-                'A presença no catálogo foi verificada, sem gerar resposta nem baixar modelos. Use /modelos testar '+encontrado+
-                ' ou /ia para testar. Modelos cloud dependem de conta, internet e cota.')
     if acao=='chats_modelos_ollama':
         from configurar_ia_local import validar_modelo,modelo_instalado
         modelos=obj.get('modelos')

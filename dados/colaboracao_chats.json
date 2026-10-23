@@ -1,0 +1,22 @@
+{
+  "versao": 1,
+  "contextos": {
+    "15a45e5028fb3f692687056ffd3d38b5e459cdc049069a08df3c146cd2014fde": {
+      "chats": [
+        {
+          "id": "chat_9b7dbf10542c4266",
+          "titulo": "Conversa principal",
+          "provedor": "auto",
+          "modelo_ollama": "",
+          "modo_conversa": false,
+          "criado_em": "2026-10-21T22:37:19+00:00",
+          "atualizado_em": "2026-10-21T22:37:19+00:00",
+          "mensagens": []
+        }
+      ],
+      "ativo": "chat_9b7dbf10542c4266"
+    }
+  },
+  "tarefas": [],
+  "contribuicoes": []
+}
