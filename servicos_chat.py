@@ -1,11 +1,13 @@
 """Serviços de conversas e projeto compartilhado, sem dependência do Telegram."""
 from __future__ import annotations
+import os
 import threading
 import nucleo
 import colaboracao_chats as central
 
 _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
+_CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
     'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chats_modelos_ollama','modelo_testar','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
@@ -22,9 +24,11 @@ def campo_texto(obj,nome,limite=200,obrigatorio=True):
     return valor
 
 
-def conversar(texto,contexto,roteador):
+def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma pergunta para a conversa.')
     if len(texto)>12000:raise ValueError('A mensagem deve ter até 12000 caracteres.')
+    if retornar_plano and len(texto)>8000:raise ValueError('Envie mensagens de até 8000 caracteres para interpretar pedidos.')
+    texto=str(nucleo.redigir(texto.strip()))
     chat=central.obter_chat_ativo(contexto)
     chave=(contexto,chat['id'])
     with _TRAVAS_LOCK:
@@ -37,13 +41,53 @@ def conversar(texto,contexto,roteador):
     if not trava.acquire(blocking=False):
         raise RuntimeError('Esta conversa já está respondendo. Aguarde antes de enviar outra pergunta.')
     try:
+        politica=chat.get('equipe_politica','automatica')
+        if politica not in ('automatica','manual'):raise ValueError('Política de equipe inválida nesta conversa; arquivo preservado.')
+        if politica=='automatica':
+            from configurar_ia_local import validar_modelo
+            catalogo=roteador.catalogo_ollama()
+            if not isinstance(catalogo,dict) or catalogo.get('habilitado') is not True:
+                raise ValueError('A equipe automática precisa do serviço Ollama local habilitado. Confira a instalação automática; nenhuma API externa foi consultada.')
+            itens=catalogo.get('modelos')
+            if not isinstance(itens,list):raise ValueError('O catálogo da equipe automática é inválido.')
+            try:modelos=list(dict.fromkeys(validar_modelo(item['nome']) for item in itens))
+            except (KeyError,TypeError):raise ValueError('O catálogo da equipe automática é inválido.') from None
+            if not 1<=len(modelos)<=8:
+                raise ValueError('A equipe automática precisa de um a oito modelos no catálogo Ollama; nenhum participante foi descartado silenciosamente.')
+            chat=central.configurar_equipe_automatica(contexto,chat['id'],modelos)
         historico=central.historico_chat(contexto,chat_id=chat['id'])
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
         if modelo:opcoes['modelo_ollama']=modelo
-        resposta,provedor=roteador.responder(texto.strip(),**opcoes)
+        pergunta=texto.strip()
+        if retornar_plano:
+            from interpretacao_natural import instrucoes_ia,extrair_resposta
+            import datetime
+            from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
+            try:agora=datetime.datetime.now(ZoneInfo('America/Sao_Paulo'))
+            except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
+            compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' and
+                      bool(chat.get('equipe_paralela')) and chat.get('equipe_modo','paralela')=='cooperativa')
+            pergunta=(instrucoes_ia(compacto=compacto)+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
+                      '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'+pergunta[:8000])
+        equipe=bool(chat.get('equipe_paralela'))
+        if equipe:
+            from conversa_equipe import consultar_modelos
+            equipe_resultado=consultar_modelos(pergunta,historico,chat.get('equipe_modelos'),roteador,
+                interpretar=retornar_plano,modo=chat.get('equipe_modo','paralela'),
+                progresso=progresso)
+            resposta=equipe_resultado['texto'];provedor='Ollama'
+        else:resposta,provedor=roteador.responder(pergunta,**opcoes)
+        resposta=nucleo.redigir(resposta)
+        plano=None
+        if retornar_plano and equipe:
+            plano=equipe_resultado['plano']
+        elif retornar_plano:
+            resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
+            if plano:resposta='Entendi: '+plano['descricao']+'. O pedido ainda não foi executado.'
         central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo)
-        rotulo=provedor+(' / '+modelo if modelo else '')
+        rotulo=('Equipe Ollama' if equipe else provedor+(' / '+modelo if modelo else ''))
+        if retornar_plano:return {'texto':f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta,'plano':plano,'chat_id':chat['id']}
         return f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta
     finally:trava.release()
 
@@ -56,9 +100,13 @@ def resumo_chats(contexto):
         marca='▶' if chat['id']==ativo['id'] else '•'
         modelo=(' / '+chat['modelo_ollama']) if chat.get('modelo_ollama') and chat['provedor']=='Ollama' else ''
         linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
+        if chat.get('equipe_paralela'):linhas.append('  Equipe '+chat.get('equipe_modo','paralela')+': '+', '.join(chat['equipe_modelos']))
+        if chat.get('equipe_politica','automatica')=='automatica':
+            linhas.append('  Automática: todos os modelos do catálogo serão usados na próxima mensagem que precisar de IA.')
     linhas.extend(['/chat novo Nome | /chat usar ID | /chat provedor Ollama',
                    '/modelos ollama lista o catálogo; /chat modelo NOME seleciona por conversa; /chat modelo padrao usa a configuração geral.',
                    '/chat modo on ativa conversa por mensagens comuns; /chat modo off desativa.',
+                   '/chat equipe on usa todos os modelos Ollama em cooperação sequencial e síntese; /chat equipe paralelo consulta simultaneamente; /chat equipe off volta ao individual.',
                    '/ia pergunta usa o histórico da conversa selecionada. /contexto gera um pacote para outros chats.'])
     return '\n'.join(linhas)
 

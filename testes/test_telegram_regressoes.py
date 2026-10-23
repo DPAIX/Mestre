@@ -77,6 +77,24 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertIn('pedido',app.PENDENTES)
             executar.assert_not_called()
 
+    def test_equipe_paralela_telegram_autorizada_consulta_catalogo_e_conversa_com_quatro_modelos(self):
+        modelos=['qwen3.8:27b','mistral:latest','llama3.2:latest','qwen3.5:4b']
+        roteador=MagicMock()
+        roteador.catalogo_ollama.return_value={'habilitado':True,'modelos':[{'nome':m,'nuvem':False} for m in modelos]}
+        roteador.responder.side_effect=lambda texto,**opcoes:('Olá de '+opcoes['modelo_ollama'],'Ollama')
+        with patch.object(app,'ROTEADOR',roteador):
+            app.tratar_pedido(self.mensagem('/chat equipe paralelo',usuario=3))
+            roteador.catalogo_ollama.assert_not_called()
+            app.tratar_pedido(self.mensagem('/chat equipe paralelo',topico=4))
+            roteador.catalogo_ollama.assert_called_once_with()
+            roteador.responder.assert_not_called()
+            app.tratar_pedido(self.mensagem('Explique planejamento semanal',topico=4))
+            self.assertEqual(roteador.responder.call_count,4)
+            self.assertEqual({c.kwargs['modelo_ollama'] for c in roteador.responder.call_args_list},set(modelos))
+            self.assertTrue(all(c.kwargs['provedor']=='Ollama' for c in roteador.responder.call_args_list))
+            app.tratar_pedido(self.mensagem('/chat equipe off',topico=4))
+            self.assertFalse(app.CENTRAL.obter_chat_ativo('1:10:4')['equipe_paralela'])
+
     def test_codigo_windows_invalido_preserva_confirmacao(self):
         app.CONFIRMACOES_WINDOWS[1]={'chat':10,'codigo':'123456','expira':time.monotonic()+90}
         mensagem=SimpleNamespace(chat=SimpleNamespace(id=10),from_user=SimpleNamespace(id=1),text='/confirmar_windows inválido')
@@ -104,8 +122,44 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertEqual(responder.call_args.kwargs['historico'],[])
             app.tratar_pedido(self.mensagem('Continuação',topico=4))
             self.assertEqual(len(responder.call_args.kwargs['historico']),2)
+            app.CENTRAL.configurar_chat('1:10:5',app.CENTRAL.obter_chat_ativo('1:10:5')['id'],equipe_politica='manual')
             app.tratar_pedido(self.mensagem('/ia Outro tópico',topico=5))
             self.assertEqual(responder.call_args.kwargs['historico'],[])
+
+    def test_conversa_comum_padrao_e_pedido_pc_confirmado_por_texto(self):
+        catalogo=patch.object(app.ROTEADOR,'catalogo_ollama',return_value={'habilitado':True,'modelos':[{'nome':'llama3.2:latest','nuvem':False}]})
+        catalogo.start();self.addCleanup(catalogo.stop)
+        with patch.object(app.ROTEADOR,'responder',return_value=('Olá, como posso ajudar?','Ollama')) as ia,\
+                patch.object(app,'executar',return_value='VS Code solicitado') as executar,patch.object(app,'inline',return_value=None):
+            app.tratar_pedido(self.mensagem('Olá, me ajude a organizar o dia'))
+            ia.assert_called_once()
+            app.tratar_pedido(self.mensagem('abra o VS Code'))
+            executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('sim',usuario=3));executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('sim',chat=11));executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('sim'))
+            executar.assert_called_once_with('vscode_pc')
+            app.tratar_pedido(self.mensagem('/chat modo off'))
+            antes=ia.call_count
+            app.tratar_pedido(self.mensagem('Vamos conversar mais'))
+            self.assertEqual(ia.call_count,antes)
+
+    def test_cancelamento_natural_e_confirmacao_outro_dono_nao_executam(self):
+        with patch.object(app,'executar') as executar,patch.object(app,'inline',return_value=None),\
+                patch.object(app.ROTEADOR,'responder',return_value=('Não há pedido seu para confirmar.','Ollama')):
+            app.tratar_pedido(self.mensagem('abra a calculadora'))
+            app.tratar_pedido(self.mensagem('sim',usuario=2))
+            executar.assert_not_called()
+            app.tratar_pedido(self.mensagem('cancele'))
+            self.assertFalse(app.PENDENTES);executar.assert_not_called()
+
+    def test_pedido_natural_nao_executa_em_outra_conversa_telegram(self):
+        with patch.object(app,'executar') as executar,patch.object(app,'inline',return_value=None):
+            app.tratar_pedido(self.mensagem('abra a calculadora'))
+            token=next(iter(app.PENDENTES));app.tratar_pedido(self.mensagem('/chat novo Outra'))
+            chamada=self.chamada();chamada.data='ok:'+token;self.callback(chamada)
+            executar.assert_not_called()
+            self.assertIn('outra conversa',self.bot.send_message.call_args.args[1])
 
     def test_novo_chat_nao_autorizado_nao_grava(self):
         app.tratar_pedido(self.mensagem('/chat novo Invasor',usuario=3))
@@ -178,6 +232,39 @@ class TelegramConfirmacoes(unittest.TestCase):
             executar.assert_called_once()
             self.assertEqual(executar.call_args.args[0],'equipe_ia')
             self.assertEqual(executar.call_args.args[1]['confirmacao'],'CONSULTAR EQUIPE')
+
+    def test_perfil_cpu_exige_dono_confirmacao_e_nao_repete(self):
+        with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao',return_value='Perfil aplicado') as executar:
+            app.tratar_pedido(self.mensagem('/modelos perfil cpu',usuario=3))
+            self.assertFalse(app.PENDENTES)
+            app.tratar_pedido(self.mensagem('/modelos perfil cpu',topico=4))
+            executar.assert_not_called()
+            token=next(iter(app.PENDENTES))
+            chamada=self.chamada(usuario=2);chamada.data='ok:'+token
+            self.callback(chamada)
+            executar.assert_not_called()
+            self.assertIn(token,app.PENDENTES)
+            chamada.from_user.id=1
+            self.callback(chamada);self.callback(chamada)
+            executar.assert_called_once()
+            acao,dados,contexto,_=executar.call_args.args
+            self.assertEqual(acao,'ollama_perfil')
+            self.assertEqual(contexto,'1:10:4')
+            self.assertEqual(dados['confirmacao'],'CONFIGURAR CPU')
+            self.assertEqual(dados['perfil'],'cpu')
+            self.assertEqual(dados['chat_id'],app.CENTRAL.obter_chat_ativo(contexto)['id'])
+
+    def test_perfil_expirado_ou_cancelado_nao_altera_configuracao(self):
+        with patch.object(app,'inline',return_value=None),patch.object(app.SERVICOS,'executar_acao') as executar:
+            for tipo in ('cancelar','expirado'):
+                app.PENDENTES.clear()
+                app.tratar_pedido(self.mensagem('/modelos perfil padrao'))
+                token=next(iter(app.PENDENTES))
+                if tipo=='expirado':app.PENDENTES[token]['expira']=time.monotonic()-1
+                chamada=self.chamada(tipo='cancelar' if tipo=='cancelar' else 'ok')
+                chamada.data=chamada.data.partition(':')[0]+':'+token
+                self.callback(chamada)
+            executar.assert_not_called()
 
     def test_documento_nao_autorizado_nao_baixa(self):
         mensagem=self.mensagem('',usuario=3)

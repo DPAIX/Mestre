@@ -1,0 +1,3 @@
+# Whisper em CPU, sem PyTorch e com decodificação de áudio pelo PyAV.
+faster-whisper>=1.1,<2
+huggingface-hub>=0.25,<3

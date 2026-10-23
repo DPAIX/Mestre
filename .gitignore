@@ -6,12 +6,15 @@
 *.p12
 *.pfx
 credentials.json
+client_secret*.json
 token.json
+token_google*.json
 secrets*.json
 config_apis.json
 
 # Dados pessoais, logs e backups do bot
 dados/
+modelos_voz/
 backups_codigo/
 backups/
 *.log

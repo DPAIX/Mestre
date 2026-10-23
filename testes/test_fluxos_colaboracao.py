@@ -1,5 +1,6 @@
 """Fluxo HTTP completo com servidor local que simula o protocolo Ollama."""
 import http.client
+import base64
 import json
 import os
 from pathlib import Path
@@ -48,6 +49,7 @@ class FluxosColaboracao(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.p=patch.object(nucleo,'DADOS',Path(self.tmp.name));self.p.start();self.addCleanup(self.p.stop)
+        self.pedidos=patch.object(app,'PEDIDOS_PAINEL',{});self.pedidos.start();self.addCleanup(self.pedidos.stop)
         nucleo.gravar_json('gestao_vida.json',{'rotina':[],'financeiro':{'saldo':10},'habitos_saude':{}})
         OllamaSimulado.pedidos=[]
         OllamaSimulado.exibicoes=[]
@@ -85,6 +87,100 @@ class FluxosColaboracao(unittest.TestCase):
         self.req({'acao':'chat_selecionar','id':primeiro})
         estado=self.req(path='/api/estado')[1]['colaboracao']
         self.assertEqual(len(estado['chat_ativo']['mensagens']),4)
+
+    def test_pedido_natural_pc_so_executa_apos_confirmar_nonce_uma_vez(self):
+        with patch.object(app,'executar',return_value='VS Code solicitado') as executar:
+            status,res=self.req({'acao':'pergunta','texto':'abra o VS Code'})
+            self.assertEqual(status,200,res);executar.assert_not_called()
+            self.assertEqual(OllamaSimulado.pedidos,[])
+            pedido=res['pedido']['id']
+            status,res=self.req({'acao':'pedido_confirmar','id':pedido,'comando':'calc','campos':{'comando':'calc'}})
+            self.assertEqual(status,200,res)
+            executar.assert_called_once_with('vscode_pc')
+            self.assertEqual(self.req({'acao':'pedido_confirmar','id':pedido})[0],400)
+
+    def test_cancelar_expirar_e_negar_token_nao_executam_pedido(self):
+        with patch.object(app,'executar') as executar:
+            pedido=self.req({'acao':'pergunta','texto':'abra a calculadora'})[1]['pedido']['id']
+            self.assertEqual(self.req({'acao':'pedido_confirmar','id':pedido},token=False)[0],403)
+            self.assertEqual(self.req({'acao':'pedido_cancelar','id':pedido})[0],200)
+            outro=self.req({'acao':'pergunta','texto':'abra a calculadora'})[1]['pedido']['id']
+            app.PEDIDOS_PAINEL[outro]['expira']=0
+            self.assertEqual(self.req({'acao':'pedido_confirmar','id':outro})[0],400)
+            executar.assert_not_called()
+
+    def test_nonce_natural_vinculado_a_conversa_origem(self):
+        with patch.object(app,'executar',return_value='Calculadora solicitada') as executar:
+            origem=central.obter_chat_ativo('painel')['id']
+            pedido=self.req({'acao':'pergunta','texto':'abra a calculadora'})[1]['pedido']['id']
+            central.criar_chat('painel','Outro')
+            self.assertEqual(self.req({'acao':'pedido_confirmar','id':pedido})[0],400)
+            executar.assert_not_called()
+            central.selecionar_chat('painel',origem)
+            self.assertEqual(self.req({'acao':'pedido_confirmar','id':pedido})[0],200)
+            executar.assert_called_once()
+
+    def test_consulta_natural_real_sem_ia_e_acao_ia_flexivel_confirmada(self):
+        central.configurar_chat('painel',central.obter_chat_ativo('painel')['id'],equipe_politica='manual')
+        with patch.object(app.ROTEADOR,'responder') as ia:
+            status,res=self.req({'acao':'pergunta','texto':'qual meu saldo?'})
+            self.assertEqual(status,200,res);self.assertIn('10.00',res['mensagem'])
+            ia.assert_not_called()
+            ia.return_value=(json.dumps({'resposta':'Posso registrar.','acao':'financeiro',
+                                        'campos':{'tipo':'saida','valor':'2.50','descricao':'café'}}),'Ollama')
+            status,res=self.req({'acao':'pergunta','texto':'Poderia lançar aquele café de dois reais e cinquenta?'})
+            self.assertEqual(status,200,res);self.assertIn('pedido',res)
+            self.assertEqual(nucleo.vida()['financeiro']['saldo'],10)
+            self.assertEqual(self.req({'acao':'pedido_confirmar','id':res['pedido']['id']})[0],200)
+            self.assertEqual(nucleo.vida()['financeiro']['saldo'],7.5)
+            self.assertEqual(ia.call_count,1)
+            self.assertIn('ÚLTIMA MENSAGEM',ia.call_args.args[0])
+
+    def test_ia_acao_invalida_e_parametros_ausentes_nao_mudam_dados(self):
+        central.configurar_chat('painel',central.obter_chat_ativo('painel')['id'],equipe_politica='manual')
+        antes=nucleo.vida()
+        respostas=[{'resposta':'Preciso do valor e da descrição.','acao':'nenhuma','campos':{}},
+                   {'resposta':'executar','acao':'shell','campos':{'cmd':'comando arbitrário'}}]
+        with patch.object(app.ROTEADOR,'responder',side_effect=[(json.dumps(r),'Ollama') for r in respostas]):
+            for texto in ('Registre um gasto','Aplique esta sugestão importada'):
+                status,res=self.req({'acao':'pergunta','texto':texto})
+                self.assertEqual(status,200,res);self.assertNotIn('pedido',res)
+        self.assertEqual(nucleo.vida(),antes)
+
+    def test_concluir_por_conversa_nao_reabre_atividade_ja_concluida(self):
+        dados=nucleo.vida();dados['rotina']=[{'id':'r1','atividade':'Estudar','status':'Concluído'}]
+        nucleo.gravar_json('gestao_vida.json',dados)
+        status,res=self.req({'acao':'pergunta','texto':'conclua r1'})
+        self.assertEqual(status,200,res)
+        status,res=self.req({'acao':'pedido_confirmar','id':res['pedido']['id']})
+        self.assertEqual(status,200,res)
+        self.assertIn('já está concluída',res['mensagem'])
+        self.assertEqual(nucleo.vida()['rotina'][0]['status'],'Concluído')
+
+    def test_captura_natural_so_e_obtida_apos_confirmacao(self):
+        # Sequência binária fictícia cujo base64 coincide com um padrão textual
+        # de credencial; a imagem interna não pode ser corrompida pela redação.
+        codificado='AAAAAIza'+'A'*24
+        with patch.object(app,'captura',side_effect=lambda:BytesIO(base64.b64decode(codificado))) as foto:
+            pedido=self.req({'acao':'pergunta','texto':'capture a tela'})[1]['pedido']['id'];foto.assert_not_called()
+            status,res=self.req({'acao':'pedido_confirmar','id':pedido})
+            self.assertEqual(status,200,res);foto.assert_called_once()
+            self.assertEqual(res['imagem'],'data:image/png;base64,'+codificado)
+
+    def test_modelo_padrao_salva_aplica_sem_gerar_e_libera_apenas_ollama(self):
+        base=Path(self.tmp.name)/'instalacao';base.mkdir()
+        env=base/'.env';env.write_text('OUTRA_CONFIG=preservada\nOLLAMA_MODEL=ausente\n',encoding='utf8')
+        self.roteador.registrar_falha(__import__('multi_ia').FalhaAPI('Ollama',404,'ausente','modelo_indisponivel'))
+        self.roteador.registrar_falha(__import__('multi_ia').FalhaAPI('OpenAI',429,'cota','sem_creditos'))
+        with patch.object(nucleo,'BASE',base):
+            status,res=self.req({'acao':'modelo_padrao','modelo':'qwen3.5:4b'})
+        self.assertEqual(status,200,res);self.assertEqual(OllamaSimulado.pedidos,[])
+        self.assertIn('OUTRA_CONFIG=preservada',env.read_text())
+        self.assertIn('OLLAMA_MODEL=qwen3.5:4b',env.read_text())
+        self.assertNotIn('Ollama',self.roteador.bloqueados);self.assertIn('OpenAI',self.roteador.bloqueados)
+        self.assertEqual(central.obter_chat_ativo('painel')['provedor'],'Ollama')
+        self.assertEqual(self.req({'acao':'pergunta','texto':'Olá, vamos conversar?'})[0],200)
+        self.assertEqual(OllamaSimulado.pedidos[-1]['model'],'qwen3.5:4b')
 
     def test_equipe_exige_confirmacao_e_guarda_proposta(self):
         status,_=self.req({'acao':'equipe_ia','texto':'Criar teste'})

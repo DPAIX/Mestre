@@ -33,13 +33,26 @@ FONTES_EXPORTAVEIS = (
     'reiniciar_assistente.py','agenda_google.py','verificacao_ambiente.py',
     'configurar_telegram.py','startup_windows.py','ponte_robotask.py',
     'painel_rotina.html','requirements.txt','requirements-google.txt',
-    'README.md','README_CODEX.md','LEIA-ME.md','AGENTS.md',
-    'testes/test_colaboracao_chats.py','testes/test_nucleo.py',
+    'README.md','README_CODEX.md','LEIA-ME.md','AGENTS.md','GUIA_REDIRECIONAMENTO.md','REVISAO_V2_4_1.md',
+    'GUIA_EQUIPE_PARALELA.md','REVISAO_V2_5_0.md','AUDITORIA_ASSISTENTE_V2_5_0.md',
+    'REVISAO_V2_5_1.md','testes/test_vida_legada.py',
+    'GUIA_PERFIL_CPU.md','REVISAO_V2_5_2.md','testes/test_ollama_perfil_cpu.py',
+    'GUIA_EQUIPE_COOPERATIVA.md','REVISAO_V2_6_0.md','voz_assistente.py',
+    'transcritor_local.py','iniciar_servicos_locais.py','instancia_assistente.py','preparar_inicio_automatico.py',
+    'ativar_assistente_automatico.bat','requirements-voz-local.txt','GUIA_AUTOMATICO.md','REVISAO_V2_7_0.md',
+    'testes/test_transcritor_local.py','testes/test_inicio_automatico.py','testes/test_equipe_padrao.py','testes/test_servicos_inicio.py','testes/test_defaults_integracao.py',
+    'testes/test_equipe_cooperativa.py','testes/test_integracao_cooperativa.py',
+    'REVISAO_V2_7_1.md','testes/test_recursos_equipe_cpu.py','testes/test_conversa_sem_acao.py',
+    'manutencao_assistente.py','atualizar_assistente.bat','GUIA_MANUTENCAO.md','REVISAO_V2_8_0.md',
+    'GUIA_RECUPERACAO_PATCH.md','REVISAO_V2_8_2.md','testes/test_capacidades_locais.py','testes/test_logs_resumo.py',
+    'testes/test_manutencao_assistente.py','testes/test_velocidade_equipes.py','testes/test_status_rapido.py','testes/test_respostas_rapidas.py',
+    'testes/test_rotina_natural_semana.py','testes/test_voz_assistente.py',
+    'diagnostico_ollama.py','diagnosticar_ollama.bat','testar_ollama_cpu.bat','GUIA_DIAGNOSTICO_OLLAMA.md','testes/test_diagnostico_ollama.py',
+    'testes/test_auditoria_v250.py','testes/test_conversa_equipe.py','testes/test_chat_equipe.py',
+    'testes/test_caminhos_instalacao.py','testes/test_redirecionar_assistente.py','testes/test_configuracao_externa.py','testes/test_idempotencia_painel.py','testes/test_redacao_inline.py',
+    'testes/test_colaboracao_chats.py','testes/test_nucleo.py','testes/test_interpretacao_natural.py','testes/test_fluxos_colaboracao.py','testes/test_agenda_google.py','testes/test_ollama_configuracao.py',
     'testes/test_multi_ia_regressoes.py','testes/test_diagnostico_provedores.py',
 )
-_NOMES_SEGREDOS = r'(?:TELEGRAM_TOKEN|GEMINI_API_KEY|GOOGLE_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|CLAUDE_API_KEY|EXA_API_KEY|API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|AUTHORIZATION|X-API-KEY)'
-_SEGREDO_CITADO = re.compile(r'(?i)([\"\']?\b'+_NOMES_SEGREDOS+r'\b[\"\']?\s*[:=]\s*)([\"\'])([^\r\n]*?)\2')
-_SEGREDO_LINHA = re.compile(r'(?im)(^\s*'+_NOMES_SEGREDOS+r'\s*=\s*)([^\r\n#]+)')
 
 
 def _agora():
@@ -47,9 +60,7 @@ def _agora():
 
 
 def _seguro(texto):
-    texto=str(nucleo.redigir(texto))
-    texto=_SEGREDO_CITADO.sub(lambda m:m[1]+m[2]+'[CREDENCIAL-REDACTADA]'+m[2],texto)
-    return _SEGREDO_LINHA.sub(lambda m:m[1]+'[CREDENCIAL-REDACTADA]',texto)
+    return str(nucleo.redigir(texto))
 
 
 def _texto(valor,nome,limite,*,vazio=False,truncar=False):
@@ -110,13 +121,16 @@ def _novo_chat(dados,espaco,titulo,provedor):
     if len(espaco['chats'])>=limite or total>=MAX_CHATS:raise ValueError('Limite de conversas atingido. Use uma conversa existente.')
     agora=_agora()
     chat={'id':'chat_'+uuid.uuid4().hex[:16],'titulo':titulo,'provedor':provedor,'modelo_ollama':'',
-          'modo_conversa':False,'criado_em':agora,'atualizado_em':agora,'mensagens':[]}
+          'modo_conversa':True,'conversa_v240':True,'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'cooperativa',
+          'equipe_politica':'automatica' if provedor=='auto' else 'manual',
+          'criado_em':agora,'atualizado_em':agora,'mensagens':[]}
     espaco['chats'].append(chat);espaco['ativo']=chat['id']
     return chat
 
 
 def _metadados(chat):
-    return {**{chave:copy.deepcopy(valor) for chave,valor in chat.items() if chave!='mensagens'},
+    return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',
+            **{chave:copy.deepcopy(valor) for chave,valor in chat.items() if chave!='mensagens'},
             'total_mensagens':len(chat.get('mensagens',[]))}
 
 
@@ -160,8 +174,11 @@ def obter_chat_ativo(contexto):
         dados=_ler();espaco=_espaco(dados,chave)
         if not espaco['chats']:
             chat=_novo_chat(dados,espaco,'Conversa principal','auto');_salvar(dados)
-        else:chat=_achar_chat(espaco)
-        return copy.deepcopy(chat)
+        else:
+            chat=_achar_chat(espaco)
+            if not chat.get('conversa_v240'):
+                chat['modo_conversa']=True;chat['conversa_v240']=True;_salvar(dados)
+        return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',**copy.deepcopy(chat)}
 
 
 def selecionar_chat(contexto,chat_id):
@@ -169,23 +186,60 @@ def selecionar_chat(contexto,chat_id):
     with nucleo._LOCK:
         dados=_ler();espaco=_espaco(dados,chave);chat=_achar_chat(espaco,chat_id)
         espaco['ativo']=chat['id'];_salvar(dados)
-        return copy.deepcopy(chat)
+        return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',**copy.deepcopy(chat)}
 
 
-def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_ollama=None):
+def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_ollama=None,
+                    equipe_modelos=None,equipe_paralela=None,equipe_modo=None,equipe_politica=None):
     chave=_contexto(contexto)
     if provedor is not None:provedor=_provedor(provedor)
     if modelo_ollama is not None:
         from configurar_ia_local import validar_modelo
         if modelo_ollama!='':modelo_ollama=validar_modelo(modelo_ollama)
     if modo_conversa is not None and not isinstance(modo_conversa,bool):raise ValueError('Modo de conversa deve ser verdadeiro ou falso.')
+    if equipe_paralela is not None and not isinstance(equipe_paralela,bool):raise ValueError('Modo equipe deve ser verdadeiro ou falso.')
+    if equipe_modo is not None and equipe_modo not in ('cooperativa','paralela'):
+        raise ValueError('Modo da equipe deve ser cooperativa ou paralela.')
+    if equipe_politica is not None and equipe_politica not in ('automatica','manual'):
+        raise ValueError('Política da equipe deve ser automatica ou manual.')
+    if equipe_modelos is not None:
+        from configurar_ia_local import validar_modelo
+        if not isinstance(equipe_modelos,list) or len(equipe_modelos)>8:raise ValueError('Selecione até oito modelos.')
+        equipe_modelos=list(dict.fromkeys(validar_modelo(m) for m in equipe_modelos))
     with nucleo._LOCK:
-        dados=_ler();chat=_achar_chat(_espaco(dados,chave),chat_id)
+        dados=_ler();original=_achar_chat(_espaco(dados,chave),chat_id);chat=copy.deepcopy(original)
+        if provedor is not None or modelo_ollama is not None:
+            chat.update({'equipe_modelos':[],'equipe_paralela':False})
         if provedor is not None:chat['provedor']=provedor
-        if modo_conversa is not None:chat['modo_conversa']=modo_conversa
+        if modo_conversa is not None:chat['modo_conversa']=modo_conversa;chat['conversa_v240']=True
         if modelo_ollama is not None:chat['modelo_ollama']=modelo_ollama
-        chat['atualizado_em']=_agora();_salvar(dados)
+        if equipe_modelos is not None:chat['equipe_modelos']=equipe_modelos
+        if equipe_paralela is not None:chat['equipe_paralela']=equipe_paralela
+        if equipe_modo is not None:chat['equipe_modo']=equipe_modo
+        if equipe_politica is not None:chat['equipe_politica']=equipe_politica
+        elif any(valor is not None for valor in (provedor,modelo_ollama,equipe_modelos,equipe_paralela,equipe_modo)):
+            # Configuradores usados pelas interfaces expressam uma escolha
+            # explícita. Ela permanece após reinícios e atualização do catálogo.
+            chat['equipe_politica']='manual'
+        if chat.get('equipe_paralela') and (chat.get('provedor')!='Ollama' or not chat.get('equipe_modelos')):
+            raise ValueError('Equipe ativa exige Ollama e uma lista de modelos.')
+        chat['atualizado_em']=_agora();original.clear();original.update(chat);_salvar(dados)
         return copy.deepcopy(chat)
+
+
+def configurar_equipe_automatica(contexto,chat_id,modelos):
+    """Aplica o catálogo lido fora da trava, sem substituir uma escolha recente."""
+    if not isinstance(modelos,list) or not 1<=len(modelos)<=8:
+        raise ValueError('A equipe automática exige de um a oito modelos no catálogo Ollama.')
+    with nucleo._LOCK:
+        atual=obter_chat_ativo(contexto)
+        if atual['id']!=chat_id or atual.get('equipe_politica','automatica')!='automatica':
+            raise RuntimeError('A conversa ou sua configuração mudou durante a leitura do catálogo. Envie o pedido novamente.')
+        if (atual.get('provedor')=='Ollama' and atual.get('equipe_paralela') is True and
+                atual.get('equipe_modo')=='cooperativa' and atual.get('equipe_modelos')==modelos):
+            return atual
+        return configurar_chat(contexto,chat_id,provedor='Ollama',equipe_modelos=modelos,
+                               equipe_paralela=True,equipe_modo='cooperativa',equipe_politica='automatica')
 
 
 def historico_chat(contexto,chat_id=None):

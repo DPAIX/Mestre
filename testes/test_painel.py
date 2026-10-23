@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch,MagicMock
 from urllib.error import HTTPError
 from urllib.request import Request,urlopen
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -44,6 +44,16 @@ class PainelTeste(unittest.TestCase):
         with urlopen(req) as resposta:
             obj=json.loads(resposta.read())
         self.assertIn('resumo',obj)
+    def test_estado_reutiliza_leitura_de_vida_e_catalogo(self):
+        original=nucleo.ler_json
+        with patch.object(nucleo,'ler_json',wraps=original) as ler, \
+                patch.object(app,'ler_json',wraps=ler):
+            req=Request(self.url+'/api/estado',headers={'X-Painel-Token':app.TOKEN_PAINEL})
+            with urlopen(req) as resposta:obj=json.load(resposta)
+        nomes=[chamada.args[0] for chamada in ler.call_args_list]
+        self.assertEqual(nomes.count('gestao_vida.json'),1)
+        self.assertEqual(nomes.count('robotask_conhecimento.json'),1)
+        self.assertEqual(obj['resumo']['total_tarefas'],len(obj['vida']['rotina']))
     def test_post_origem_obrigatoria(self):
         req=Request(self.url+'/api/acao',data=b'{"acao":"agua"}',headers={'X-Painel-Token':app.TOKEN_PAINEL,'Content-Type':'application/json'},method='POST')
         with self.assertRaises(HTTPError) as exc:urlopen(req)
@@ -54,6 +64,31 @@ class PainelTeste(unittest.TestCase):
         with urlopen(req) as resposta:obj=json.load(resposta)
         self.assertTrue(obj['ok'])
         self.assertIn('Água:',obj['mensagem'])
+
+    def test_equipe_http_autenticada_idempotente_e_snapshot(self):
+        from idempotencia_painel import ControleAcoes
+        modelos=['qwen3.8:27b','mistral:latest','llama3.2:latest','qwen3.5:4b']
+        roteador=MagicMock()
+        roteador.catalogo_ollama.return_value={'habilitado':True,'modelos':[{'nome':m,'nuvem':False} for m in modelos]}
+        roteador.status.return_value={}
+        chat=app.CENTRAL.obter_chat_ativo('painel')
+        corpo=json.dumps({'acao':'chat_equipe','ativo':True,'id':chat['id']}).encode('utf-8')
+        headers={'X-Painel-Token':app.TOKEN_PAINEL,'Content-Type':'application/json','Origin':self.url,
+                 'X-Idempotency-Key':'equipe-http-fixture-0123456789','X-Estado-Versao':'0'}
+        with patch.object(app,'ROTEADOR',roteador),patch.object(app,'CONTROLE_PAINEL',ControleAcoes()):
+            req=Request(self.url+'/api/acao',data=corpo,headers={**headers,'X-Painel-Token':'inválido'},method='POST')
+            with self.assertRaises(HTTPError) as erro:urlopen(req)
+            with erro.exception as resposta:self.assertEqual(resposta.code,403)
+            roteador.catalogo_ollama.assert_not_called()
+            for _ in range(2):
+                with urlopen(Request(self.url+'/api/acao',data=corpo,headers=headers,method='POST')) as resposta:
+                    self.assertTrue(json.load(resposta)['ok'])
+            roteador.catalogo_ollama.assert_called_once_with()
+            roteador.responder.assert_not_called()
+            with urlopen(Request(self.url+'/api/estado',headers={'X-Painel-Token':app.TOKEN_PAINEL})) as resposta:
+                ativo=json.load(resposta)['colaboracao']['chat_ativo']
+            self.assertTrue(ativo['equipe_paralela'])
+            self.assertEqual(ativo['equipe_modelos'],modelos)
 
 if __name__=='__main__':unittest.main()
 

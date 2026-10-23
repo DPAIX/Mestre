@@ -29,7 +29,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;
 <div class="duo"><div class="panel"><h2>Tarefas do projeto</h2><form id="form-tarefa" class="form-grade"><label for="projeto-titulo">Título da tarefa</label><input id="projeto-titulo" maxlength="150" required><label for="projeto-descricao">Objetivo e critérios de conclusão</label><textarea id="projeto-descricao" maxlength="4000" required></textarea><label for="projeto-papel">Responsável ou papel</label><input id="projeto-papel" maxlength="60" placeholder="Ex.: revisão, implementação, testes"><button type="submit">Criar tarefa</button></form><div id="lista-tarefas-projeto"></div></div>
 <div class="panel"><h2>Importar contribuição</h2><p class="muted">Cole uma proposta obtida em outro chat. Revise antes de aceitar: a aprovação registra uma proposta para o projeto, sem aplicar código automaticamente.</p><form id="form-contribuicao" class="form-grade"><label for="contribuicao-origem">Origem</label><input id="contribuicao-origem" maxlength="80" required placeholder="Ex.: ChatGPT · revisão do painel"><label for="contribuicao-titulo">Título</label><input id="contribuicao-titulo" maxlength="150" required><label for="contribuicao-tarefa">Tarefa relacionada (opcional)</label><select id="contribuicao-tarefa"><option value="">Sem tarefa relacionada</option></select><label for="contribuicao-texto">Texto ou proposta</label><textarea id="contribuicao-texto" maxlength="30000" required></textarea><button type="submit">Importar para revisão</button></form><div id="lista-contribuicoes"></div></div></div>
 </section>
-<section class="section" id="ias"><div class="duo"><div class="panel"><h2>Perguntas e pesquisa</h2><p class="muted">As perguntas usam a conversa ativa em «Chats e projeto»; para pesquisa na web escreva «pesquise ...». Nada aqui executa código sugerido pela IA.</p><p id="ia-chat-ativo" class="muted"></p><div class="row"><input class="flex" type="text" id="pergunta" maxlength="1000" aria-label="Pergunta ou pesquisa" placeholder="Pergunte algo ou pesquise robótica ..."><button id="consultar">Perguntar</button></div><div id="resposta" class="status" role="status">Aguardando pergunta.</div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. O teste de conexões faz uma consulta explícita aos provedores configurados e pode consumir créditos.</p><div class="row"><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="testar-conexoes">🔌 Testar conexões configuradas</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div><p class="muted">Para usar seus modelos Ollama, execute <code>configurar_ia_local.bat</code> e crie uma conversa com o provedor Ollama. Em «Chats e projeto», clique em «Atualizar modelos do Ollama» e escolha o modelo de cada conversa. Modelos como <code>qwen3.5:4b</code> podem executar no PC; nomes com <code>-cloud</code> indicam uso da nuvem Ollama, sujeito a conta, internet e cota.</p></div></div></section>
+<section class="section" id="ias"><div class="duo"><div class="panel"><h2>Conversar e pedir ajuda</h2><p class="muted">Escreva como falaria com seu assistente: peça ajuda, consulte a rotina ou descreva uma ação. A conversa ativa fica em «Chats e projeto». Pedidos que precisam de confirmação aparecem abaixo; revise a descrição antes de confirmar.</p><p id="ia-chat-ativo" class="muted"></p><div class="row"><input class="flex" type="text" id="pergunta" maxlength="1000" aria-label="Mensagem ou pedido" placeholder="Ex.: Mostre minha rotina ou abra a calculadora"><button id="consultar">Perguntar</button></div><div id="resposta" class="status" role="status">Aguardando mensagem.</div><div id="pedido-resposta" aria-live="polite"></div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. O teste de conexões faz uma consulta explícita aos provedores configurados e pode consumir créditos.</p><div class="row"><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="testar-conexoes">🔌 Testar conexões configuradas</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div><p class="muted">Para usar seus modelos Ollama, execute <code>configurar_ia_local.bat</code> e crie uma conversa com o provedor Ollama. Em «Chats e projeto», clique em «Atualizar modelos do Ollama» e escolha o modelo de cada conversa. Modelos como <code>qwen3.5:4b</code> podem executar no PC; nomes com <code>-cloud</code> indicam uso da nuvem Ollama, sujeito a conta, internet e cota.</p></div></div></section>
 <section class="section" id="evolucao"><div class="duo">
 <div class="panel"><h2>🧠 Auditoria local e serviços externos</h2>
 <p class="muted">Análise periódica local (padrão: 360 minutos). Inspeciona código, JSON, disco e logs. O resultado local e os avisos de serviços externos aparecem separados. Os logs registram consultas anteriores; esta análise não consulta as APIs nem confirma a disponibilidade atual dos provedores.</p>
@@ -55,34 +55,88 @@ const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'B
 function el(tag,content,cls){const x=document.createElement(tag);if(content!==undefined)x.textContent=String(content);if(cls)x.className=cls;return x}
 function aviso(mensagem){const a=$('aviso');text(a,mensagem);a.style.display='block'}
 const pedidosAtivos=new Set();
+const resultadosPendentes=new Map();
 let versaoEstado=0;
+let versaoServidor=null;
+let estadoRecebido=false;
+let protocoloIdempotencia=null;
 let chatAtivoId='';
 let chatModeloAtual='';
+let chatEquipeAtiva=false;
 let catalogoOllama=null;
-function atualizarBotoes(){document.querySelectorAll('button:not([data-tab])').forEach(b=>{b.disabled=b.id==='cancelar-windows'?pedidosAtivos.has('cancelar'):pedidosAtivos.size>0})}
-async function api(caminho,body){
+function equipeAutomatica(chat){return !!chat?.id&&chat.equipe_politica!=='manual'}
+function atualizarBotoes(){
+ document.querySelectorAll('button:not([data-tab])').forEach(b=>{b.disabled=b.id==='cancelar-windows'?pedidosAtivos.has('cancelar'):pedidosAtivos.size>0});
+ $('chat-equipe-paralela').disabled=pedidosAtivos.size>0||!chatAtivoId;
+ $('chat-atualizar-equipe').disabled=pedidosAtivos.size>0||!chatAtivoId||!chatEquipeAtiva;
+}
+function erroHTTP(mensagem,codigo){const erro=Error(mensagem);erro.codigoHTTP=codigo;return erro}
+function chaveIdempotencia(){
+ if(typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')return crypto.randomUUID();
+ if(typeof crypto!=='undefined'&&typeof crypto.getRandomValues==='function')return 'acao_'+Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
+ throw Error('Este navegador não conseguiu identificar a solicitação. Recarregue o painel em um navegador atualizado.');
+}
+async function api(caminho,body,opcoes={}){
  const controle=new AbortController();
- const opt={headers:{'X-Painel-Token':token},signal:controle.signal};
+ const opt={headers:{'X-Painel-Token':token,...opcoes.headers},signal:controle.signal};
  if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
- const espera=body?(body.acao==='equipe_ia'?540000:body.acao==='conexoes_ia'?240000:180000):10000;
+ const espera=opcoes.timeout??(body?(body.acao==='equipe_ia'?540000:body.acao==='conexoes_ia'?240000:body.acao==='pergunta'&&chatEquipeAtiva?1200000:180000):10000);
  const prazo=setTimeout(()=>controle.abort(),espera);
  try{
   const r=await fetch(caminho,opt);
-  if(r.status===403)throw Error('Sessão inválida. Recarregue o painel para renovar o acesso.');
-  let d;try{d=await r.json()}catch{throw Error('Resposta inválida do painel (HTTP '+r.status+').')}
-  if(!r.ok)throw Error(d?.erro||'Falha no pedido (HTTP '+r.status+').');
-  if(!d||typeof d!=='object'||Array.isArray(d))throw Error('Resposta inválida do painel.');
+  if(opcoes.receberStatus)opcoes.receberStatus(r.status);
+  if(r.status===403)throw erroHTTP('Sessão inválida. Recarregue o painel para renovar o acesso.',403);
+  let d;try{d=await r.json()}catch{const erro=erroHTTP('Resposta inválida do painel (HTTP '+r.status+').',r.status);erro.resultadoIncerto=!!body;throw erro}
+  if(!r.ok){const erro=erroHTTP(d?.erro||'Falha no pedido (HTTP '+r.status+').',r.status);erro.resultadoIncerto=!!body&&r.status>=500;throw erro}
+  if(!d||typeof d!=='object'||Array.isArray(d)){const erro=Error('Resposta inválida do painel.');erro.resultadoIncerto=!!body;throw erro}
   return d;
  }catch(e){
-  if(e.name==='AbortError'||e instanceof TypeError)throw Error(body?'Não foi possível confirmar a ação. Confira o estado antes de tentar novamente.':'Sem conexão com o painel. Verifique se o assistente está em execução.');
+  if(e.name==='AbortError'||e.name==='TypeError'||e instanceof TypeError){const erro=Error(body?'Não foi possível confirmar a ação. Confira o estado antes de tentar novamente.':'Sem conexão com o painel. Verifique se o assistente está em execução.');erro.resultadoIncerto=!!body;throw erro}
   throw e;
  }finally{clearTimeout(prazo)}
+}
+async function aguardarRecuperacao(){await new Promise(resolve=>setTimeout(resolve,400))}
+async function recuperarResultadoAcao(chave){
+ for(let tentativa=0;tentativa<6;tentativa++){
+  const consulta=await api('/api/resultado_acao?id='+encodeURIComponent(chave),undefined,{timeout:2500});
+  if(consulta.estado==='concluido'){
+   if(!Number.isInteger(consulta.codigo_http)||consulta.codigo_http<200||consulta.codigo_http>599||!consulta.resposta||typeof consulta.resposta!=='object'||Array.isArray(consulta.resposta))throw Error('O painel retornou um resultado incompleto.');
+   if(consulta.codigo_http>=400){const erro=erroHTTP(consulta.resposta.erro||'A solicitação terminou com uma falha (HTTP '+consulta.codigo_http+').',consulta.codigo_http);erro.resultadoConhecido=true;throw erro}
+   return consulta.resposta;
+  }
+  if(consulta.estado!=='em_andamento')throw Error('O painel não confirmou o resultado desta solicitação.');
+  if(tentativa<5)await aguardarRecuperacao();
+ }
+ throw Error('A solicitação continua em andamento. Confira o estado antes de tentar novamente; a ação não foi repetida.');
 }
 async function enviarAcao(acao,campos={}){
  const chave=acao==='cancelar_reinicio_windows'?'cancelar':'acao';
  if(pedidosAtivos.has(chave)||(pedidosAtivos.size&&chave!=='cancelar'))return null;
  pedidosAtivos.add(chave);atualizarBotoes();
- try{const d=await api('/api/acao',{acao,...campos});await atualizar();return d}
+ let id,identidade;
+ try{
+  const corpo={acao,...campos};identidade=JSON.stringify(corpo);
+  id=resultadosPendentes.get(identidade)||chaveIdempotencia();
+  if(chave!=='cancelar'&&resultadosPendentes.size>=64&&!resultadosPendentes.has(identidade))throw Error('Há solicitações aguardando resultado. Confira o estado antes de enviar outra ação.');
+  let d;
+  if(resultadosPendentes.has(identidade))d=await recuperarResultadoAcao(id);
+  else{
+   if(!estadoRecebido)await atualizar();
+   if(!estadoRecebido)throw Error('Aguarde o carregamento do estado do painel antes de enviar a ação. Nenhuma ação foi enviada.');
+   const headers=protocoloIdempotencia===true?{'X-Idempotency-Key':id,'X-Estado-Versao':String(versaoServidor)}:{};
+   let codigo,recuperado=false;
+   try{d=await api('/api/acao',corpo,{headers,receberStatus:valor=>{codigo=valor}})}
+   catch(erro){if(!erro.resultadoIncerto)throw erro;resultadosPendentes.set(identidade,id);d=await recuperarResultadoAcao(id);recuperado=true}
+   if(!recuperado&&(codigo===202||d.estado==='em_andamento')){resultadosPendentes.set(identidade,id);d=await recuperarResultadoAcao(id)}
+  }
+  resultadosPendentes.delete(identidade);await atualizar();return d;
+ }catch(erro){
+  if(erro.resultadoConhecido)resultadosPendentes.delete(identidade);
+  if(erro.codigoHTTP===409||erro.resultadoConhecido||resultadosPendentes.has(identidade))await atualizar();
+  if(erro.codigoHTTP===409)throw Error('O estado mudou ou a solicitação está em conflito. O painel foi atualizado; a ação não foi repetida. Revise os dados antes de enviar outro pedido.');
+  if(resultadosPendentes.has(identidade)&&!erro.resultadoConhecido&&erro.codigoHTTP!==403)throw Error('Não foi possível confirmar o resultado da ação. Confira o estado antes de tentar novamente. Novas tentativas deste mesmo pedido consultarão o resultado sem repetir a ação.');
+  throw erro;
+ }
  finally{pedidosAtivos.delete(chave);atualizarBotoes()}
 }
 async function agir(acao,campos={}){try{const d=await enviarAcao(acao,campos);if(!d)return null;aviso(d.mensagem||'Executado');return d}catch(e){aviso('⚠️ '+e.message);return null}}
@@ -168,15 +222,28 @@ function renderColaboracao(dados){
  const chats=Array.isArray(c?.chats)?c.chats:[],tarefas=Array.isArray(c?.tarefas)?c.tarefas:[],propostas=Array.isArray(c?.contribuicoes)?c.contribuicoes:[];
  text($('resumo-projeto'),c?`${chats.length} conversa(s) · ${tarefas.length} tarefa(s) · ${propostas.length} contribuição(ões).`:'Central de chats indisponível nesta versão do servidor. Atualize o assistente para usar esta aba.');
  const ativo=c?.chat_ativo;
- chatAtivoId=ativo?.id||'';
+ const proximoChat=ativo?.id||'';
+ if(chatAtivoId!==proximoChat){$('chat-pedido').replaceChildren();$('pedido-resposta').replaceChildren()}
+ chatAtivoId=proximoChat;
+ const modo=$('chat-modo-conversa');
+ modo.checked=ativo?.modo_conversa!==false;
+ modo.disabled=pedidosAtivos.size>0||!chatAtivoId;
+ text($('chat-modo-status'),modo.checked?'Conversa contínua ativa. Basta escrever sua mensagem; os pedidos de alteração continuam sujeitos a confirmação.':'Conversa contínua desativada nesta sessão. As mensagens enviadas pelos botões do painel continuam sendo solicitações explícitas.');
+ const automatica=equipeAutomatica(ativo);
+ chatEquipeAtiva=!!chatAtivoId&&(automatica||ativo?.equipe_paralela===true);
+ const modoEquipe=automatica||ativo?.equipe_modo==='cooperativa'?'cooperativa':'paralela';
+ const modelosEquipe=Array.isArray(ativo?.equipe_modelos)?ativo.equipe_modelos.filter(nome=>typeof nome==='string'&&nome.trim()):[];
+ const controleEquipe=$('chat-equipe-paralela');controleEquipe.checked=chatEquipeAtiva;controleEquipe.disabled=pedidosAtivos.size>0||!chatAtivoId;
+ $('chat-atualizar-equipe').disabled=pedidosAtivos.size>0||!chatAtivoId||!chatEquipeAtiva;
+ text($('chat-equipe-status'),!chatAtivoId?'Selecione uma conversa para começar.':automatica?(modelosEquipe.length?`Equipe automática cooperativa · ${modelosEquipe.length} modelo(s) registrados: ${modelosEquipe.join(', ')}. O catálogo será atualizado na próxima pergunta que precise de IA.`:'Equipe automática: catálogo consultado na próxima pergunta que precise de IA. Basta escrever; os modelos ainda não foram listados nesta conversa.'):chatEquipeAtiva?(modelosEquipe.length?`Equipe ${modoEquipe} ativa · ${modelosEquipe.length} modelo(s): ${modelosEquipe.join(', ')}. Seleção manual salva nesta conversa; Atualizar equipe relê o catálogo.`:'Equipe manual ativa, mas a lista de modelos não foi informada. Atualize a equipe pelo catálogo antes de conversar.'):'Equipe desativada por escolha manual nesta conversa. O modelo individual será utilizado.');
  chatModeloAtual=ativo?.modelo_ollama||'';renderModelosOllama();
- const escolhaOllama=ativo?.provedor==='Ollama'?` · ${ativo.modelo_ollama||'modelo padrão do .env'}`:'';
+ const escolhaOllama=automatica?` · equipe automática cooperativa${modelosEquipe.length?' ('+modelosEquipe.length+' modelo(s))':' · catálogo na próxima pergunta'}`:chatEquipeAtiva?` · equipe ${modoEquipe} (${modelosEquipe.length} modelo(s))`:ativo?.provedor==='Ollama'?` · ${ativo.modelo_ollama||'modelo padrão do .env'}`:'';
  const provedorAtivo=$('chat-ativo-provedor');if(provedorAtivo.dataset.chat!==chatAtivoId||provedorAtivo.dataset.provedor!==ativo?.provedor){provedorAtivo.value=ativo?.provedor||'auto';provedorAtivo.dataset.chat=chatAtivoId;provedorAtivo.dataset.provedor=ativo?.provedor||'auto'}
  text($('chat-titulo'),ativo?.titulo||'Conversa ativa');
  text($('chat-provedor'),ativo?`Provedor: ${ativo.provedor||'auto'}${escolhaOllama}. As respostas ficam nesta conversa.`:'Crie ou selecione uma conversa para manter o histórico separado.');
  text($('ia-chat-ativo'),ativo?`Conversa ativa: ${ativo.titulo||'Sem título'} · ${ativo.provedor||'auto'}${escolhaOllama}`:'Conversa padrão do assistente. Organize novas conversas em «Chats e projeto».');
  const lista=$('lista-chats');lista.replaceChildren();
- for(const chat of chats){const b=botaoAcao(`${chat.id===ativo?.id?'✓ ':''}${chat.titulo||'Sem título'} · ${chat.provedor||'auto'}${chat.provedor==='Ollama'?' · '+(chat.modelo_ollama||'modelo padrão'):''}`,'chat_selecionar',{id:chat.id});b.classList.toggle('active',chat.id===ativo?.id);b.setAttribute('aria-pressed',String(chat.id===ativo?.id));lista.append(b)}
+ for(const chat of chats){const b=botaoAcao(`${chat.id===ativo?.id?'✓ ':''}${chat.titulo||'Sem título'} · ${chat.provedor||'auto'}${equipeAutomatica(chat)?' · equipe automática cooperativa':chat.equipe_paralela===true?' · equipe '+(chat.equipe_modo==='cooperativa'?'cooperativa':'paralela'):chat.provedor==='Ollama'?' · '+(chat.modelo_ollama||'modelo padrão'):''}`,'chat_selecionar',{id:chat.id});b.classList.toggle('active',chat.id===ativo?.id);b.setAttribute('aria-pressed',String(chat.id===ativo?.id));lista.append(b)}
  if(!chats.length)lista.append(el('p','Nenhuma conversa criada.'));
  const historico=$('historico-chat'),proximoDoFim=historico.scrollHeight-historico.scrollTop-historico.clientHeight<60,mudouChat=historico.dataset.chat!==(ativo?.id||'');
  historico.dataset.chat=ativo?.id||'';historico.replaceChildren();
@@ -192,10 +259,40 @@ function renderColaboracao(dados){
  for(const proposta of propostas){const item=el('div',undefined,'projeto-item');item.append(el('h3',proposta.titulo||'Sem título'),el('small',`${proposta.origem||'Origem não informada'} · ${proposta.status||'rascunho'}`));const detalhes=el('details');detalhes.append(el('summary','Ler contribuição'),el('p',proposta.texto||''));item.append(detalhes);if(proposta.conflito_base)item.append(el('p','Os arquivos da base mudaram desde esta proposta. Revise as diferenças antes de usar o conteúdo.','muted'));const linha=el('div',undefined,'row');if(proposta.status!=='aceita')linha.append(botaoAcao('Aceitar como proposta','contribuicao_status',{id:proposta.id,status:'aceita'}));if(proposta.status!=='rejeitada')linha.append(botaoAcao('Rejeitar','contribuicao_status',{id:proposta.id,status:'rejeitada'}));item.append(linha);contribs.append(item)}
  if(!propostas.length)contribs.append(el('p','Nenhuma contribuição importada.','muted'));
 }
+async function configurarEquipeConversa(ativo){
+ if(!chatAtivoId){$('chat-equipe-paralela').checked=chatEquipeAtiva;aviso('Crie ou selecione uma conversa primeiro.');return null}
+ if(pedidosAtivos.size){$('chat-equipe-paralela').checked=chatEquipeAtiva;return null}
+ const d=await agir('chat_equipe',{ativo,id:chatAtivoId,...(ativo?{modo:'cooperativa'}:{})});
+ if(!d){$('chat-equipe-paralela').checked=chatEquipeAtiva;await atualizar()}
+ return d;
+}
+function exibirPedidoConversa(saida,pedido){
+ const destino=$(saida==='chat-resposta'?'chat-pedido':'pedido-resposta');destino.replaceChildren();
+ if(pedido===undefined||pedido===null)return;
+ if(typeof pedido!=='object'||Array.isArray(pedido)||typeof pedido.id!=='string'||!pedido.id||pedido.id.length>200||typeof pedido.descricao!=='string'||!pedido.descricao.trim()||pedido.descricao.length>2000){
+  destino.append(el('p','A resposta trouxe uma solicitação inválida para confirmação. Descreva novamente o que deseja fazer.','muted'));return;
+ }
+ const cartao=el('div',undefined,'projeto-item');
+ cartao.append(el('strong','Revise a ação proposta'),el('p',pedido.descricao),el('small','A ação só será solicitada ao confirmar. Você também pode cancelar e reformular o pedido.'));
+ const linha=el('div',undefined,'row'),confirmar=el('button','Confirmar ação'),cancelar=el('button','Cancelar');
+ confirmar.type='button';cancelar.type='button';
+ let encerrado=false;
+ const responder=async acao=>{
+  if(encerrado||pedidosAtivos.size)return;encerrado=true;confirmar.disabled=true;cancelar.disabled=true;
+  const d=await agir(acao,{id:pedido.id});
+  destino.replaceChildren();
+  text($(saida),d?.mensagem||(acao==='pedido_confirmar'?'Não foi possível confirmar o resultado. Confira o aviso e o estado antes de formular outro pedido.':'Não foi possível concluir o cancelamento. Confira o aviso; o pedido não será repetido automaticamente.'));
+  if(typeof d?.imagem==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(d.imagem)&&d.imagem.length<11000000){const img=el('img');img.src=d.imagem;img.alt='Captura de tela solicitada';img.style.maxWidth='100%';$(saida).append(img)}
+ };
+ confirmar.addEventListener('click',()=>responder('pedido_confirmar'));
+ cancelar.addEventListener('click',()=>responder('pedido_cancelar'));
+ linha.append(confirmar,cancelar);cartao.append(linha);destino.append(cartao);
+}
 async function consultarChat(entrada,saida){
  const campo=$(entrada),pergunta=campo.value.trim();if(!pergunta||pedidosAtivos.size)return;
- text($(saida),'Consultando a IA da conversa ativa...');
- try{const d=await enviarAcao('pergunta',{texto:pergunta});if(d){text($(saida),d.mensagem||'Sem resposta');if(entrada==='chat-texto'&&campo.value.trim()===pergunta)campo.value=''}}
+ exibirPedidoConversa(saida,null);
+ text($(saida),'Interpretando sua mensagem...');
+ try{const d=await enviarAcao('pergunta',{texto:pergunta});if(d){text($(saida),d.mensagem||'Sem resposta');exibirPedidoConversa(saida,d.pedido);if(entrada==='chat-texto'&&campo.value.trim()===pergunta)campo.value=''}}
  catch(e){text($(saida),'⚠️ '+e.message)}
 }
 async function baixarContexto(){
@@ -227,7 +324,7 @@ function textoAutoanalise(a){
   linhas.push(`• ${x.provedor||x.alvo||'Serviço externo'}${codigo}: ${x.detalhe||'Falha registrada na última consulta.'}`);
   if(x.em_pausa===true)linhas.push('Pausa local de novas consultas em vigor.');
   if(x.em_pausa===false)linhas.push('Sem pausa local em vigor; uma nova consulta depende de solicitação do usuário.');
-  const orientacao=x.orientacao||(Number(x.codigo)===503?'O provedor registrou alta demanda ou sobrecarga temporária (503). Aguarde antes de solicitar outra consulta. Esse código não indica falta de créditos.':'Verifique a orientação do provedor para a falha registrada.');
+  const orientacao=(x.provedor==='Ollama'&&Number(x.codigo)===404)?orientacaoOllama404:x.orientacao||(Number(x.codigo)===503?'O provedor registrou alta demanda ou sobrecarga temporária (503). Aguarde antes de solicitar outra consulta. Esse código não indica falta de créditos.':'Verifique a orientação do provedor para a falha registrada.');
   linhas.push(orientacao);
  }
  if(avisos.length)linhas.push('Backup e arquivos locais não corrigem erros retornados pelos provedores.');
@@ -243,15 +340,36 @@ function render(s){const {vida:v,resumo:r,provedores:p,logs,robotask,autoanalise
  const hab=$('habitos');hab.replaceChildren();for(const [nome,obj] of Object.entries(v.habitos_saude||{})){const d=el('p');d.append(el('strong',nome.replaceAll('_',' ')+': '));d.append(el('span',`${obj.valor??'-'} / ${obj.meta??'-'} ${obj.unidade||''}`));hab.append(d)}
  text($('saldo-texto'),`Saldo: ${money(v.financeiro?.saldo)} • RU: ${money(v.financeiro?.custo_unitario_ru??6)}/refeição`);
  const rt=$('tarefas-robotask');rt.replaceChildren();for(const t of robotask){rt.append(el('div',`${t.nome} · ${t.external_name||'sem ID'}`,'item'))}if(!robotask.length)rt.append(el('div','Sem tarefas mapeadas. Use /scanrt no Telegram ou ponte_robotask.py.'));
- const prov=$('provedores');prov.replaceChildren();for(const [nome,sit] of Object.entries(p)){const d=el('p');d.append(el('b',nome+': '));d.append(el('span',sit));prov.append(d)}
+ const prov=$('provedores');prov.replaceChildren();for(const [nome,sit] of Object.entries(p)){const d=el('p');d.append(el('b',nome+': '));d.append(el('span',sit));prov.append(d);if(nome==='Ollama'&&/\b404\b/.test(String(sit)))prov.append(el('p',orientacaoOllama404,'muted'))}
  const ev=$('eventos');ev.replaceChildren();for(const log of logs.slice().reverse()){ev.append(el('div',`${log.timestamp||''} · ${log.acao||log.categoria||''} · ${log.status||''} · ${log.detalhes||''}`,'status'))}}
-async function atualizar(){const versao=++versaoEstado;try{const estado=await api('/api/estado');if(versao===versaoEstado)render(estado)}catch(e){if(versao===versaoEstado)text($('rede'),'⚠️ '+e.message)}}
+async function atualizar(){
+ const versao=++versaoEstado;
+ try{
+  const estado=await api('/api/estado');if(versao!==versaoEstado)return false;
+  if(!estado.vida||typeof estado.vida!=='object'||Array.isArray(estado.vida)||!estado.resumo||typeof estado.resumo!=='object'||Array.isArray(estado.resumo)||!estado.provedores||typeof estado.provedores!=='object'||Array.isArray(estado.provedores)||!Array.isArray(estado.logs)||!Array.isArray(estado.robotask))throw Error('O painel retornou um estado incompleto. Recarregue antes de enviar uma ação.');
+  if('versao_estado' in estado){
+   if(!Number.isSafeInteger(estado.versao_estado)||estado.versao_estado<0)throw Error('A versão do estado recebida é inválida. Nenhuma nova ação será enviada sem atualizar o painel.');
+   if(versaoServidor!==null&&estado.versao_estado<versaoServidor)return false;
+   versaoServidor=estado.versao_estado;protocoloIdempotencia=true;
+  }else if(protocoloIdempotencia===true)throw Error('O painel não informou a versão do estado. Atualize antes de enviar outra ação.');
+  else protocoloIdempotencia=false;
+  render(estado);estadoRecebido=true;return true;
+ }catch(e){if(versao===versaoEstado){estadoRecebido=false;text($('rede'),'⚠️ '+e.message)}return false}
+}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===b.dataset.tab))}));
 document.querySelectorAll('[data-acao]').forEach(b=>b.addEventListener('click',()=>agir(b.dataset.acao)));
 document.querySelectorAll('[data-pc]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Executar no computador: '+b.textContent+'?'))agir('pc',{comando:b.dataset.pc})}));
 $('rodar-analise').addEventListener('click',()=>agir('autoanalise'));
 $('form-chat').addEventListener('submit',async e=>{e.preventDefault();if(!$('form-chat').reportValidity())return;const titulo=$('chat-novo-titulo').value.trim();if(!titulo)return;const d=await agir('chat_criar',{titulo,provedor:$('chat-novo-provedor').value});if(d&&$('chat-novo-titulo').value.trim()===titulo)$('chat-novo-titulo').value=''});
 $('chat-trocar-provedor').addEventListener('click',()=>{if(!chatAtivoId)return aviso('Crie ou selecione uma conversa primeiro.');agir('chat_provedor',{id:chatAtivoId,provedor:$('chat-ativo-provedor').value})});
+$('chat-modo-conversa').addEventListener('change',async()=>{
+ if(!chatAtivoId||pedidosAtivos.size)return;
+ const ativo=$('chat-modo-conversa').checked;
+ const d=await agir('chat_modo',{id:chatAtivoId,ativo});
+ if(!d)await atualizar();
+});
+$('chat-equipe-paralela').addEventListener('change',()=>configurarEquipeConversa($('chat-equipe-paralela').checked));
+$('chat-atualizar-equipe').addEventListener('click',()=>configurarEquipeConversa(true));
 $('atualizar-modelos-ollama').addEventListener('click',atualizarModelosOllama);
 $('chat-detalhes-modelo').addEventListener('click',verDetalhesModeloOllama);
 $('chat-testar-modelo').addEventListener('click',testarModeloOllama);

@@ -2,6 +2,8 @@
 
 Os três modos estão disponíveis: conversas independentes no Telegram/painel, contribuições trazidas de chats web e equipe de provedores via APIs.
 
+**v2.4.0:** mensagens comuns agora entram em conversa por padrão. Leia [como conversar e executar pedidos](GUIA_CONVERSA.md). Para corrigir o padrão Ollama sem reiniciar, liste com `/modelos ollama` e selecione uma tag instalada com `/modelos padrao NOME`, ou use **Definir como padrão do Ollama** no painel. Isso salva a configuração, seleciona Ollama na conversa atual e descarta apenas a pausa ligada à configuração Ollama anterior, sem afirmar que o novo modelo já respondeu.
+
 ## Começar sem créditos de API
 
 1. Execute `instalar_windows.bat` na pasta nova do projeto.

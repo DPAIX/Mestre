@@ -15,21 +15,82 @@ from pathlib import Path
 import re
 import shutil
 import threading
+import time
 import uuid
 import zipfile
+from caminhos_instalacao import arquivo_env, diretorio_dados, ancestral_existente, SELETORES
 
 BASE = Path(__file__).resolve().parent
-DADOS = BASE / 'dados'
+DADOS = diretorio_dados(BASE)
 _LOG = logging.getLogger('meucontrolepc')
 _LOCK = threading.RLock()
+_CPU_LOCK = threading.Lock()
+_CPU_ESTADO = {'instante': None, 'total': None, 'ocioso': None, 'percentual': None}
+_CPU_CACHE_SEGUNDOS = 0.5
 SENSITIVE = re.compile(r'(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{14,}|(?<!\d)\d{5,15}:[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|\bBearer\s+\S+)',re.I)
 CONFIG_KEYS = {'telegram_token','gemini_api_key','google_api_key','pool_chaves_api','openai_api_key','claude_api_key','anthropic_api_key','exa_api_key','token','api_key','authorization','x-api-key','access_token','refresh_token','client_secret'}
+ATRIBUICAO_SENSIVEL = re.compile(
+    r'(?<![\w-])(?P<aspas>[\"\']?)(?:' +
+    '|'.join(re.escape(chave) for chave in sorted(CONFIG_KEYS, key=len, reverse=True)) +
+    r')(?P=aspas)\s*[:=]\s*', re.I)
 
 def redigir(value):
     if isinstance(value, BaseException):
         return redigir(str(value))
     if isinstance(value, str):
-        return SENSITIVE.sub('[CREDENCIAL-REDACTADA]', value)
+        # Campos nomeados também cobrem chaves sem um prefixo reconhecível
+        # (por exemplo, Exa/OAuth). A varredura respeita aspas escapadas e
+        # coleções JSON, sem deixar partes do segredo após a primeira vírgula.
+        partes = []
+        anterior = 0
+        for campo in ATRIBUICAO_SENSIVEL.finditer(value):
+            if campo.start() < anterior or campo.end() == len(value):
+                continue
+            inicio = campo.end()
+            fim = inicio
+            aspas_valor = value[inicio] if value[inicio] in ('\"', "'") else ''
+            if aspas_valor or value[inicio] in ('[', '{'):
+                pilha = []
+                citacao = ''
+                while fim < len(value):
+                    caractere = value[fim]
+                    if citacao:
+                        if caractere == '\\':
+                            fim += 2
+                            continue
+                        if caractere == citacao:
+                            citacao = ''
+                            if aspas_valor:
+                                fim += 1
+                                break
+                    elif caractere in ('\"', "'"):
+                        citacao = caractere
+                    elif caractere in ('[', '{'):
+                        pilha.append(']' if caractere == '[' else '}')
+                    elif caractere in (']', '}'):
+                        if not pilha or pilha.pop() != caractere:
+                            fim = len(value)
+                            break
+                        if not pilha:
+                            fim += 1
+                            break
+                    fim += 1
+                fim = min(fim, len(value))
+            else:
+                esquema = re.match(r'(?i)(?:Bearer|Basic|Digest|ApiKey|Token)\s+', value[inicio:])
+                fim = inicio + (esquema.end() if esquema else 0)
+                while fim < len(value) and not value[fim].isspace() and value[fim] not in ',;#]})(\"\'':
+                    fim += 1
+            if fim == inicio:
+                continue
+            partes.append(value[anterior:inicio])
+            citacao_saida = aspas_valor
+            if not citacao_saida and campo.group(0).rstrip().endswith(':'):
+                citacao_saida = campo.group('aspas')
+            partes.append(citacao_saida + '[CREDENCIAL-REDACTADA]' + citacao_saida)
+            anterior = fim
+        partes.append(value[anterior:])
+        return SENSITIVE.sub('[CREDENCIAL-REDACTADA]', ''.join(partes))
     if isinstance(value, (list,tuple)):
         return [redigir(x) for x in value]
     if isinstance(value, dict):
@@ -50,14 +111,18 @@ def _float_json_finito(valor):
 
 def ler_env(caminho=None):
     """Carrega .env sem substituir variáveis do ambiente. Não imprime valores."""
-    caminho = Path(caminho or BASE / '.env')
-    if not caminho.exists(): return
+    selecionado = caminho is None and 'MEUCONTROLEPC_ENV' in os.environ
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
+    if not caminho.is_file():
+        if selecionado:
+            raise RuntimeError('O .env externo selecionado não foi encontrado. Confira MEUCONTROLEPC_ENV; nenhuma configuração local foi usada.')
+        return
     for linha in caminho.read_text(encoding='utf-8-sig').splitlines():
         linha = linha.strip()
         if not linha or linha.startswith('#') or '=' not in linha: continue
         chave, valor = linha.split('=',1)
         chave = chave.strip()
-        if re.fullmatch(r'[A-Z][A-Z0-9_]*',chave):
+        if re.fullmatch(r'[A-Z][A-Z0-9_]*',chave) and chave not in SELETORES:
             valor = valor.strip().strip('"\'')
             os.environ.setdefault(chave,valor)
 
@@ -143,7 +208,41 @@ def migrar(origem):
 
 
 def vida():
-    return ler_json('gestao_vida.json',{})
+    valor=ler_json('gestao_vida.json',{})
+    def invalido(campo,esperado):
+        # Somente nomes do esquema; nenhum valor pessoal é incluído no erro.
+        raise ValueError('Estrutura de gestao_vida.json inválida em '+campo+': '+esperado+'. Arquivo preservado.')
+    if not isinstance(valor,dict):invalido('raiz','objeto JSON esperado')
+    rotina=valor.get('rotina',[])
+    if not isinstance(rotina,list) or any(not isinstance(item,dict) for item in rotina):
+        invalido('rotina','lista de objetos esperada')
+    for campo in ('financeiro','kanban','habitos_saude'):
+        if not isinstance(valor.get(campo,{}),dict):invalido(campo,'objeto esperado')
+    financeiro=valor.get('financeiro',{})
+    movimentos=financeiro.get('movimentacoes',[])
+    if not isinstance(movimentos,list) or any(not isinstance(item,dict) for item in movimentos):
+        invalido('financeiro.movimentacoes','lista de objetos esperada')
+    for campo in ('saldo','custo_unitario_ru'):
+        if campo in financeiro:
+            try:
+                valido=not isinstance(financeiro[campo],bool) and math.isfinite(float(financeiro[campo]))
+            except (ValueError,TypeError,OverflowError):valido=False
+            if not valido:invalido('financeiro.'+campo,'número finito esperado')
+    for itens in valor.get('kanban',{}).values():
+        if not isinstance(itens,list):invalido('kanban.*','lista esperada')
+    for nome,habito in valor.get('habitos_saude',{}).items():
+        if not isinstance(habito,dict):invalido('habitos_saude.*','objeto esperado')
+        # Sono pode ser fracionário; foco e outros hábitos podem ser textuais.
+        # Somente estes dois contadores participam das operações inteiras.
+        if nome not in ('Agua_Copos','Pomodoros_Hoje'):continue
+        for campo in ('valor','meta'):
+            if campo in habito:
+                numero=habito[campo]
+                try:
+                    valido=not isinstance(numero,bool) and int(numero)==float(numero) and int(numero)>=0
+                except (ValueError,TypeError,OverflowError):valido=False
+                if not valido:invalido('habitos_saude.'+nome+'.'+campo,'inteiro não negativo esperado')
+    return valor
 
 
 def aprender(acao,ok=True):
@@ -174,7 +273,7 @@ def registrar_agua():
         v=vida(); h=v.setdefault('habitos_saude',{}).setdefault('Agua_Copos',{'valor':0,'meta':8,'unidade':'copos'})
         h['valor']=int(h.get('valor',0))+1; gravar_json('gestao_vida.json',v)
     aprender('agua')
-    return h['valor'],h.get('meta',8)
+    return h['valor'],int(h.get('meta',8))
 
 
 def registrar_pomodoro():
@@ -224,23 +323,71 @@ def adicionar_kanban(coluna,texto):
     aprender('kanban')
 
 
-def resumo_status():
-    v=vida(); tarefas=v.get('rotina',[])
+def _uso_cpu(psutil):
+    """Amostra agregada, sem espera e compartilhada entre threads HTTP.
+
+    cpu_percent(None) mantém uma base por thread; em requisições novas isso
+    poderia apresentar zero antes de existir uma medição. A primeira amostra
+    aqui é N/D. Somente métricas de hardware são guardadas por meio segundo.
+    """
+    with _CPU_LOCK:
+        agora=time.monotonic()
+        anterior=_CPU_ESTADO.copy()
+        instante=anterior['instante']
+        if instante is not None and 0<=agora-instante<_CPU_CACHE_SEGUNDOS:
+            return anterior['percentual']
+        total=None;ocioso=None;percentual=None
+        try:
+            campos=psutil.cpu_times()._asdict()
+            if not isinstance(campos,dict) or 'idle' not in campos:
+                raise ValueError('Contadores CPU indisponíveis.')
+            if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v<0
+                   for v in campos.values()):
+                raise ValueError('Contadores CPU inválidos.')
+            # Linux já inclui guest/guest_nice em user/nice. iowait é ocioso;
+            # Windows não fornece esses campos, mantendo a mesma fórmula.
+            total=sum(campos.values())-campos.get('guest',0)-campos.get('guest_nice',0)
+            ocioso=campos['idle']+campos.get('iowait',0)
+            if not math.isfinite(total) or not math.isfinite(ocioso) or not 0<=ocioso<=total:
+                raise ValueError('Contadores CPU inconsistentes.')
+            if instante is not None and agora>=instante and anterior['total'] is not None:
+                delta=total-anterior['total'];parado=ocioso-anterior['ocioso']
+                if delta>0 and 0<=parado<=delta:
+                    percentual=round(100*(delta-parado)/delta,1)
+        except Exception:
+            # Métricas são opcionais. Uma falha não torna os dados locais
+            # indisponíveis nem publica mensagens do sistema operacional.
+            total=None;ocioso=None
+        _CPU_ESTADO.update(instante=agora,total=total,ocioso=ocioso,percentual=percentual)
+        return percentual
+
+
+def resumo_status(*,dados_vida=None,dados_robotask=None):
+    """Resumo sem espera; permite reaproveitar snapshots já lidos na requisição."""
+    v=vida() if dados_vida is None else dados_vida
+    robotask=ler_json('robotask_conhecimento.json',{}) if dados_robotask is None else dados_robotask
+    if not isinstance(v,dict) or not isinstance(robotask,dict):
+        raise ValueError('Estrutura inválida para o resumo local.')
+    tarefas=v.get('rotina',[])
     feito=sum(x.get('status')=='Concluído' for x in tarefas)
     base=ler_json('base_auto_aprendizado.json',{})
-    disk=shutil.disk_usage(BASE)
+    disk=shutil.disk_usage(ancestral_existente(DADOS))
     cpu=None;ram=None
     try:
         import psutil
-        cpu=round(psutil.cpu_percent(interval=0.1),1)
-        ram=round(psutil.virtual_memory().percent,1)
+        cpu=_uso_cpu(psutil)
+        try:
+            percentual=psutil.virtual_memory().percent
+            if not isinstance(percentual,bool) and isinstance(percentual,(int,float)) and math.isfinite(percentual) and 0<=percentual<=100:
+                ram=round(percentual,1)
+        except Exception:pass
     except ImportError:
         pass
     return {'concluidas':feito,'total_tarefas':len(tarefas),'saldo':v.get('financeiro',{}).get('saldo',0),
             'cpu_percentual':cpu,'ram_percentual':ram,
             'comandos':base.get('total_comandos_executados',0),'disco_livre_mb':round(disk.free/1048576),
             'agua':v.get('habitos_saude',{}).get('Agua_Copos',{}).get('valor',0),
-            'robotask_total':len(ler_json('robotask_conhecimento.json',{}).get('tarefas',[]))}
+            'robotask_total':len(robotask.get('tarefas',[]))}
 
 
 def diagnostico():

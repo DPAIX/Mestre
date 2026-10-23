@@ -22,8 +22,11 @@ import nucleo
 
 _ANALISE_LOCK = threading.RLock()
 FONTES = ('assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
-          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py',
-          'agenda_google.py','evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')
+          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','voz_assistente.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py',
+          'agenda_google.py','autorizar_google.py','configurar_telegram.py','startup_windows.py',
+          'caminhos_instalacao.py','redirecionar_assistente.py','idempotencia_painel.py',
+          'transcritor_local.py','iniciar_servicos_locais.py','instancia_assistente.py','preparar_inicio_automatico.py','manutencao_assistente.py',
+          'evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')
 DADOS_CRITICOS = ('gestao_vida.json','minhas_macros.json','base_auto_aprendizado.json')
 BACKUP_SEGURO = DADOS_CRITICOS + ('robotask_conhecimento.json','ecossistema_suporte.json')
 PROVEDORES = ('Gemini','OpenAI','Claude','Exa','Ollama')

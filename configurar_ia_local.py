@@ -19,11 +19,13 @@ import tempfile
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
+from caminhos_instalacao import arquivo_env
 
-ENV = Path(__file__).resolve().parent / '.env'
+BASE = Path(__file__).resolve().parent
+ENV = BASE / '.env'
 URL_PADRAO = 'http://127.0.0.1:11434'
 MODELO_PADRAO = 'qwen2.5:3b'
-CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL')
+CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL','OLLAMA_PERFIL')
 LIMITE_RESPOSTA = 2_000_000
 TIMEOUT_CONSULTA = 4
 TIMEOUT_DOWNLOAD = 30 * 60
@@ -75,7 +77,7 @@ class SemRedirecionamento(urllib.request.HTTPRedirectHandler):
 
 
 def listar_catalogo(url=URL_PADRAO):
-    """Consulta /api/tags sem inferência; retorna nome e indicação de nuvem.
+    """Consulta /api/tags sem inferência; projeta nome, nuvem e tamanho opcional.
 
     Não retorna hosts remotos nem outros metadados fornecidos pelo serviço.
     Não segue redirecionamentos e nunca consulta uma URL remota do catálogo.
@@ -103,6 +105,7 @@ def listar_catalogo(url=URL_PADRAO):
         if not isinstance(itens, list):
             raise ValueError
         modelos = {}
+        tamanhos = {}
         for item in itens:
             nome = item.get('name') or item.get('model')
             nome = validar_modelo(nome)
@@ -112,7 +115,12 @@ def listar_catalogo(url=URL_PADRAO):
                          for dados in (item, detalhes) for chave in ('remote_model', 'remote_host'))
             nuvem = bool(modelo_em_nuvem(nome) or remoto)
             modelos[nome] = bool(modelos.get(nome, False) or nuvem)
-        return [{'nome': nome, 'nuvem': nuvem} for nome, nuvem in modelos.items()]
+            tamanho=item.get('size')
+            if type(tamanho) is int and 0<tamanho<=1024**4:
+                tamanhos[nome]=max(tamanhos.get(nome,0),tamanho)
+        return [{'nome': nome, 'nuvem': nuvem,
+                 **({'tamanho_bytes':tamanhos[nome]} if nome in tamanhos else {})}
+                for nome, nuvem in modelos.items()]
     except (ValueError, UnicodeError, KeyError, TypeError, AttributeError):
         raise FalhaConfiguracao('O serviço local retornou uma lista de modelos inválida.') from None
 
@@ -197,9 +205,9 @@ def modelo_instalado(modelo, modelos):
     return next((nome for nome in candidatos if nome in modelos), None)
 
 
-def valores_env(caminho=ENV):
-    """Lê somente as três opções de Ollama; nunca imprime conteúdo do .env."""
-    caminho = Path(caminho)
+def valores_env(caminho=None):
+    """Lê somente opções de Ollama; nunca imprime conteúdo do .env."""
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     if not caminho.exists():
         return {}
     valores = {}
@@ -212,16 +220,18 @@ def valores_env(caminho=ENV):
     return valores
 
 
-def atualizar_env(modelo, url=URL_PADRAO, caminho=ENV):
-    """Substitui só as três opções locais, preservando as outras linhas e segredos."""
+def atualizar_env(modelo, url=URL_PADRAO, caminho=None,*,perfil=None):
+    """Substitui só opções locais selecionadas, preservando demais linhas e segredos."""
     modelo = validar_modelo(modelo)
     url = validar_url(url)
-    caminho = Path(caminho)
+    if perfil is not None and perfil not in ('cpu','padrao'):raise ValueError('Perfil Ollama inválido.')
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     bruto = caminho.read_bytes() if caminho.exists() else b''
     bom = '\ufeff' if bruto.startswith(b'\xef\xbb\xbf') else ''
     original = bruto.decode('utf-8-sig')
     quebra = '\r\n' if '\r\n' in original else '\n'
     alteracoes = {'OLLAMA_HABILITADO': '1', 'OLLAMA_URL': url, 'OLLAMA_MODEL': modelo}
+    if perfil is not None:alteracoes['OLLAMA_PERFIL']=perfil
     novas = []
     processadas = set()
     for linha in original.splitlines(keepends=True):
@@ -234,7 +244,7 @@ def atualizar_env(modelo, url=URL_PADRAO, caminho=ENV):
             novas.append(linha)
     if novas and not novas[-1].endswith(('\r', '\n')):
         novas[-1] += quebra
-    for chave in CHAVES:
+    for chave in alteracoes:
         if chave not in processadas:
             novas.append(f'{chave}={alteracoes[chave]}' + quebra)
     caminho.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +257,21 @@ def atualizar_env(modelo, url=URL_PADRAO, caminho=ENV):
         os.replace(temporario, caminho)
     finally:
         Path(temporario).unlink(missing_ok=True)
+
+
+def configurar_perfil(perfil,url=URL_PADRAO,caminho=None):
+    if perfil not in ('cpu','padrao'):raise ValueError('Perfil Ollama inválido.')
+    url=validar_url(url)
+    atuais=valores_env(caminho)
+    modelo='llama3.2:latest' if perfil=='cpu' else atuais.get('OLLAMA_MODEL') or os.getenv('OLLAMA_MODEL') or MODELO_PADRAO
+    modelo=validar_modelo(modelo)
+    catalogo=listar_catalogo(url)
+    nomes=[m['nome'] for m in catalogo if perfil!='cpu' or not m['nuvem']]
+    encontrado=modelo_instalado(modelo,nomes)
+    if encontrado is None:
+        raise FalhaConfiguracao('Perfil não configurado: o modelo '+modelo+' não foi confirmado no catálogo'+(' local.' if perfil=='cpu' else '.'))
+    atualizar_env(encontrado,url,caminho,perfil=perfil)
+    return encontrado
 
 
 def instrucoes(modelo=MODELO_PADRAO):
@@ -287,7 +312,8 @@ def verificar(modelo=MODELO_PADRAO, url=URL_PADRAO):
     return False
 
 
-def configurar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
+def configurar_modelo(modelo, url=URL_PADRAO, caminho=None):
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     modelo = validar_modelo(modelo)
     url = validar_url(url)
     encontrado = modelo_instalado(modelo, listar_modelos(url))
@@ -297,8 +323,9 @@ def configurar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
     return encontrado
 
 
-def usar_existente(url=URL_PADRAO, caminho=ENV, preferido=MODELO_PADRAO):
+def usar_existente(url=URL_PADRAO, caminho=None, preferido=MODELO_PADRAO):
     """Reaproveita um modelo local sem pull; nunca escolhe cloud automaticamente."""
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     url = validar_url(url)
     catalogo = listar_catalogo(url)
     locais = [item['nome'] for item in catalogo if not item['nuvem']]
@@ -313,8 +340,9 @@ def usar_existente(url=URL_PADRAO, caminho=ENV, preferido=MODELO_PADRAO):
     return escolhido
 
 
-def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
+def baixar_modelo(modelo, url=URL_PADRAO, caminho=None):
     """Download explícito com progresso; nunca usa shell nem instala programas."""
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     modelo = validar_modelo(modelo)
     url = validar_url(url)
     encontrado = modelo_instalado(modelo, listar_modelos(url))
@@ -347,7 +375,8 @@ def baixar_modelo(modelo, url=URL_PADRAO, caminho=ENV):
     return encontrado
 
 
-def assistente(url=URL_PADRAO, caminho=ENV, modelo=MODELO_PADRAO):
+def assistente(url=URL_PADRAO, caminho=None, modelo=MODELO_PADRAO):
+    caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     print('=== Modelos Ollama ===')
     catalogo = listar_catalogo(url)
     modelos = [item['nome'] for item in catalogo]
@@ -368,7 +397,7 @@ def assistente(url=URL_PADRAO, caminho=ENV, modelo=MODELO_PADRAO):
     return 0
 
 
-def main(argv=None, caminho=ENV):
+def main(argv=None, caminho=None):
     parser = argparse.ArgumentParser(description=__doc__)
     grupo = parser.add_mutually_exclusive_group()
     grupo.add_argument('--listar', action='store_true', help='Lista modelos locais/cloud registrados, sem alterar configuração.')
@@ -377,11 +406,20 @@ def main(argv=None, caminho=ENV):
     grupo.add_argument('--verificar', action='store_true', help='Verifica a presença do modelo configurado no catálogo, sem inferência.')
     grupo.add_argument('--modelo', help='Ativa somente um modelo já registrado no catálogo local ou cloud.')
     grupo.add_argument('--baixar-modelo', metavar='NOME', help='Registra ou baixa explicitamente um modelo e o ativa após verificar sua presença.')
+    grupo.add_argument('--perfil-cpu',action='store_true',help='Ativa Llama local em CPU com contexto pequeno; sem geração ou download.')
+    grupo.add_argument('--perfil-padrao',action='store_true',help='Volta às opções padrão de execução do Ollama; mantém o modelo configurado.')
     parser.add_argument('--url', help='Endereço HTTP local por IP literal; padrão http://127.0.0.1:11434.')
     args = parser.parse_args(argv)
     try:
+        caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
         atuais = valores_env(caminho)
         url = validar_url(args.url or os.getenv('OLLAMA_URL') or atuais.get('OLLAMA_URL') or URL_PADRAO)
+        if args.perfil_cpu or args.perfil_padrao:
+            perfil='cpu' if args.perfil_cpu else 'padrao'
+            encontrado=configurar_perfil(perfil,url,caminho)
+            print('Perfil Ollama salvo: '+perfil+'; modelo: '+encontrado+'. Nenhuma geração ou download executado.')
+            print('Reinicie o assistente. Para o perfil CPU, use /chat equipe off e /chat modelo padrao nesta conversa.')
+            return 0
         if args.listar:
             mostrar_catalogo(listar_catalogo(url))
             return 0

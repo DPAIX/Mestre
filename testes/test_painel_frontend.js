@@ -5,10 +5,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
+const {webcrypto}=require('node:crypto');
 
 const html=fs.readFileSync(path.join(__dirname,'..','painel_rotina.html'),'utf8');
 const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
-const estado={vida:{rotina:[],kanban:{},habitos_saude:{},financeiro:{}},resumo:{},provedores:{},logs:[],robotask:[]};
+const estado={vida:{rotina:[],kanban:{},habitos_saude:{},financeiro:{}},resumo:{},provedores:{},logs:[],robotask:[],versao_estado:0};
 const resposta=(body,status=200)=>({ok:status<400,status,json:async()=>body});
 function elemento(id=''){
  return {value:'',reportValidity(){return true},id,disabled:false,textContent:'',style:{},dataset:{},children:[],eventos:{},classList:{toggle(){}},
@@ -16,14 +17,14 @@ function elemento(id=''){
   append(...filhos){this.children.push(...filhos)},replaceChildren(){this.children=[]},
   set innerHTML(_valor){throw Error('HTML dinâmico não permitido neste teste')}};
 }
-async function painel(){
+async function painel({estadoInicial=estado}={}){
  const ids=new Map(),botoes=[];
  const obter=id=>{if(!ids.has(id))ids.set(id,elemento(id));return ids.get(id)};
  botoes.push(obter('consultar'),obter('cancelar-windows'));
  const contexto=vm.createContext({
   document:{getElementById:obter,createElement:tag=>{const e=elemento();if(tag==='button')botoes.push(e);return e},
    querySelectorAll:seletor=>seletor==='button:not([data-tab])'?botoes:[]},
-  fetch:async()=>resposta(estado),AbortController,setTimeout,clearTimeout,setInterval:()=>0,
+  fetch:async()=>resposta(estadoInicial),AbortController,crypto:webcrypto,setTimeout,clearTimeout,setInterval:()=>0,
   confirm:()=>true,prompt:()=>null
  });
  vm.runInContext(script,contexto,{filename:'painel_rotina.html'});
@@ -62,16 +63,17 @@ test('perguntas repetidas não geram consultas pagas concorrentes',async()=>{
 });
 
 test('cancelar reinício continua disponível durante outra ação',async()=>{
- const p=await painel();let liberar;
+ const p=await painel();let liberar,versaoCancelamento;
  p.contexto.fetch=async(_url,opt)=>{
   if(opt.method!=='POST')return resposta(estado);
-  if(JSON.parse(opt.body).acao==='cancelar_reinicio_windows')return resposta({mensagem:'Cancelado'});
+  if(JSON.parse(opt.body).acao==='cancelar_reinicio_windows'){versaoCancelamento=opt.headers['X-Estado-Versao'];return resposta({mensagem:'Cancelado'})}
   return new Promise(resolve=>{liberar=resolve});
  };
  const pendente=p.executar("enviarAcao('pergunta',{texto:'teste'})");
  assert.equal(p.obter('cancelar-windows').disabled,false);
  const cancelado=await p.executar("enviarAcao('cancelar_reinicio_windows')");
  assert.equal(cancelado.mensagem,'Cancelado');
+ assert.equal(versaoCancelamento,'0');
  assert.equal(p.obter('consultar').disabled,true);
  liberar(resposta({mensagem:'Fim'}));await pendente;
 });
@@ -81,8 +83,8 @@ test('uma leitura antiga não sobrescreve o estado mais recente',async()=>{
  p.executar('render=s=>{globalThis.renderizado=s.valor}');
  p.contexto.fetch=()=>new Promise(resolve=>leituras.push(resolve));
  const antiga=p.executar('atualizar()'),recente=p.executar('atualizar()');
- leituras[1](resposta({valor:'recente'}));await recente;
- leituras[0](resposta({valor:'antiga'}));await antiga;
+ leituras[1](resposta({...estado,valor:'recente'}));await recente;
+ leituras[0](resposta({...estado,valor:'antiga'}));await antiga;
  assert.equal(p.contexto.renderizado,'recente');
 });
 
@@ -254,7 +256,7 @@ test('modelo salvo acompanha a conversa e mudar seletor não escreve automaticam
  assert.equal(p.obter('chat-modelo-ollama').value,'gemma4:31b-cloud');
  await p.obter('chat-salvar-modelo').eventos.click();
  assert.equal(posts,1);assert.equal(enviado.acao,'chat_modelo');assert.equal(enviado.id,'chat_a');assert.equal(enviado.modelo,'gemma4:31b-cloud');
- p.contexto.centro.chat_ativo={id:'chat_b',titulo:'Nuvem',provedor:'Ollama',modelo_ollama:'gemma4:31b-cloud'};
+ p.contexto.centro.chat_ativo={id:'chat_b',titulo:'Nuvem',provedor:'Ollama',equipe_politica:'manual',modelo_ollama:'gemma4:31b-cloud'};
  p.executar('renderColaboracao(centro)');assert.equal(p.obter('chat-modelo-ollama').value,'gemma4:31b-cloud');assert.match(p.obter('chat-provedor').textContent,/gemma4:31b-cloud/);
  p.contexto.centro.chat_ativo={id:'chat_a',titulo:'Local',provedor:'Ollama',modelo_ollama:'qwen3.5:4b'};
  p.executar('renderColaboracao(centro)');assert.equal(p.obter('chat-modelo-ollama').value,'qwen3.5:4b');
