@@ -64,6 +64,22 @@ def preparar_mensagens(pergunta,historico=None):
         saldo-=len(texto)
     return list(reversed(anteriores))+[{'role':'user','content':atual}]
 
+def limitar_historico_cpu(mensagens):
+    """Reserva o contexto compacto para o pedido atual, sem cortá-lo.
+
+    Caracteres são um orçamento conservador de contexto, não uma contagem de
+    tokens do modelo. O histórico persistido não é alterado.
+    """
+    atual=mensagens[-1]
+    saldo=min(600,max(0,2400-len(SISTEMA)-len(atual['content'])))
+    anteriores=[]
+    for item in reversed(mensagens[:-1]):
+        if saldo<=0:break
+        conteudo=item['content'][-saldo:]
+        anteriores.append({'role':item['role'],'content':conteudo})
+        saldo-=len(conteudo)
+    return list(reversed(anteriores))+[dict(atual)]
+
 def endpoint_ollama():
     """Aceita somente IP literal loopback; nenhum hostname será resolvido."""
     base=os.getenv('OLLAMA_URL','http://127.0.0.1:11434')
@@ -468,11 +484,22 @@ class Roteador:
             payload.update({'keep_alive':0,'options':{'num_gpu':0,'num_ctx':1024,'num_predict':128}})
         if modo_cooperativo:
             payload['keep_alive']=0
-            payload.setdefault('options',{}).update({'num_ctx':4096,'num_predict':384})
+            # O limite de resposta inclui o raciocínio interno em modelos
+            # thinking. A equipe precisa de uma contribuição textual curta.
+            payload['think']=False
+            if perfil!='cpu':
+                payload['options']={'num_ctx':4096,'num_predict':384}
+            else:
+                payload['messages']=[{'role':'system','content':SISTEMA}]+limitar_historico_cpu(payload['messages'][1:])
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),SemRedirecionamento())
         try:
             dados=postar(endpoint,'',payload,'Ollama',timeout=timeout,opener=opener)
-        except FalhaAPI as erro:raise self._explicar_404_ollama(modelo,erro) from None
+        except FalhaAPI as erro:
+            if erro.categoria=='rede' and any(t in erro.detalhe.casefold() for t in ('timed out','timeout')):
+                raise FalhaAPI('Ollama',erro.codigo,
+                    'O prazo de resposta do Ollama se esgotou. Isso não comprova falha de rede nem '
+                    'cancelamento da geração no serviço. Nenhuma nova tentativa foi enviada.',erro.categoria) from None
+            raise self._explicar_404_ollama(modelo,erro) from None
         mensagem=dados.get('message')
         texto=mensagem.get('content') if isinstance(mensagem,dict) else None
         if not isinstance(texto,str) or not texto.strip():

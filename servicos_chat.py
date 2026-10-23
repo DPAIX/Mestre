@@ -66,7 +66,9 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
             from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
             try:agora=datetime.datetime.now(ZoneInfo('America/Sao_Paulo'))
             except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
-            pergunta=(instrucoes_ia()+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
+            compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' and
+                      bool(chat.get('equipe_paralela')) and chat.get('equipe_modo','paralela')=='cooperativa')
+            pergunta=(instrucoes_ia(compacto=compacto)+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
                       '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'+pergunta[:8000])
         equipe=bool(chat.get('equipe_paralela'))
         if equipe:

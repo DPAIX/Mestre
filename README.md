@@ -1,4 +1,6 @@
-# MeuControlePC v2.7.0
+# MeuControlePC v2.7.1
+
+**Correção v2.7.1:** a equipe agora preserva os limites CPU do modelo individual e usa instruções/resumos compactos. Conversas sem ação mantêm sua resposta; timeouts não são tratados como prova de falha de rede. [Atualização, validação e reversão](REVISAO_V2_7_1.md).
 
 Abra `ativar_assistente_automatico.bat` uma vez para preparar a voz local e o início após o logon. Depois envie texto ou áudio: Whisper local é o transcritor padrão e todos os modelos Ollama cooperam automaticamente, sem comandos de ativação. Código em C:, configuração/dados/pesos em F:. [Guia de preparação e reversão](GUIA_AUTOMATICO.md) · [Revisão v2.7.0](REVISAO_V2_7_0.md).
 

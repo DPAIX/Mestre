@@ -318,7 +318,7 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.7.0 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.7.1 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -376,7 +376,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.7.0'
+    server_version='MeuControlePC/2.7.1'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -1056,7 +1056,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.7.0')
+        print('MeuControlePC v2.7.1')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
@@ -1101,7 +1101,7 @@ def _executar_instancia(opt):
             bot=configurar_bot()
             from rotina_ativa import executar_agendador as agendar_lembretes
             threading.Thread(target=agendar_lembretes,args=(monitor_parada,bot.send_message),kwargs={'autorizar':autenticado},daemon=True).start()
-            print('Bot configurado; aguardando comandos de proprietários autorizados.')
+            print('Bot configurado; aguardando mensagens de proprietários autorizados.')
             bot.infinity_polling(timeout=20,long_polling_timeout=15,skip_pending=True)
     finally:
         monitor_parada.set()

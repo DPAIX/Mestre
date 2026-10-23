@@ -1,3 +1,5 @@
+> **v2.7.1:** [Correção da equipe CPU e conversa sem ação](REVISAO_V2_7_1.md). Atualize as fontes em C: e reinicie o assistente; configuração, dados, voz preparada e Startup de F: são preservados.
+
 > **v2.7.0:** [Voz local, equipe padrão e início automático](GUIA_AUTOMATICO.md) · [Mudanças e reversão](REVISAO_V2_7_0.md). Abra `ativar_assistente_automatico.bat` uma vez; depois basta enviar texto/áudio. Os próximos logons iniciam o assistente.
 
 > **v2.6.0:** [Todos os modelos em cooperação](GUIA_EQUIPE_COOPERATIVA.md) · [Mudanças e reversão](REVISAO_V2_6_0.md). `/chat equipe on` ativa consulta sequencial e síntese; o modo CPU que funcionou é preservado.

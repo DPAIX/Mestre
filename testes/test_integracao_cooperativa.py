@@ -254,7 +254,7 @@ class PayloadCooperativo(unittest.TestCase):
         p.start(); self.addCleanup(p.stop)
         self.roteador = ia.Roteador()
 
-    def test_payload_cpu_cooperativo_amplia_contexto_sem_mudar_env(self):
+    def test_payload_cpu_cooperativo_preserva_limites_sem_mudar_env(self):
         antes = os.environ.copy()
         with patch.object(ia, 'postar', return_value={'message': {'content': 'Resposta'}}) as enviar:
             resultado = self.roteador.responder('Um pedido', provedor='Ollama',
@@ -262,7 +262,7 @@ class PayloadCooperativo(unittest.TestCase):
         self.assertEqual(resultado, ('Resposta', 'Ollama'))
         payload = enviar.call_args.args[2]
         self.assertEqual(payload['keep_alive'], 0)
-        self.assertEqual(payload['options'], {'num_gpu': 0, 'num_ctx': 4096, 'num_predict': 384})
+        self.assertEqual(payload['options'], {'num_gpu': 0, 'num_ctx': 1024, 'num_predict': 128})
         self.assertEqual(os.environ.copy(), antes)
         enviar.assert_called_once()
 

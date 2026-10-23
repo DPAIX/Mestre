@@ -1,4 +1,6 @@
-# Assistente automático com voz local — v2.7.0
+# Assistente automático com voz local — v2.7.1
+
+Se a preparação v2.7.0 já concluiu, atualize as fontes em C:, encerre o bot antigo e abra `iniciar_redirecionado.bat` uma vez. O Startup e o transcritor preparado são reaproveitados; não é necessário enviar comandos no Telegram ou preparar os pesos novamente. Veja a [correção CPU e conversa](REVISAO_V2_7_1.md).
 
 Texto e áudio passam a ser a entrada normal do assistente. O transcritor padrão é Whisper `base` multilíngue em CPU/int8; não depende de créditos de Gemini. As conversas padrão usam todos os modelos do catálogo Ollama em cooperação sequencial e síntese, sem precisar enviar comandos de ativação.
 
