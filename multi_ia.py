@@ -3,6 +3,7 @@ Limites e créditos são distinguidos. Provedores sem créditos ficam suspensos 
 """
 from __future__ import annotations
 import json
+import copy
 import hashlib
 import ipaddress
 import math
@@ -18,6 +19,8 @@ from dataclasses import dataclass
 from nucleo import registrar,redigir,gravar_json,ler_json
 
 LIMITE_RESPOSTA=2_000_000
+TTL_CATALOGO_CPU=5
+RESERVA_RAM_CPU=512*1024**2
 DESCRICOES_FALHA={
     'sem_creditos':'sem créditos','autenticacao':'credencial rejeitada',
     'modelo_indisponivel':'modelo não acessível','limite_temporario':'limite temporário',
@@ -25,9 +28,18 @@ DESCRICOES_FALHA={
     'rede':'problema de rede','resposta_invalida':'resposta inválida',
     'configuracao':'configuração incompleta','temporario':'falha temporária',
     'cota_temporaria':'cota de uso temporariamente esgotada',
+    'recursos':'orçamento de memória insuficiente para esta consulta',
 }
 SISTEMA='Responda em português do Brasil com precisão. Não simule execução de comandos no computador.'
 PROVEDORES_RESPOSTA=('Gemini','OpenAI','Claude','Ollama')
+
+def memoria_fisica_bytes():
+    """RAM total, quando disponível; não lê arquivos do assistente."""
+    try:import psutil
+    except ImportError:return None
+    try:total=psutil.virtual_memory().total
+    except (psutil.Error,OSError,AttributeError,NotImplementedError):return None
+    return total if type(total) is int and total>0 else None
 
 def assinatura_configuracao_ollama():
     """Identifica a configuração local sem persistir URL ou credenciais."""
@@ -185,6 +197,7 @@ class Roteador:
         self.sucessos={}
         self.ultimo_provedor='local'
         self.mutex=threading.RLock()
+        self._catalogo_cpu_cache=None
         self._assinatura_ollama=assinatura_configuracao_ollama()
         self._pausa_ollama_pendente=None
         self._recuperar_bloqueios()
@@ -228,6 +241,7 @@ class Roteador:
             mudou=assinatura!=self._assinatura_ollama
             if mudou:
                 for estados in (self.bloqueados,self.motivos,self.falhas,self.sucessos):estados.pop('Ollama',None)
+                self._catalogo_cpu_cache=None
                 self._assinatura_ollama=assinatura
             pendente=self._pausa_ollama_pendente
             self._pausa_ollama_pendente=None
@@ -408,11 +422,49 @@ class Roteador:
         if not textos or any(not isinstance(x,str) for x in textos) or not ''.join(textos).strip():
             raise FalhaAPI('Claude',0,'Resposta sem conteúdo textual.','resposta_invalida')
         return ''.join(textos).strip()
+    def invalidar_catalogo_ollama(self):
+        """Descarta só metadados em memória; não altera dados/configuração."""
+        with self.mutex:self._catalogo_cpu_cache=None
+
+    def _obter_catalogo_ollama(self,base,*,usar_cache=False):
+        from configurar_ia_local import listar_catalogo,FalhaConfiguracao
+        self.atualizar_configuracao_ollama()
+        assinatura=self._assinatura_ollama
+        agora=time.monotonic()
+        with self.mutex:
+            cache=self._catalogo_cpu_cache
+            if (usar_cache and cache and cache['base']==base and
+                    0<=agora-cache['observado']<TTL_CATALOGO_CPU):
+                return copy.deepcopy(cache['modelos'])
+        # Nunca mantenha o mutex do roteador durante I/O local.
+        try:modelos=listar_catalogo(base)
+        except (ValueError,FalhaConfiguracao):
+            self.invalidar_catalogo_ollama()
+            raise
+        with self.mutex:
+            if assinatura==self._assinatura_ollama:
+                self._catalogo_cpu_cache={'base':base,'observado':time.monotonic(),
+                                          'modelos':copy.deepcopy(modelos)}
+        return copy.deepcopy(modelos)
+
+    def ordenar_equipe_cpu(self,modelos):
+        """Prioriza pesos menores sem remover participantes selecionados."""
+        if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()!='cpu':return list(modelos)
+        from configurar_ia_local import FalhaConfiguracao
+        try:catalogo=self._obter_catalogo_ollama(endpoint_ollama().removesuffix('/api/chat'),usar_cache=True)
+        except (ValueError,FalhaConfiguracao) as erro:
+            raise FalhaAPI('Ollama',0,str(erro),'configuracao') from None
+        tamanhos={item['nome']:item.get('tamanho_bytes') for item in catalogo}
+        conhecidos={nome:valor for nome,valor in tamanhos.items() if type(valor) is int and valor>0}
+        # Sem tamanho público, preserve a ordem existente em vez de inferir
+        # quantização ou capacidade pelo nome da tag.
+        return sorted(modelos,key=lambda nome:conhecidos.get(nome,float('inf'))) if conhecidos else list(modelos)
+
     def catalogo_ollama(self):
         """Leitura explícita do serviço no PC; não gera respostas nem baixa modelos."""
-        from configurar_ia_local import listar_catalogo, FalhaConfiguracao
+        from configurar_ia_local import FalhaConfiguracao
         base=endpoint_ollama().removesuffix('/api/chat')
-        try:modelos=listar_catalogo(base)
+        try:modelos=self._obter_catalogo_ollama(base)
         except FalhaConfiguracao as exc:
             raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
         for item in modelos:
@@ -470,16 +522,26 @@ class Roteador:
         payload={'model':modelo,'stream':False,
                  'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)}
         if perfil=='cpu':
-            from configurar_ia_local import modelo_em_nuvem,listar_catalogo,modelo_instalado,FalhaConfiguracao
+            from configurar_ia_local import modelo_em_nuvem,modelo_instalado,FalhaConfiguracao
             if modelo_em_nuvem(modelo):
                 raise FalhaAPI('Ollama',0,'O perfil CPU não se aplica a tags cloud. Selecione um modelo local ou o perfil padrao.','configuracao')
             try:
-                catalogo=listar_catalogo(endpoint.removesuffix('/api/chat'))
+                catalogo=self._obter_catalogo_ollama(endpoint.removesuffix('/api/chat'),usar_cache=True)
             except (ValueError,FalhaConfiguracao):
                 raise FalhaAPI('Ollama',0,'Não foi possível confirmar o modelo local do perfil CPU no catálogo. Nenhuma geração enviada.','configuracao') from None
             local=modelo_instalado(modelo,[m['nome'] for m in catalogo if not m['nuvem']])
             if local is None:
+                self.invalidar_catalogo_ollama()
                 raise FalhaAPI('Ollama',0,'O perfil CPU exige uma tag confirmada como local no catálogo. Nenhuma geração enviada.','configuracao')
+            if modo_cooperativo:
+                tamanho=next((m.get('tamanho_bytes') for m in catalogo if m['nome']==local),None)
+                total=memoria_fisica_bytes() if type(tamanho) is int and tamanho>0 else None
+                if total is not None and tamanho>max(0,total-RESERVA_RAM_CPU):
+                    raise FalhaAPI('Ollama',0,
+                        f'Adiado por orçamento de RAM CPU: pesos de {tamanho/1024**3:.2f} GiB para '
+                        f'{total/1024**3:.2f} GiB físicos, reservando 0.50 GiB. É uma estimativa, '
+                        'não um teste de inferência. A tag continua selecionada e no catálogo; '
+                        'nenhuma geração foi enviada para este participante.','recursos')
             payload['model']=local
             payload.update({'keep_alive':0,'options':{'num_gpu':0,'num_ctx':1024,'num_predict':128}})
         if modo_cooperativo:
@@ -495,6 +557,7 @@ class Roteador:
         try:
             dados=postar(endpoint,'',payload,'Ollama',timeout=timeout,opener=opener)
         except FalhaAPI as erro:
+            self.invalidar_catalogo_ollama()
             if erro.categoria=='rede' and any(t in erro.detalhe.casefold() for t in ('timed out','timeout')):
                 raise FalhaAPI('Ollama',erro.codigo,
                     'O prazo de resposta do Ollama se esgotou. Isso não comprova falha de rede nem '

@@ -77,7 +77,7 @@ class SemRedirecionamento(urllib.request.HTTPRedirectHandler):
 
 
 def listar_catalogo(url=URL_PADRAO):
-    """Consulta /api/tags sem inferência; retorna nome e indicação de nuvem.
+    """Consulta /api/tags sem inferência; projeta nome, nuvem e tamanho opcional.
 
     Não retorna hosts remotos nem outros metadados fornecidos pelo serviço.
     Não segue redirecionamentos e nunca consulta uma URL remota do catálogo.
@@ -105,6 +105,7 @@ def listar_catalogo(url=URL_PADRAO):
         if not isinstance(itens, list):
             raise ValueError
         modelos = {}
+        tamanhos = {}
         for item in itens:
             nome = item.get('name') or item.get('model')
             nome = validar_modelo(nome)
@@ -114,7 +115,12 @@ def listar_catalogo(url=URL_PADRAO):
                          for dados in (item, detalhes) for chave in ('remote_model', 'remote_host'))
             nuvem = bool(modelo_em_nuvem(nome) or remoto)
             modelos[nome] = bool(modelos.get(nome, False) or nuvem)
-        return [{'nome': nome, 'nuvem': nuvem} for nome, nuvem in modelos.items()]
+            tamanho=item.get('size')
+            if type(tamanho) is int and 0<tamanho<=1024**4:
+                tamanhos[nome]=max(tamanhos.get(nome,0),tamanho)
+        return [{'nome': nome, 'nuvem': nuvem,
+                 **({'tamanho_bytes':tamanhos[nome]} if nome in tamanhos else {})}
+                for nome, nuvem in modelos.items()]
     except (ValueError, UnicodeError, KeyError, TypeError, AttributeError):
         raise FalhaConfiguracao('O serviço local retornou uma lista de modelos inválida.') from None
 

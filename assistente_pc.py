@@ -239,13 +239,17 @@ def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
 
 
 def preparar_pedido_natural(texto,contexto,*,progresso=None):
-    from interpretacao_natural import interpretar_local
+    from interpretacao_natural import interpretar_local,resposta_rapida_local
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma mensagem.')
     tipo=classificar_texto(texto)
     if tipo in ('desligamento_bloqueado','pedido_melhoria','pedido_reinicio_windows','pedido_reinicio_bot','reparo','menu','pesquisa'):
         return {'mensagem':interpretar_comando(texto),'plano':None,'chat_id':None}
     plano=interpretar_local(texto)
     chat=CENTRAL.obter_chat_ativo(contexto)
+    rapida=resposta_rapida_local(texto)
+    if rapida is not None:
+        CENTRAL.registrar_troca(contexto,texto,rapida,'auto',chat_id=chat['id'])
+        return {'mensagem':rapida,'plano':None,'chat_id':chat['id']}
     if plano:resultado={'texto':'Entendi: '+plano['descricao']+'.','plano':plano,'chat_id':chat['id']}
     else:
         try:
@@ -318,7 +322,7 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.7.1 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.8.0 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -376,7 +380,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.7.1'
+    server_version='MeuControlePC/2.8.0'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -454,10 +458,12 @@ class PainelHandler(BaseHTTPRequestHandler):
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             versao=CONTROLE_PAINEL.versao()
             try:
-                estado={'vida':vida(),'resumo':resumo_status(),
+                dados_vida=vida()
+                dados_robotask=ler_json('robotask_conhecimento.json',{})
+                estado={'vida':dados_vida,'resumo':resumo_status(dados_vida=dados_vida,dados_robotask=dados_robotask),
                          'provedores':ROTEADOR.status(),
                          'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
-                         'robotask':ler_json('robotask_conhecimento.json',{}).get('tarefas',[])[:100],
+                         'robotask':dados_robotask.get('tarefas',[])[:100],
                          'autoanalise':ler_json('ultima_autoanalise.json',{}),
                          'colaboracao':CENTRAL.estado_central('painel'),'versao_estado':versao}
             except (ValueError,OSError,TypeError,AttributeError):
@@ -1056,7 +1062,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.7.1')
+        print('MeuControlePC v2.8.0')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)

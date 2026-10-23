@@ -1,3 +1,5 @@
+> **v2.8.0:** [Manutenção e dependências por duplo clique](GUIA_MANUTENCAO.md) · [Otimizações e reversão](REVISAO_V2_8_0.md). Após atualizar as fontes em C:, feche o bot e abra `atualizar_assistente.bat`; o início automático existente é preservado.
+
 > **v2.7.1:** [Correção da equipe CPU e conversa sem ação](REVISAO_V2_7_1.md). Atualize as fontes em C: e reinicie o assistente; configuração, dados, voz preparada e Startup de F: são preservados.
 
 > **v2.7.0:** [Voz local, equipe padrão e início automático](GUIA_AUTOMATICO.md) · [Mudanças e reversão](REVISAO_V2_7_0.md). Abra `ativar_assistente_automatico.bat` uma vez; depois basta enviar texto/áudio. Os próximos logons iniciam o assistente.

@@ -44,6 +44,16 @@ class PainelTeste(unittest.TestCase):
         with urlopen(req) as resposta:
             obj=json.loads(resposta.read())
         self.assertIn('resumo',obj)
+    def test_estado_reutiliza_leitura_de_vida_e_catalogo(self):
+        original=nucleo.ler_json
+        with patch.object(nucleo,'ler_json',wraps=original) as ler, \
+                patch.object(app,'ler_json',wraps=ler):
+            req=Request(self.url+'/api/estado',headers={'X-Painel-Token':app.TOKEN_PAINEL})
+            with urlopen(req) as resposta:obj=json.load(resposta)
+        nomes=[chamada.args[0] for chamada in ler.call_args_list]
+        self.assertEqual(nomes.count('gestao_vida.json'),1)
+        self.assertEqual(nomes.count('robotask_conhecimento.json'),1)
+        self.assertEqual(obj['resumo']['total_tarefas'],len(obj['vida']['rotina']))
     def test_post_origem_obrigatoria(self):
         req=Request(self.url+'/api/acao',data=b'{"acao":"agua"}',headers={'X-Painel-Token':app.TOKEN_PAINEL,'Content-Type':'application/json'},method='POST')
         with self.assertRaises(HTTPError) as exc:urlopen(req)

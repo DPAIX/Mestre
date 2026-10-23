@@ -47,12 +47,13 @@ class PrepararAutomaticoTeste(unittest.TestCase):
 
     def test_uma_preparacao_instala_pesos_registra_startup_e_inicia_sem_credenciais(self):
         original=self.env.read_bytes();resultado=self.executar()
-        self.assertEqual(len(self.run.call_args_list),3)
+        self.assertEqual(len(self.run.call_args_list),4)
         comandos=[c.args[0] for c in self.run.call_args_list]
         self.assertIn('pip',comandos[1]);self.assertIn('--no-cache-dir',comandos[1])
         self.assertIn(str(self.codigo/'requirements-voz-local.txt'),comandos[1])
-        self.assertIn('preparar_modelo',comandos[2][-1]);self.assertIn('ler_env',comandos[2][-1])
-        self.assertEqual(self.run.call_args_list[2].kwargs['env']['VOZ_MODELO_LOCAL'],'base')
+        self.assertEqual(comandos[2][-2:],['pip','check'])
+        self.assertIn('preparar_modelo',comandos[3][-1]);self.assertIn('ler_env',comandos[3][-1])
+        self.assertEqual(self.run.call_args_list[3].kwargs['env']['VOZ_MODELO_LOCAL'],'base')
         for chamada in self.run.call_args_list:
             self.assertIs(chamada.kwargs['shell'],False)
             self.assertNotIn('fixture-segredo',repr(chamada.kwargs['env']))
@@ -79,8 +80,8 @@ class PrepararAutomaticoTeste(unittest.TestCase):
         self.assertEqual(self.destino.read_text(),'fixture-nao-gerenciado')
 
     def test_falha_pip_ou_modelo_nao_registra_inicio_nem_apaga_configuracao(self):
-        for etapa in (1,2):
-            retornos=[SimpleNamespace(returncode=0,stdout='',stderr='') for _ in range(3)]
+        for etapa in (1,2,3):
+            retornos=[SimpleNamespace(returncode=0,stdout='',stderr='') for _ in range(4)]
             retornos[etapa]=SimpleNamespace(returncode=7,stdout='fixture-segredo',stderr='fixture-segredo')
             self.run.side_effect=retornos
             with self.assertRaises(RuntimeError) as erro:self.executar()
@@ -94,6 +95,35 @@ class PrepararAutomaticoTeste(unittest.TestCase):
         with self.assertRaises(RuntimeError) as erro:self.executar()
         self.assertIn('prazo',str(erro.exception));self.assertNotIn('fixture-segredo',str(erro.exception))
         self.run.assert_called_once();self.popen.assert_not_called()
+
+    def test_bot_ativo_impede_instalacao_e_registro_de_startup(self):
+        with patch.object(preparar,'instancia_unica',side_effect=preparar.InstanciaAtiva('fixture')), \
+                patch.object(startup,'registrar_inicio') as registrar:
+            with self.assertRaisesRegex(RuntimeError,'Encerre a janela'):
+                self.executar()
+        self.run.assert_not_called();registrar.assert_not_called();self.popen.assert_not_called()
+
+    def test_trava_cobre_pip_e_registro_mas_e_liberada_antes_de_iniciar(self):
+        eventos=[];ativa=False
+        @contextlib.contextmanager
+        def bloquear(pasta):
+            nonlocal ativa
+            self.assertEqual(pasta,self.dados)
+            ativa=True;eventos.append('trava')
+            try:yield
+            finally:ativa=False;eventos.append('liberar')
+        def componentes(plano,**opcoes):
+            self.assertTrue(ativa);eventos.append('componentes');return plano
+        def registrar(*args,**opcoes):
+            self.assertTrue(ativa);eventos.append('startup');return self.destino
+        def iniciar(plano):
+            self.assertFalse(ativa);eventos.append('iniciar');return None
+        with patch.object(preparar,'instancia_unica',side_effect=bloquear), \
+                patch.object(preparar,'preparar_componentes',side_effect=componentes), \
+                patch.object(startup,'registrar_inicio',side_effect=registrar), \
+                patch.object(preparar,'iniciar_assistente',side_effect=iniciar):
+            self.executar()
+        self.assertEqual(eventos,['trava','componentes','startup','liberar','iniciar'])
 
     def test_fora_windows_nao_instala(self):
         with patch.object(preparar,'os',SimpleNamespace(name='posix')),self.assertRaises(RuntimeError):self.executar()

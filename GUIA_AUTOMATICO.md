@@ -1,4 +1,6 @@
-# Assistente automático com voz local — v2.7.1
+# Assistente automático com voz local — v2.8.0
+
+Para atualizar uma instalação pronta, use o novo `atualizar_assistente.bat`: confere dependências/voz/Google e limpa bytecode sem alterar o Startup existente. [Guia de manutenção e velocidade](GUIA_MANUTENCAO.md).
 
 Se a preparação v2.7.0 já concluiu, atualize as fontes em C:, encerre o bot antigo e abra `iniciar_redirecionado.bat` uma vez. O Startup e o transcritor preparado são reaproveitados; não é necessário enviar comandos no Telegram ou preparar os pesos novamente. Veja a [correção CPU e conversa](REVISAO_V2_7_1.md).
 
@@ -17,7 +19,7 @@ Isso inicia depois de você entrar na sua conta do Windows. O PC precisa estar l
 ## O que fica automático
 
 - **Ollama:** ao iniciar o assistente no Windows, verifica o endpoint de loopback. Se não responder, tenta abrir o executável já instalado uma vez e aguarda por prazo limitado. Reaproveita `OLLAMA_MODELS`; na instalação redirecionada, também reconhece `F:\Models` quando já contém a estrutura de manifestos. Não baixa outro modelo de conversa nem encerra um serviço existente.
-- **Todos os modelos:** a primeira mensagem que precisar de IA consulta o catálogo e usa suas tags, até oito, em cooperação sequencial. O catálogo é relido nas perguntas seguintes para incorporar os modelos disponíveis. As conversas anteriores sem a nova política recebem o padrão sob demanda, preservando o histórico. Não há migração em massa nem geração ao abrir menus.
+- **Todos os modelos:** a primeira mensagem que precisar de IA consulta o catálogo e usa suas tags, até oito, em cooperação sequencial. No perfil CPU os menores são priorizados; pesos que excederem a RAM física menos uma reserva de 512 MiB são adiados com explicação, mantendo a seleção. Essa estimativa não é teste de inferência. O catálogo é relido nas perguntas seguintes para incorporar os modelos disponíveis. As conversas anteriores sem a nova política recebem o padrão sob demanda, preservando o histórico. Não há migração em massa nem geração ao abrir menus.
 - **Voz:** identifica o áudio, transcreve localmente em português e encaminha o texto ao mesmo fluxo de conversa e confirmação. Não é necessário configurar uma API de transcrição. O áudio não é enviado a Gemini como fallback.
 - **Instância única:** uma trava do sistema impede duas instâncias do assistente usando os mesmos dados, inclusive se o iniciador for aberto mais de uma vez. O arquivo de trava pode permanecer após a saída; sua existência, sozinha, não impede o próximo início.
 

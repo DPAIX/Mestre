@@ -1,4 +1,6 @@
-# MeuControlePC v2.7.1
+# MeuControlePC v2.8.0
+
+**Atualizar e otimizar:** encerre o bot, copie as fontes na raiz em C: e abra `atualizar_assistente.bat`. Ele confere bibliotecas da aplicação/voz/Google, executa `pip check`, limpa bytecode gerado e inicia o assistente, reaproveitando configuração/dados/modelos e o Startup existente. Respostas sociais são locais e rápidas; status sem espera; equipe CPU prioriza modelos menores e explica adiamento por RAM. [Guia de manutenção](GUIA_MANUTENCAO.md) · [Revisão v2.8.0](REVISAO_V2_8_0.md).
 
 **Correção v2.7.1:** a equipe agora preserva os limites CPU do modelo individual e usa instruções/resumos compactos. Conversas sem ação mantêm sua resposta; timeouts não são tratados como prova de falha de rede. [Atualização, validação e reversão](REVISAO_V2_7_1.md).
 

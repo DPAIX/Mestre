@@ -28,6 +28,27 @@ def _normalizar(texto):
                    if not unicodedata.combining(c))
 
 
+def resposta_rapida_local(texto):
+    """Reconhece só mensagens sociais completas; nunca interpreta uma tarefa.
+
+    Um teste de recebimento não comprova inferência nem conectividade das APIs.
+    Pedidos compostos, citações, comandos e perguntas técnicas ficam no fluxo
+    normal, para que nenhuma instrução seja descartada por uma saudação.
+    """
+    if not isinstance(texto,str) or len(texto)>100 or any(c in texto for c in ('\n','\r',';')):
+        return None
+    normal=_normalizar(texto).strip(' .!?')
+    if normal in ('oi','ola','alo','bom dia','boa tarde','boa noite'):
+        return 'Olá! Posso ajudar com sua rotina, tarefas e ações do assistente. Escreva o que precisa.'
+    if re.fullmatch(r'(?:teste|test)(?:\s*[0-9]{1,8})?',normal):
+        return 'Teste recebido. Sua mensagem chegou ao assistente. Pode escrever o que precisa.'
+    if normal in ('voce me entende','esta ai','voce esta ai','ta ai'):
+        return 'Recebi sua mensagem. Escreva o que precisa, e vou ajudar.'
+    if normal in ('obrigado','obrigada','muito obrigado','muito obrigada','valeu'):
+        return 'De nada! Se precisar de outra coisa, escreva aqui.'
+    return None
+
+
 def _texto(valor, campo, limite, *, opcional=False):
     if not isinstance(valor, str):
         raise ValueError(campo + ' deve ser texto.')

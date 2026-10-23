@@ -116,7 +116,15 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
     itens=[]
     total=len(modelos)
     compacto=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu'
-    for indice,modelo in enumerate(modelos):
+    ordem=list(modelos)
+    # Consulte somente um método declarado pelo adaptador. Mocks e roteadores
+    # antigos preservam a ordem, sem criar chamadas implícitas a atributos.
+    ordenar=getattr(type(roteador),'ordenar_equipe_cpu',None)
+    if compacto and callable(ordenar):
+        ordem=ordenar(roteador,list(modelos))
+        if not isinstance(ordem,list) or len(ordem)!=len(modelos) or set(ordem)!=set(modelos):
+            raise ValueError('A ordem de execução deve manter todos os participantes da equipe.')
+    for indice,modelo in enumerate(ordem):
         _progresso(progresso,'modelo','inicio',modelo,indice+1,total)
         item={'modelo':modelo,'ok':False,'texto':'','plano':None,'papel':PAPEIS[indice%len(PAPEIS)]}
         try:
@@ -158,6 +166,9 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
             sintese['erro']=str(redigir(erro))[:600]
             plano=None
         _progresso(progresso,'sintese','sucesso' if sintese['ok'] else 'falha',escolhido,total,total)
+    # A execução pode priorizar os menores; seleção e relatório mantêm a ordem
+    # original, inclusive participantes adiados pelo orçamento de memória.
+    itens.sort(key=lambda item:modelos.index(item['modelo']))
     linhas=[f'👥 Equipe cooperativa Ollama: {len(sucessos)}/{total} modelos responderam.']
     if sintese['ok']:
         linhas.append('Resposta consolidada por '+escolhido+':\n'+texto)

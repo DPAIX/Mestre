@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import threading
+import time
 import uuid
 import zipfile
 from caminhos_instalacao import arquivo_env, diretorio_dados, ancestral_existente, SELETORES
@@ -23,6 +24,9 @@ BASE = Path(__file__).resolve().parent
 DADOS = diretorio_dados(BASE)
 _LOG = logging.getLogger('meucontrolepc')
 _LOCK = threading.RLock()
+_CPU_LOCK = threading.Lock()
+_CPU_ESTADO = {'instante': None, 'total': None, 'ocioso': None, 'percentual': None}
+_CPU_CACHE_SEGUNDOS = 0.5
 SENSITIVE = re.compile(r'(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{14,}|(?<!\d)\d{5,15}:[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|\bBearer\s+\S+)',re.I)
 CONFIG_KEYS = {'telegram_token','gemini_api_key','google_api_key','pool_chaves_api','openai_api_key','claude_api_key','anthropic_api_key','exa_api_key','token','api_key','authorization','x-api-key','access_token','refresh_token','client_secret'}
 ATRIBUICAO_SENSIVEL = re.compile(
@@ -319,23 +323,71 @@ def adicionar_kanban(coluna,texto):
     aprender('kanban')
 
 
-def resumo_status():
-    v=vida(); tarefas=v.get('rotina',[])
+def _uso_cpu(psutil):
+    """Amostra agregada, sem espera e compartilhada entre threads HTTP.
+
+    cpu_percent(None) mantém uma base por thread; em requisições novas isso
+    poderia apresentar zero antes de existir uma medição. A primeira amostra
+    aqui é N/D. Somente métricas de hardware são guardadas por meio segundo.
+    """
+    with _CPU_LOCK:
+        agora=time.monotonic()
+        anterior=_CPU_ESTADO.copy()
+        instante=anterior['instante']
+        if instante is not None and 0<=agora-instante<_CPU_CACHE_SEGUNDOS:
+            return anterior['percentual']
+        total=None;ocioso=None;percentual=None
+        try:
+            campos=psutil.cpu_times()._asdict()
+            if not isinstance(campos,dict) or 'idle' not in campos:
+                raise ValueError('Contadores CPU indisponíveis.')
+            if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or v<0
+                   for v in campos.values()):
+                raise ValueError('Contadores CPU inválidos.')
+            # Linux já inclui guest/guest_nice em user/nice. iowait é ocioso;
+            # Windows não fornece esses campos, mantendo a mesma fórmula.
+            total=sum(campos.values())-campos.get('guest',0)-campos.get('guest_nice',0)
+            ocioso=campos['idle']+campos.get('iowait',0)
+            if not math.isfinite(total) or not math.isfinite(ocioso) or not 0<=ocioso<=total:
+                raise ValueError('Contadores CPU inconsistentes.')
+            if instante is not None and agora>=instante and anterior['total'] is not None:
+                delta=total-anterior['total'];parado=ocioso-anterior['ocioso']
+                if delta>0 and 0<=parado<=delta:
+                    percentual=round(100*(delta-parado)/delta,1)
+        except Exception:
+            # Métricas são opcionais. Uma falha não torna os dados locais
+            # indisponíveis nem publica mensagens do sistema operacional.
+            total=None;ocioso=None
+        _CPU_ESTADO.update(instante=agora,total=total,ocioso=ocioso,percentual=percentual)
+        return percentual
+
+
+def resumo_status(*,dados_vida=None,dados_robotask=None):
+    """Resumo sem espera; permite reaproveitar snapshots já lidos na requisição."""
+    v=vida() if dados_vida is None else dados_vida
+    robotask=ler_json('robotask_conhecimento.json',{}) if dados_robotask is None else dados_robotask
+    if not isinstance(v,dict) or not isinstance(robotask,dict):
+        raise ValueError('Estrutura inválida para o resumo local.')
+    tarefas=v.get('rotina',[])
     feito=sum(x.get('status')=='Concluído' for x in tarefas)
     base=ler_json('base_auto_aprendizado.json',{})
     disk=shutil.disk_usage(ancestral_existente(DADOS))
     cpu=None;ram=None
     try:
         import psutil
-        cpu=round(psutil.cpu_percent(interval=0.1),1)
-        ram=round(psutil.virtual_memory().percent,1)
+        cpu=_uso_cpu(psutil)
+        try:
+            percentual=psutil.virtual_memory().percent
+            if not isinstance(percentual,bool) and isinstance(percentual,(int,float)) and math.isfinite(percentual) and 0<=percentual<=100:
+                ram=round(percentual,1)
+        except Exception:pass
     except ImportError:
         pass
     return {'concluidas':feito,'total_tarefas':len(tarefas),'saldo':v.get('financeiro',{}).get('saldo',0),
             'cpu_percentual':cpu,'ram_percentual':ram,
             'comandos':base.get('total_comandos_executados',0),'disco_livre_mb':round(disk.free/1048576),
             'agua':v.get('habitos_saude',{}).get('Agua_Copos',{}).get('valor',0),
-            'robotask_total':len(ler_json('robotask_conhecimento.json',{}).get('tarefas',[]))}
+            'robotask_total':len(robotask.get('tarefas',[]))}
 
 
 def diagnostico():

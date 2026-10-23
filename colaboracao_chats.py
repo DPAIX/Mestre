@@ -44,6 +44,8 @@ FONTES_EXPORTAVEIS = (
     'testes/test_transcritor_local.py','testes/test_inicio_automatico.py','testes/test_equipe_padrao.py','testes/test_servicos_inicio.py','testes/test_defaults_integracao.py',
     'testes/test_equipe_cooperativa.py','testes/test_integracao_cooperativa.py',
     'REVISAO_V2_7_1.md','testes/test_recursos_equipe_cpu.py','testes/test_conversa_sem_acao.py',
+    'manutencao_assistente.py','atualizar_assistente.bat','GUIA_MANUTENCAO.md','REVISAO_V2_8_0.md',
+    'testes/test_manutencao_assistente.py','testes/test_velocidade_equipes.py','testes/test_status_rapido.py','testes/test_respostas_rapidas.py',
     'testes/test_rotina_natural_semana.py','testes/test_voz_assistente.py',
     'diagnostico_ollama.py','diagnosticar_ollama.bat','testar_ollama_cpu.bat','GUIA_DIAGNOSTICO_OLLAMA.md','testes/test_diagnostico_ollama.py',
     'testes/test_auditoria_v250.py','testes/test_conversa_equipe.py','testes/test_chat_equipe.py',
