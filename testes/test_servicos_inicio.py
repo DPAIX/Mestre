@@ -19,7 +19,7 @@ class InicioOllamaTeste(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.raiz = Path(self.tmp.name)
+        self.raiz = Path(self.tmp.name).resolve()
         self.codigo = self.raiz / 'codigo'
         self.codigo.mkdir()
         self.env_externo = self.raiz / 'instalacao' / '.env'
@@ -172,7 +172,7 @@ class InstanciaUnicaTeste(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.raiz = Path(self.tmp.name)
+        self.raiz = Path(self.tmp.name).resolve()
 
     def test_contem_pid_sem_segredos_e_libera_ao_sair_mantendo_arquivo(self):
         with instancia.instancia_unica(self.raiz):

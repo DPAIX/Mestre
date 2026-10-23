@@ -21,7 +21,7 @@ import transcritor_local as local
 class DefaultsIntegracaoTeste(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.raiz=Path(self.tmp.name)
+        self.raiz=Path(self.tmp.name).resolve()
         for modulo,nome,valor in ((nucleo,'DADOS',self.raiz),(app,'DADOS',self.raiz),
                                  (app,'BOT',MagicMock()),(app,'PENDENTES',{})):
             p=patch.object(modulo,nome,valor);p.start();self.addCleanup(p.stop)

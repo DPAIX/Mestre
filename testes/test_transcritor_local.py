@@ -19,7 +19,7 @@ import voz_assistente as despacho
 class TranscritorLocalTeste(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.raiz=Path(self.tmp.name);self.codigo=self.raiz/'codigo';self.codigo.mkdir()
+        self.raiz=Path(self.tmp.name).resolve();self.codigo=self.raiz/'codigo';self.codigo.mkdir()
         self.cache=self.raiz/'instalacao'/'modelos_voz'
         for alvo,valor in (('BASE',self.codigo),('_TRAVA',__import__('threading').Lock())):
             p=patch.object(voz,alvo,valor);p.start();self.addCleanup(p.stop)

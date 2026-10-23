@@ -18,7 +18,7 @@ import startup_windows as startup
 class PrepararAutomaticoTeste(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.raiz=Path(self.tmp.name);self.codigo=self.raiz/'codigo';self.codigo.mkdir()
+        self.raiz=Path(self.tmp.name).resolve();self.codigo=self.raiz/'codigo';self.codigo.mkdir()
         self.env=self.raiz/'instalacao'/'.env';self.env.parent.mkdir()
         self.dados=self.env.parent/'dados';self.dados.mkdir()
         self.destino=self.raiz/'startup'/'inicio.cmd'
@@ -30,7 +30,7 @@ class PrepararAutomaticoTeste(unittest.TestCase):
                     'cwd':str(self.codigo),'comando':[str(self.python),str(self.codigo/'assistente_pc.py')],
                     'ambiente':{'MEUCONTROLEPC_ENV':str(self.env),'MEUCONTROLEPC_DADOS':str(self.dados),
                                 'OPENAI_API_KEY':'fixture-segredo','PYTHONPATH':'fixture-segredo',
-                                'USERPROFILE':'fixture-usuario','PATH':'fixture-path'}}
+                                'USERPROFILE':'fixture-usuario','PATH':'fixture-path','VOZ_MODELO_LOCAL':'base'}}
         for alvo,valor in ((preparar,'os'),):
             p=patch.object(alvo,valor,SimpleNamespace(name='nt'));p.start();self.addCleanup(p.stop)
         p=patch.object(preparar.redirecionar,'plano_execucao',return_value=self.plano)
@@ -52,6 +52,7 @@ class PrepararAutomaticoTeste(unittest.TestCase):
         self.assertIn('pip',comandos[1]);self.assertIn('--no-cache-dir',comandos[1])
         self.assertIn(str(self.codigo/'requirements-voz-local.txt'),comandos[1])
         self.assertIn('preparar_modelo',comandos[2][-1]);self.assertIn('ler_env',comandos[2][-1])
+        self.assertEqual(self.run.call_args_list[2].kwargs['env']['VOZ_MODELO_LOCAL'],'base')
         for chamada in self.run.call_args_list:
             self.assertIs(chamada.kwargs['shell'],False)
             self.assertNotIn('fixture-segredo',repr(chamada.kwargs['env']))
