@@ -104,6 +104,32 @@ def donos():
 def autenticado(user_id):
     return bool(donos()) and int(user_id) in donos()
 
+def texto_logs_resumo(eventos):
+    """Resumo limitado com a causa da última falha, sem detalhes de sucessos.
+
+    A redação acontece antes dos cortes, inclusive para registros legados.
+    O limite de 2000 caracteres também cabe no Telegram se todos forem fora
+    do plano Unicode básico (até 4000 unidades UTF-16).
+    """
+    if not isinstance(eventos,list):raise ValueError('A estrutura dos registros locais é inválida.')
+    itens=[item for item in eventos[-250:] if isinstance(item,dict)]
+    def campo(valor,limite):
+        if not isinstance(valor,str):return '?'
+        return ' '.join(str(redigir(valor)).split())[:limite]
+    linhas=['📋 Últimos registros:']
+    for item in itens[-15:]:
+        linhas.append(campo(item.get('timestamp'),25)+' '+campo(item.get('acao'),48)+' '+campo(item.get('status'),16))
+    if not itens:linhas.append('Nenhum registro disponível.')
+    falha=next((item for item in reversed(itens)
+                if isinstance(item.get('status'),str) and item['status'].strip().casefold()
+                in ('falha','erro','indisponivel','indisponível')),None)
+    if falha is not None:
+        linhas.extend(['','Última falha registrada ('+campo(falha.get('timestamp'),25)+') — '+campo(falha.get('acao'),48)+':'])
+        detalhe=falha.get('detalhes')
+        linhas.append(campo(detalhe,500) if isinstance(detalhe,str) and detalhe.strip()
+                      else 'Detalhes não registrados para essa falha.')
+    return '\n'.join(linhas)[:2000]
+
 def mostrar_rotina():
     tarefas=vida().get('rotina',[])
     if not tarefas:return 'Nenhuma tarefa cadastrada.'
@@ -322,7 +348,7 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.8.0 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.8.2 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -380,7 +406,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.8.0'
+    server_version='MeuControlePC/2.8.2'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -929,7 +955,7 @@ def tratar_pedido(m):
         comando='vscode_pc' if chave=='/vscode' else chave[1:]
         confirmar(chat,usuario,comando,'Ação Windows: '+comando)
     elif chave in ('/reparar','/diagnostico'):BOT.send_message(chat,interpretar_comando('repare o bot'))
-    elif chave=='/logs':BOT.send_message(chat,'📋 Últimos registros:\n'+'\n'.join(str(x.get('timestamp'))+' '+str(x.get('acao'))+' '+str(x.get('status')) for x in ler_json('log_acoes_e_erros.json',[])[-15:]))
+    elif chave=='/logs':BOT.send_message(chat,texto_logs_resumo(ler_json('log_acoes_e_erros.json',[])))
     elif chave in ('/exportar','/exportar_logs'):enviar_exportacao(chat)
     elif chave=='/painel':BOT.send_message(chat,'No computador: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
     elif chave=='/notebook':
@@ -1062,7 +1088,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.8.0')
+        print('MeuControlePC v2.8.2')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)

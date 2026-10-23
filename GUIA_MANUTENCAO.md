@@ -1,4 +1,6 @@
-# Atualizar e otimizar o assistente — v2.8.0
+# Atualizar e otimizar o assistente — v2.8.2
+
+Se aplicou o instalador externo chamado `aplicar_melhorias_v2_3_3.py`, siga primeiro a [recuperação das fontes completas](GUIA_RECUPERACAO_PATCH.md). O atualizador confere bibliotecas; ele não remove hooks de arquivos que não foram substituídos pelo pacote.
 
 ## No seu Windows
 

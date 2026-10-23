@@ -1,4 +1,6 @@
-# MeuControlePC v2.8.0
+# MeuControlePC v2.8.2
+
+**Recuperação após patch externo:** fontes completas sem hooks, resposta local para “me fale suas capacidades” e `/logs` com detalhe redigido da última falha. Preserva confirmação, seleção de modelos e registros existentes. [Recuperar no Windows](GUIA_RECUPERACAO_PATCH.md) · [Auditoria do patch e revisão v2.8.2](REVISAO_V2_8_2.md).
 
 **Atualizar e otimizar:** encerre o bot, copie as fontes na raiz em C: e abra `atualizar_assistente.bat`. Ele confere bibliotecas da aplicação/voz/Google, executa `pip check`, limpa bytecode gerado e inicia o assistente, reaproveitando configuração/dados/modelos e o Startup existente. Respostas sociais são locais e rápidas; status sem espera; equipe CPU prioriza modelos menores e explica adiamento por RAM. [Guia de manutenção](GUIA_MANUTENCAO.md) · [Revisão v2.8.0](REVISAO_V2_8_0.md).
 

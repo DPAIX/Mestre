@@ -28,8 +28,30 @@ def _normalizar(texto):
                    if not unicodedata.combining(c))
 
 
+def texto_capacidades():
+    """Descreve funções existentes, sem consultar dados ou afirmar conexão."""
+    return (
+        'Posso ajudar com estes recursos do MeuControlePC:\n'
+        '• Rotina local: consultar atividades e preparar novos horários. Exemplo: '
+        '"mostre minha rotina" ou "agende estudar na sexta às 14:00".\n'
+        '• Finanças: consultar saldo e preparar entradas ou gastos. Exemplo: '
+        '"qual meu saldo?" ou "gastei 15,50 com almoço".\n'
+        '• Kanban: consultar o quadro e preparar tarefas. Exemplo: '
+        '"mostre meu kanban" ou "adicione tarefa estudar cálculo".\n'
+        '• Hábitos e foco: registrar um copo de água e iniciar Pomodoro. Exemplo: '
+        '"bebi um copo de água" ou "iniciar pomodoro".\n'
+        '• Windows e RoboTask: abrir programas permitidos, capturar a tela e acionar '
+        'atalhos após confirmação. Exemplo: "abra o VS Code" ou "pressione F8".\n'
+        '• Status, diagnóstico local e leitura da agenda Google quando autorizada.\n'
+        '• Conversa com os modelos Ollama disponíveis e transcrição de áudio local, '
+        'quando serviço, modelos e dependências estiverem prontos.\n'
+        'Pedidos de alteração são apresentados para sua confirmação. '
+        'Esta lista descreve funções; não verifica a conexão das contas ou dos modelos.'
+    )
+
+
 def resposta_rapida_local(texto):
-    """Reconhece só mensagens sociais completas; nunca interpreta uma tarefa.
+    """Reconhece mensagens sociais e perguntas completas sobre os recursos.
 
     Um teste de recebimento não comprova inferência nem conectividade das APIs.
     Pedidos compostos, citações, comandos e perguntas técnicas ficam no fluxo
@@ -38,6 +60,14 @@ def resposta_rapida_local(texto):
     if not isinstance(texto,str) or len(texto)>100 or any(c in texto for c in ('\n','\r',';')):
         return None
     normal=_normalizar(texto).strip(' .!?')
+    if ' '.join(normal.split()) in (
+            'me fale suas capacidades','me fale as suas capacidades',
+            'quais sao suas capacidades','quais sao as suas capacidades',
+            'quais suas capacidades','quais as suas capacidades',
+            'o que voce pode fazer','o que voce faz','o que voce consegue fazer',
+            'como voce pode me ajudar','quais sao seus recursos','quais sao suas funcoes',
+            'por favor, me fale suas capacidades','por favor me fale suas capacidades'):
+        return texto_capacidades()
     if normal in ('oi','ola','alo','bom dia','boa tarde','boa noite'):
         return 'Olá! Posso ajudar com sua rotina, tarefas e ações do assistente. Escreva o que precisa.'
     if re.fullmatch(r'(?:teste|test)(?:\s*[0-9]{1,8})?',normal):
