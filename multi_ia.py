@@ -434,7 +434,8 @@ class Roteador:
         detalhe+=' Use /modelos ollama e /modelos padrao NOME com uma tag instalada. Nenhum modelo foi baixado nem outra geração tentada.'
         return FalhaAPI('Ollama',404,detalhe,'modelo_indisponivel')
 
-    def ollama(self,pergunta,historico=None,modelo=None):
+    def ollama(self,pergunta,historico=None,modelo=None,*,modo_cooperativo=False):
+        if not isinstance(modo_cooperativo,bool):raise ValueError('Modo cooperativo inválido.')
         if os.getenv('OLLAMA_HABILITADO')!='1':
             raise FalhaAPI('Ollama',0,'Integração local desabilitada. Configure Ollama e habilite OLLAMA_HABILITADO=1.','configuracao')
         endpoint=endpoint_ollama()
@@ -465,6 +466,9 @@ class Roteador:
                 raise FalhaAPI('Ollama',0,'O perfil CPU exige uma tag confirmada como local no catálogo. Nenhuma geração enviada.','configuracao')
             payload['model']=local
             payload.update({'keep_alive':0,'options':{'num_gpu':0,'num_ctx':1024,'num_predict':128}})
+        if modo_cooperativo:
+            payload['keep_alive']=0
+            payload.setdefault('options',{}).update({'num_ctx':4096,'num_predict':384})
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),SemRedirecionamento())
         try:
             dados=postar(endpoint,'',payload,'Ollama',timeout=timeout,opener=opener)
@@ -539,8 +543,11 @@ class Roteador:
                     'verificado_em':time.time()}
         return resultado
 
-    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None):
+    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None,*,modo_cooperativo=False):
+        if not isinstance(modo_cooperativo,bool):raise ValueError('Modo cooperativo inválido.')
         escolhido=self._selecionar_provedor(provedor)
+        if modo_cooperativo and (escolhido!='Ollama' or modelo_ollama is None or pesquisa):
+            raise ValueError('Modo cooperativo exige um modelo Ollama explícito.')
         if modelo_ollama is not None:
             from configurar_ia_local import validar_modelo
             modelo_ollama=validar_modelo(modelo_ollama)
@@ -553,7 +560,8 @@ class Roteador:
             # Uma consulta explícita ao modelo escolhido. Falhas de um modelo
             # cloud não pausam outro modelo nem alteram o estado do padrão.
             try:
-                texto=self.ollama(pergunta,historico=historico,modelo=modelo_ollama)
+                opcoes={'modo_cooperativo':True} if modo_cooperativo else {}
+                texto=self.ollama(pergunta,historico=historico,modelo=modelo_ollama,**opcoes)
                 self.ultimo_provedor='Ollama'
                 registrar('pergunta','sucesso','Modelo '+modelo_ollama+'; '+pergunta[:120],'Ollama')
                 return texto,'Ollama'

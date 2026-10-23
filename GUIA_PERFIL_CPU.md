@@ -1,3 +1,5 @@
+> A v2.6.0 acrescenta a [equipe cooperativa](GUIA_EQUIPE_COOPERATIVA.md): `/chat equipe on` usa todas as tags sequencialmente, preservando o perfil CPU. Não repita a ativação do perfil depois da equipe, pois ela seleciona o modelo individual.
+
 # Conversar usando o Llama em CPU — v2.5.2
 
 O teste isolado de `llama3.2:latest` recebeu texto em 14,3 segundos no PC. Ele solicitou CPU, contexto 1024 e somente oito tokens. Isso comprova aquela geração curta; não comprova defeito de GPU nem o desempenho de uma conversa completa. O assistente agora oferece esse caminho por escolha explícita.

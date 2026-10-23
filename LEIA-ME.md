@@ -1,3 +1,5 @@
+> **v2.6.0:** [Todos os modelos em cooperação](GUIA_EQUIPE_COOPERATIVA.md) · [Mudanças e reversão](REVISAO_V2_6_0.md). `/chat equipe on` ativa consulta sequencial e síntese; o modo CPU que funcionou é preservado.
+
 > **v2.5.2:** [Perfil CPU para o Llama](GUIA_PERFIL_CPU.md) · [Mudanças e reversão](REVISAO_V2_5_2.md). Ative pelo Telegram com `/modelos perfil cpu` e confirme; configuração e dados continuam em F:.
 
 > **v2.5.1:** [Correção dos hábitos legados e dos testes de instalação](REVISAO_V2_5_1.md). Atualize as fontes; preserve `gestao_vida.json`, `.env` e demais dados existentes. Inicie por `iniciar_redirecionado.bat`.

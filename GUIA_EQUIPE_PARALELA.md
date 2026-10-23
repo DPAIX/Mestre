@@ -1,3 +1,5 @@
+> Na v2.6.0, `/chat equipe on` ativa a equipe cooperativa sequencial com síntese. Para o modo simultâneo descrito neste guia, use `/chat equipe paralelo`. Equipes antigas permanecem paralelas até a reativação. [Guia atual](GUIA_EQUIPE_COOPERATIVA.md).
+
 # Conversar com todos os modelos Ollama — v2.5.1
 
 Com o Ollama aberto e `ollama list` mostrando seus modelos, reinicie o assistente atualizado e envie no Telegram:

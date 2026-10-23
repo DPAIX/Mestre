@@ -38,6 +38,9 @@ FONTES_EXPORTAVEIS = (
     'GUIA_EQUIPE_PARALELA.md','REVISAO_V2_5_0.md','AUDITORIA_ASSISTENTE_V2_5_0.md',
     'REVISAO_V2_5_1.md','testes/test_vida_legada.py',
     'GUIA_PERFIL_CPU.md','REVISAO_V2_5_2.md','testes/test_ollama_perfil_cpu.py',
+    'GUIA_EQUIPE_COOPERATIVA.md','REVISAO_V2_6_0.md','voz_assistente.py',
+    'testes/test_equipe_cooperativa.py','testes/test_integracao_cooperativa.py',
+    'testes/test_rotina_natural_semana.py','testes/test_voz_assistente.py',
     'diagnostico_ollama.py','diagnosticar_ollama.bat','testar_ollama_cpu.bat','GUIA_DIAGNOSTICO_OLLAMA.md','testes/test_diagnostico_ollama.py',
     'testes/test_auditoria_v250.py','testes/test_conversa_equipe.py','testes/test_chat_equipe.py',
     'testes/test_caminhos_instalacao.py','testes/test_redirecionar_assistente.py','testes/test_configuracao_externa.py','testes/test_idempotencia_painel.py','testes/test_redacao_inline.py',
@@ -112,14 +115,14 @@ def _novo_chat(dados,espaco,titulo,provedor):
     if len(espaco['chats'])>=limite or total>=MAX_CHATS:raise ValueError('Limite de conversas atingido. Use uma conversa existente.')
     agora=_agora()
     chat={'id':'chat_'+uuid.uuid4().hex[:16],'titulo':titulo,'provedor':provedor,'modelo_ollama':'',
-          'modo_conversa':True,'conversa_v240':True,'equipe_modelos':[],'equipe_paralela':False,
+          'modo_conversa':True,'conversa_v240':True,'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'cooperativa',
           'criado_em':agora,'atualizado_em':agora,'mensagens':[]}
     espaco['chats'].append(chat);espaco['ativo']=chat['id']
     return chat
 
 
 def _metadados(chat):
-    return {'equipe_modelos':[],'equipe_paralela':False,
+    return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela',
             **{chave:copy.deepcopy(valor) for chave,valor in chat.items() if chave!='mensagens'},
             'total_mensagens':len(chat.get('mensagens',[]))}
 
@@ -168,7 +171,7 @@ def obter_chat_ativo(contexto):
             chat=_achar_chat(espaco)
             if not chat.get('conversa_v240'):
                 chat['modo_conversa']=True;chat['conversa_v240']=True;_salvar(dados)
-        return {'equipe_modelos':[],'equipe_paralela':False,**copy.deepcopy(chat)}
+        return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela',**copy.deepcopy(chat)}
 
 
 def selecionar_chat(contexto,chat_id):
@@ -176,11 +179,11 @@ def selecionar_chat(contexto,chat_id):
     with nucleo._LOCK:
         dados=_ler();espaco=_espaco(dados,chave);chat=_achar_chat(espaco,chat_id)
         espaco['ativo']=chat['id'];_salvar(dados)
-        return {'equipe_modelos':[],'equipe_paralela':False,**copy.deepcopy(chat)}
+        return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela',**copy.deepcopy(chat)}
 
 
 def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_ollama=None,
-                    equipe_modelos=None,equipe_paralela=None):
+                    equipe_modelos=None,equipe_paralela=None,equipe_modo=None):
     chave=_contexto(contexto)
     if provedor is not None:provedor=_provedor(provedor)
     if modelo_ollama is not None:
@@ -188,6 +191,8 @@ def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_oll
         if modelo_ollama!='':modelo_ollama=validar_modelo(modelo_ollama)
     if modo_conversa is not None and not isinstance(modo_conversa,bool):raise ValueError('Modo de conversa deve ser verdadeiro ou falso.')
     if equipe_paralela is not None and not isinstance(equipe_paralela,bool):raise ValueError('Modo equipe deve ser verdadeiro ou falso.')
+    if equipe_modo is not None and equipe_modo not in ('cooperativa','paralela'):
+        raise ValueError('Modo da equipe deve ser cooperativa ou paralela.')
     if equipe_modelos is not None:
         from configurar_ia_local import validar_modelo
         if not isinstance(equipe_modelos,list) or len(equipe_modelos)>8:raise ValueError('Selecione até oito modelos.')
@@ -201,6 +206,7 @@ def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_oll
         if modelo_ollama is not None:chat['modelo_ollama']=modelo_ollama
         if equipe_modelos is not None:chat['equipe_modelos']=equipe_modelos
         if equipe_paralela is not None:chat['equipe_paralela']=equipe_paralela
+        if equipe_modo is not None:chat['equipe_modo']=equipe_modo
         if chat.get('equipe_paralela') and (chat.get('provedor')!='Ollama' or not chat.get('equipe_modelos')):
             raise ValueError('Equipe ativa exige Ollama e uma lista de modelos.')
         chat['atualizado_em']=_agora();original.clear();original.update(chat);_salvar(dados)

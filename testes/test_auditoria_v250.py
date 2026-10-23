@@ -213,7 +213,7 @@ class AuditoriaV250Teste(unittest.TestCase):
             app.configurar_bot()
         return bot, handlers
 
-    def test_voz_falha_upload_fecha_cliente_e_remove_audio_temporario(self):
+    def test_voz_falha_geracao_fecha_cliente_sem_upload_ou_temporario(self):
         bot, handlers = self.configurar_bot_ficticio()
         bot.get_file.return_value = SimpleNamespace(file_path='fixture/audio.ogg')
         bot.download_file.return_value = b'audio-ficticio'
@@ -221,27 +221,25 @@ class AuditoriaV250Teste(unittest.TestCase):
         genai = ModuleType('google.genai')
         google.genai = genai
         genai.Client = MagicMock()
-        arquivos = []
-
-        def falhar_upload(*, file):
-            caminho = Path(file)
-            arquivos.append(caminho)
-            self.assertTrue(caminho.is_file())
-            raise RuntimeError('Falha fictícia no upload.')
-
-        genai.Client.return_value.files.upload.side_effect = falhar_upload
+        genai.Client.return_value.models.generate_content.side_effect = RuntimeError('Falha fictícia na transcrição.')
         mensagem = SimpleNamespace(
             from_user=SimpleNamespace(id=11), chat=SimpleNamespace(id=22),
             voice=SimpleNamespace(file_id='fixture', file_size=13), audio=None)
-        with patch.dict(sys.modules, {'google': google, 'google.genai': genai}):
+        roteador = MagicMock()
+        roteador.estado_local.return_value = {'Gemini': {'configurado': True, 'em_pausa': False}}
+        with patch.dict(sys.modules, {'google': google, 'google.genai': genai}), \
+                patch.object(app, 'ROTEADOR', roteador), \
+                patch('tempfile.NamedTemporaryFile') as temporario, \
+                patch.object(app, 'responder_natural_telegram') as interpretar:
             handlers['voice'](mensagem)
         genai.Client.assert_called_once()
         self.assertGreater(genai.Client.call_args.kwargs['http_options']['timeout'], 0)
         genai.Client.return_value.close.assert_called_once_with()
-        genai.Client.return_value.models.generate_content.assert_not_called()
-        self.assertEqual(len(arquivos), 1)
-        self.assertFalse(arquivos[0].exists())
-        self.assertIn('Não foi possível transcrever', bot.send_message.call_args.args[1])
+        genai.Client.return_value.models.generate_content.assert_called_once()
+        genai.Client.return_value.files.upload.assert_not_called()
+        temporario.assert_not_called()
+        interpretar.assert_not_called()
+        self.assertIn('Transcrição não concluída', bot.send_message.call_args.args[1])
 
     def test_callback_ack_expirado_nao_transforma_acao_executada_em_falha(self):
         bot, handlers = self.configurar_bot_ficticio()

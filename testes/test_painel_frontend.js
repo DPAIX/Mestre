@@ -713,6 +713,41 @@ test('equipe da conversa renderiza tags como texto sem iniciar consultas',async(
  assert.match(html,/Ollama pode enfileirar conforme a memória disponível/);
 });
 
+test('equipe cooperativa mostra modo e síntese sem confundir chats legados',async()=>{
+ const chat={id:'chat_cooperativa',titulo:'Cooperar',provedor:'Ollama',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest','mistral:latest']};
+ const centro={chats:[chat],chat_ativo:chat,tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});
+ assert.match(p.obter('chat-equipe-status').textContent,/Equipe cooperativa ativa · 2 modelo\(s\)/);
+ assert.match(p.obter('chat-provedor').textContent,/equipe cooperativa \(2 modelo\(s\)\)/);
+ assert.match(p.obter('ia-chat-ativo').textContent,/equipe cooperativa/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/equipe cooperativa/);
+ assert.match(html,/um modelo por vez.*síntese final/);
+ assert.match(html,/Falhas parciais.*sem repetir consultas/);
+ assert.match(html,/ações exigem concordância de todos e sua confirmação/);
+ const legado={...chat};delete legado.equipe_modo;
+ p.contexto.centro={...centro,chats:[legado],chat_ativo:legado};p.executar('renderColaboracao(centro)');
+ assert.match(p.obter('chat-provedor').textContent,/equipe paralela/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/equipe paralela/);
+});
+
+test('só conversa com equipe ativa recebe prazo de vinte minutos',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),prazos=[],posts=[];
+ p.contexto.setTimeout=(_fn,prazo)=>{prazos.push(prazo);return 0};
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts.push(JSON.parse(opt.body));return resposta({ok:true})};
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Compare as propostas'})");
+ await p.executar("api('/api/acao',{acao:'agua'})");
+ await p.executar("api('/api/acao',{acao:'conexoes_ia'})");
+ await p.executar("api('/api/acao',{acao:'equipe_ia'})");
+ await p.executar("api('/api/estado')");
+ p.contexto.centro={...centro,chat_ativo:{...centro.chat_ativo,equipe_paralela:false}};
+ p.executar('renderColaboracao(centro)');
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Individual'})");
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Prazo explícito'},{timeout:1234})");
+ assert.deepEqual(prazos,[1200000,180000,240000,540000,10000,180000,1234]);
+ assert.equal(posts.filter(pedido=>pedido.texto==='Compare as propostas').length,1);
+});
+
 test('ativar e desativar equipe envia só configuração da conversa com idempotência',async()=>{
  const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,versao_estado:12,colaboracao:centro}}),chamadas=[];
@@ -720,7 +755,7 @@ test('ativar e desativar equipe envia só configuração da conversa com idempot
  p.contexto.fetch=async(url,opt)=>{
   chamadas.push({url,opt});
   if(opt.method==='POST'){
-   const corpo=JSON.parse(opt.body);centro.chat_ativo.equipe_paralela=corpo.ativo;
+   const corpo=JSON.parse(opt.body);centro.chat_ativo.equipe_paralela=corpo.ativo;centro.chat_ativo.equipe_modo=corpo.modo||'paralela';
    centro.chat_ativo.equipe_modelos=corpo.ativo?['mistral:latest','llama3.2:latest']:[];
    return resposta({mensagem:corpo.ativo?'Equipe ativada.':'Equipe desativada.'});
   }
@@ -728,7 +763,7 @@ test('ativar e desativar equipe envia só configuração da conversa com idempot
  };
  p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
  const ativacao=chamadas[0];assert.equal(ativacao.url,'/api/acao');
- assert.deepEqual(JSON.parse(ativacao.opt.body),{acao:'chat_equipe',ativo:true,id:'chat_equipe'});
+ assert.deepEqual(JSON.parse(ativacao.opt.body),{acao:'chat_equipe',ativo:true,id:'chat_equipe',modo:'cooperativa'});
  assert.match(ativacao.opt.headers['X-Idempotency-Key'],/^[a-f0-9-]{36}$/);
  assert.equal(ativacao.opt.headers['X-Estado-Versao'],'12');assert.equal(ativacao.opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
  assert.equal(p.obter('chat-equipe-paralela').checked,true);assert.match(p.obter('chat-equipe-status').textContent,/mistral:latest, llama3\.2:latest/);
@@ -749,7 +784,7 @@ test('atualizar equipe relê catálogo no servidor e renderiza a lista persistid
   assert.equal(url,'/api/estado');return resposta({...estado,colaboracao:centro});
  };
  await p.obter('chat-atualizar-equipe').eventos.click();
- assert.deepEqual(posts,[{acao:'chat_equipe',ativo:true,id:'chat_equipe'}]);
+ assert.deepEqual(posts,[{acao:'chat_equipe',ativo:true,id:'chat_equipe',modo:'cooperativa'}]);
  assert.equal(p.obter('chat-equipe-paralela').checked,true);assert.match(p.obter('chat-equipe-status').textContent,/3 modelo\(s\).*qwen3\.5:4b/);
 });
 

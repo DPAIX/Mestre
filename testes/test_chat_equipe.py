@@ -49,7 +49,7 @@ class ChatEquipe(unittest.TestCase):
 
     def ativar(self, contexto=None, **campos):
         return servicos.executar_acao(
-            'chat_equipe', {'ativo': True, **campos},
+            'chat_equipe', {'ativo': True, 'modo': 'paralela', **campos},
             contexto or self.contexto, self.roteador)
 
     def ativo(self, contexto=None):

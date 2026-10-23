@@ -24,7 +24,7 @@ def campo_texto(obj,nome,limite=200,obrigatorio=True):
     return valor
 
 
-def conversar(texto,contexto,roteador,retornar_plano=False):
+def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma pergunta para a conversa.')
     if len(texto)>12000:raise ValueError('A mensagem deve ter até 12000 caracteres.')
     if retornar_plano and len(texto)>8000:raise ValueError('Envie mensagens de até 8000 caracteres para interpretar pedidos.')
@@ -57,7 +57,9 @@ def conversar(texto,contexto,roteador,retornar_plano=False):
         equipe=bool(chat.get('equipe_paralela'))
         if equipe:
             from conversa_equipe import consultar_modelos
-            equipe_resultado=consultar_modelos(pergunta,historico,chat.get('equipe_modelos'),roteador,interpretar=retornar_plano)
+            equipe_resultado=consultar_modelos(pergunta,historico,chat.get('equipe_modelos'),roteador,
+                interpretar=retornar_plano,modo=chat.get('equipe_modo','paralela'),
+                progresso=progresso)
             resposta=equipe_resultado['texto'];provedor='Ollama'
         else:resposta,provedor=roteador.responder(pergunta,**opcoes)
         resposta=nucleo.redigir(resposta)
@@ -82,11 +84,11 @@ def resumo_chats(contexto):
         marca='▶' if chat['id']==ativo['id'] else '•'
         modelo=(' / '+chat['modelo_ollama']) if chat.get('modelo_ollama') and chat['provedor']=='Ollama' else ''
         linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
-        if chat.get('equipe_paralela'):linhas.append('  Equipe paralela: '+', '.join(chat['equipe_modelos']))
+        if chat.get('equipe_paralela'):linhas.append('  Equipe '+chat.get('equipe_modo','paralela')+': '+', '.join(chat['equipe_modelos']))
     linhas.extend(['/chat novo Nome | /chat usar ID | /chat provedor Ollama',
                    '/modelos ollama lista o catálogo; /chat modelo NOME seleciona por conversa; /chat modelo padrao usa a configuração geral.',
                    '/chat modo on ativa conversa por mensagens comuns; /chat modo off desativa.',
-                   '/chat equipe on usa todos os modelos Ollama listados agora; /chat equipe off volta ao modelo individual.',
+                   '/chat equipe on usa todos os modelos Ollama em cooperação sequencial e síntese; /chat equipe paralelo consulta simultaneamente; /chat equipe off volta ao individual.',
                    '/ia pergunta usa o histórico da conversa selecionada. /contexto gera um pacote para outros chats.'])
     return '\n'.join(linhas)
 
@@ -160,6 +162,8 @@ def _executar_acao(acao,obj,contexto,roteador):
     if acao=='chat_equipe':
         ativo=obj.get('ativo')
         if not isinstance(ativo,bool):raise ValueError('O modo equipe deve ser verdadeiro ou falso.')
+        modo=obj.get('modo','cooperativa')
+        if modo not in ('cooperativa','paralela'):raise ValueError('Escolha equipe cooperativa ou paralela.')
         chat=central.obter_chat_ativo(contexto)
         if obj.get('id') and obj['id']!=chat['id']:raise ValueError('Selecione a conversa antes de configurar a equipe.')
         if not ativo:
@@ -170,10 +174,11 @@ def _executar_acao(acao,obj,contexto,roteador):
         modelos=list(dict.fromkeys(m['nome'] for m in catalogo['modelos']))
         if not 1<=len(modelos)<=8:raise ValueError('O catálogo precisa ter entre um e oito modelos para ativar todos.')
         central.configurar_chat(contexto,chat['id'],provedor='Ollama',modo_conversa=True,
-            equipe_modelos=modelos,equipe_paralela=True)
+            equipe_modelos=modelos,equipe_paralela=True,equipe_modo=modo)
         nuvem=any(m.get('nuvem') for m in catalogo['modelos'])
-        return ('Equipe paralela ativada nesta conversa: '+', '.join(modelos)+
-            '. Cada mensagem de conversa consulta uma vez cada modelo. O Ollama pode enfileirar conforme a memória. '
+        return ('Equipe '+modo+' ativada nesta conversa: '+', '.join(modelos)+
+            ('. Cada mensagem que precisar de IA consulta uma vez cada modelo, um por vez, e pode fazer uma síntese adicional. O perfil CPU atual é preservado. '
+             if modo=='cooperativa' else '. Cada mensagem de conversa consulta uma vez cada modelo simultaneamente. O Ollama pode enfileirar conforme a memória. ')+
             'Nenhum modelo foi baixado ou consultado nesta ativação.'+
             (' Há modelos cloud: as mensagens usam a conta, internet e cota Ollama.' if nuvem else ''))
     if acao=='modelo_padrao':

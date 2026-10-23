@@ -22,7 +22,7 @@ import nucleo
 
 _ANALISE_LOCK = threading.RLock()
 FONTES = ('assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
-          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py',
+          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','voz_assistente.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py',
           'agenda_google.py','autorizar_google.py','configurar_telegram.py','startup_windows.py',
           'caminhos_instalacao.py','redirecionar_assistente.py','idempotencia_painel.py',
           'evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')

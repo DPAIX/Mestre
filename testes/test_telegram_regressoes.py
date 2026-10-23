@@ -77,15 +77,15 @@ class TelegramConfirmacoes(unittest.TestCase):
             self.assertIn('pedido',app.PENDENTES)
             executar.assert_not_called()
 
-    def test_equipe_telegram_autorizada_consulta_catalogo_e_conversa_com_quatro_modelos(self):
+    def test_equipe_paralela_telegram_autorizada_consulta_catalogo_e_conversa_com_quatro_modelos(self):
         modelos=['qwen3.8:27b','mistral:latest','llama3.2:latest','qwen3.5:4b']
         roteador=MagicMock()
         roteador.catalogo_ollama.return_value={'habilitado':True,'modelos':[{'nome':m,'nuvem':False} for m in modelos]}
         roteador.responder.side_effect=lambda texto,**opcoes:('Olá de '+opcoes['modelo_ollama'],'Ollama')
         with patch.object(app,'ROTEADOR',roteador):
-            app.tratar_pedido(self.mensagem('/chat equipe on',usuario=3))
+            app.tratar_pedido(self.mensagem('/chat equipe paralelo',usuario=3))
             roteador.catalogo_ollama.assert_not_called()
-            app.tratar_pedido(self.mensagem('/chat equipe on',topico=4))
+            app.tratar_pedido(self.mensagem('/chat equipe paralelo',topico=4))
             roteador.catalogo_ollama.assert_called_once_with()
             roteador.responder.assert_not_called()
             app.tratar_pedido(self.mensagem('Explique planejamento semanal',topico=4))

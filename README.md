@@ -1,4 +1,6 @@
-# MeuControlePC v2.5.2
+# MeuControlePC v2.6.0
+
+Todos os modelos instalados podem colaborar com `/chat equipe on`: consultas sequenciais, contribuições compartilhadas e uma resposta consolidada. O perfil CPU existente é preservado. [Ativação e limites](GUIA_EQUIPE_COOPERATIVA.md) · [Revisão v2.6.0](REVISAO_V2_6_0.md). A frase “mostre a minha rotina da semana” agora consulta os registros locais.
 
 Se o teste isolado do Llama respondeu em CPU, ative o mesmo caminho no assistente com `/modelos perfil cpu` e confirme no Telegram. O perfil seleciona Llama, usa CPU/contexto pequeno e desativa a equipe desta conversa. [Ativação, limites e reversão](GUIA_PERFIL_CPU.md) · [Revisão v2.5.2](REVISAO_V2_5_2.md).
 
@@ -6,7 +8,7 @@ Para timeouts também reproduzidos no comando nativo do Ollama, há um [diagnós
 
 Corrigida a validação que recusava hábitos textuais/fracionários do próprio projeto e o teste de instalação que confundia uma fixture anterior com nova gravação junto às fontes. [Correções e recuperação sem alterar os dados](REVISAO_V2_5_1.md).
 
-Conversa com todos os modelos Ollama em paralelo: `/chat equipe on`. Respostas identificadas por modelo, histórico por conversa e confirmação de ações preservados. [Guia](GUIA_EQUIPE_PARALELA.md) · [Revisão técnica](REVISAO_V2_5_0.md) · [Auditoria do arquivo enviado](AUDITORIA_ASSISTENTE_V2_5_0.md).
+Consulta simultânea opcional aos modelos Ollama: `/chat equipe paralelo`. Respostas identificadas por modelo, histórico por conversa e confirmação de ações preservados. [Guia](GUIA_EQUIPE_PARALELA.md) · [Revisão técnica](REVISAO_V2_5_0.md) · [Auditoria do arquivo enviado](AUDITORIA_ASSISTENTE_V2_5_0.md).
 
 **Código em C: e configuração em F:** execute `iniciar_redirecionado.bat` para usar as fontes em `C:\Users\Mestre\Documents\GitHub\Mestre`, o `.env` em `F:\MeuControlePC_v2\.env` e os dados em `F:\MeuControlePC_v2\dados`. O redirecionador reaproveita o Python instalado, preserva os caminhos nos reinícios e nos configuradores e não copia credenciais para o repositório. Veja [preparação, comandos e reversão](GUIA_REDIRECIONAMENTO.md).
 
