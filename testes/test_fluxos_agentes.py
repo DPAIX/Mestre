@@ -26,6 +26,7 @@ class FluxosAgentes(unittest.TestCase):
         for alvo,nome,valor in (
                 (nucleo,'DADOS',Path(self.tmp.name)),(app,'PENDENTES',{}),
                 (app,'PEDIDOS_PAINEL',{}),(app,'BOT',MagicMock()),
+                (app,'inline',MagicMock(return_value=None)),
                 (servicos,'_TRAVAS',{})):
             p=patch.object(alvo,nome,valor);p.start();self.addCleanup(p.stop)
         p=patch.dict(os.environ,{'TELEGRAM_ALLOWED_USER_IDS':'1'},clear=True)

@@ -23,6 +23,7 @@ class IntegracoesAgentesTeste(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.exe = Path(self.tmp.name) / 'ollama.exe'
         self.exe.write_bytes(b'fixture-nao-executavel')
+        self.exe = self.exe.resolve()
         self.ajuda = 'Supported integrations:\n' + '\n'.join(
             f'  {item.agente}    {item.nome}' for item in agentes.INTEGRACOES)
         self.processo = MagicMock()
@@ -200,7 +201,7 @@ class IntegracoesAgentesTeste(unittest.TestCase):
         for chamada in (self.run.call_args, self.popen.call_args):
             ambiente = chamada.kwargs['env']
             self.assertEqual(ambiente['PATH'], 'fixture-path')
-            self.assertEqual(ambiente['SystemRoot'], 'fixture-windows')
+            self.assertEqual({k.upper():v for k,v in ambiente.items()}['SYSTEMROOT'], 'fixture-windows')
             self.assertEqual(ambiente['OLLAMA_HOST'], 'http://127.0.0.1:11435')
             self.assertEqual(ambiente['OLLAMA_NO_CLOUD'], '1')
             self.assertNotIn('fixture-segredo', repr(ambiente))
