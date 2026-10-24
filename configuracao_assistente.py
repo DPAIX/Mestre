@@ -35,9 +35,10 @@ _ETAPAS=(
     ('dependencias_voz','Preparar bibliotecas Python/Google e pesos da voz local (encerre o bot; requer rede/espaço)'),
     ('instalar_node','Conferir Node.js 22+; se ausente, instalar o LTS oficial pelo winget'),
     ('telegram','Configurar token e proprietários Telegram com entrada oculta no console'),
-    ('modelos_ollama','Escolher modelo e perfil Ollama pela configuração local, sem gerar resposta'),
-    ('perfil_cpu','Selecionar perfil CPU compacto com Llama local, sem download ou geração'),
     ('politica_ollama','Escolher se o assistente pode iniciar ollama serve quando estiver ausente'),
+    ('iniciar_ollama','Conferir/iniciar uma vez o serviço Ollama autorizado, sem baixar modelos'),
+    ('modelos_ollama','Escolher modelo Ollama com o serviço respondendo, sem gerar resposta'),
+    ('perfil_cpu','Selecionar perfil CPU compacto com Llama local, sem download ou geração'),
     ('instalar_9router','Instalar o 9Router gerenciado, se necessário (requer Node.js 22+, npm e rede)'),
     ('instalar_9remote','Instalar o 9Remote gerenciado, se necessário (não inicia acesso remoto)'),
     ('preparar_9router','Iniciar o 9Router em loopback e abrir seu dashboard para contas e combos'),
@@ -49,6 +50,17 @@ _ETAPAS=(
     ('inicio_gerenciado','Ativar só o início gerenciado do assistente; guardar o atalho legado exato, se existir'),
     ('sondar_servicos','Conferir APIs locais Ollama/9Router; o catálogo do gateway pode contatar provedores'),
 )
+_RETOMAR_ETAPAS=frozenset({'politica_ollama','iniciar_ollama','modelos_ollama','perfil_cpu',
+    'preparar_9router','configurar_9router','gemini','agentes','sondar_servicos'})
+_ORIENTACAO_ERRO={
+    'gemini':'Use 1/Interactions ou 2/generate_content no campo API e um identificador de modelo Gemini no campo modelo. Não escreva sim nesses campos; Enter mantém o padrão informado.',
+    'configurar_9router':'Escolha um ID de modelo/combo do dashboard. A chave é outra informação, digitada somente na entrada oculta do console.',
+    'modelos_ollama':'Conclua a etapa de início do Ollama antes de escolher uma tag do catálogo. Se a porta estiver ocupada sem resposta, confira o serviço existente no PC.',
+    'perfil_cpu':'Conclua a etapa de início do Ollama e confira se Llama está no catálogo local; esta etapa não baixa modelos.',
+    'iniciar_ollama':'Confira a política de início e encerre o bot antes de preparar o serviço. Uma porta ocupada não autoriza criar outro servidor.',
+    'politica_ollama':'Escolha 0 para início manual ou 1 para permitir início. Nenhum serviço é aberto só por salvar a política.',
+    'agentes':'Escolha um ID de aplicativo da lista. O modelo será escolhido no lançador oficial, com a conta e as permissões próprias do aplicativo.',
+}
 
 
 def preparar_configuracao():
@@ -154,6 +166,17 @@ def executar_etapa(etapa,*,confirmado=False):
     if etapa=='telegram':
         resultado=subprocess.run([sys.executable,str(BASE/'configurar_telegram.py')],cwd=str(BASE),env=_ambiente_configurador(),shell=False,check=False)
         return 'Configurador Telegram encerrado; confira a mensagem no console. Reinicie o bot após salvar credenciais.' if resultado.returncode==0 else 'Telegram continua pendente; confira a mensagem no console.'
+    if etapa=='iniciar_ollama':
+        from iniciar_servicos_locais import garantir_ollama
+        from instancia_assistente import instancia_unica,InstanciaAtiva
+        try:
+            with instancia_unica(diretorio_dados(BASE)):
+                resultado=garantir_ollama()
+        except InstanciaAtiva:
+            return 'Início Ollama pendente: encerre o assistente ou o outro configurador antes de preparar o serviço. Nenhum processo foi iniciado.'
+        complemento=(' Agora pode escolher o modelo/perfil nas próximas etapas.' if resultado['ok'] else
+                     ' A seleção de modelo/perfil continua dependente de o serviço responder. Nenhum modelo foi baixado.')
+        return resultado['mensagem']+complemento
     if etapa=='modelos_ollama':
         from configurar_ia_local import main as configurar
         codigo=configurar([],caminho=arquivo_env(BASE))
@@ -171,14 +194,16 @@ def executar_etapa(etapa,*,confirmado=False):
         return 'Política de início Ollama salva. Nenhum processo foi iniciado ou encerrado agora.'
     if etapa=='gemini':
         from configurar_gemini import main as configurar
-        configurar();return 'Configurador Gemini encerrado; nenhuma tarefa ou geração foi enviada.'
+        codigo=configurar()
+        return ('Configurador Gemini encerrado; nenhuma tarefa ou geração foi enviada.' if codigo==0 else
+                'Configuração Gemini pendente. Confira as opções informadas no console; nenhuma tarefa foi enviada.')
     if etapa=='agentes':
         from integracoes_agentes import catalogo_agentes,abrir_agente
         for agente in catalogo_agentes():print(agente['agente']+' — '+agente['nome'])
         escolhido=input('ID de um agente (Enter encerra esta etapa): ').strip()
         if not escolhido:return 'Etapa encerrada sem abrir agente.'
-        modelo=input('Modelo opcional (Enter usa a escolha do lançador): ').strip()
-        return abrir_agente(escolhido,modelo=modelo,configurar=True,confirmado=True)
+        print('O modelo será escolhido no lançador oficial. IDs de aplicativos como codex ou hermes não são a seleção de um modelo.')
+        return abrir_agente(escolhido,modelo='',configurar=True,confirmado=True)
     if etapa=='inicio_gerenciado':
         from startup_windows import consolidar_inicio
         resultado=consolidar_inicio(BASE,sys.executable,arquivo_env_externo=arquivo_env(BASE),dados=diretorio_dados(BASE),confirmado=True)
@@ -238,12 +263,14 @@ def _preparar_node():
     return 'Node.js compatível localizado após o instalador oficial.'
 
 
-def assistente():
+def assistente(etapas=None):
     """Uma passagem finita; contas e escolhas permanecem com o dono no PC."""
     print(resumo_configuracao())
-    print('\nAs etapas abaixo são independentes. Digite sim para executar ou Enter para deixar pendente.')
+    print('\nNa pergunta de cada etapa, digite sim para abrir ou Enter para pular.')
+    print('Dentro de cada etapa, siga o tipo de campo: número, ID de modelo ou entrada oculta de chave. Não responda sim em todos os campos.')
     print('Não haverá testes de geração, seleção automática de modelo pago ou início de túnel remoto.')
     for etapa,rotulo in _ETAPAS:
+        if etapas is not None and etapa not in etapas:continue
         if input('\n'+rotulo+'? ').strip().casefold()!='sim':
             print('Etapa não solicitada; nenhuma alteração foi feita por ela.')
             continue
@@ -251,7 +278,7 @@ def assistente():
         except (ValueError,RuntimeError,PermissionError,OSError,subprocess.SubprocessError):
             # Dependências podem repetir dados privados no erro; não imprimir
             # a saída bruta de pacotes ou rastros das contas nesta camada.
-            print('Esta etapa não concluiu. Confira Node.js 22+, npm, instalação local, espaço e permissões. '
+            print('Esta etapa não concluiu. '+_ORIENTACAO_ERRO.get(etapa,'Confira os requisitos locais desta etapa, espaço e permissões. Para 9Router/9Remote, confira Node.js 22+ e npm.')+' '
                   'Nenhuma nova tentativa automática foi enviada; a etapa continua pendente.')
     print('\nConfiguração guiada encerrada. Etapas recusadas ou com falha continuam pendentes.')
     print('Se salvou uma credencial pelo console, reinicie o assistente para recarregá-la. '
@@ -262,6 +289,7 @@ def assistente():
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--assistente',action='store_true',help='Apresentar as etapas locais de configuração.')
+    parser.add_argument('--retomar',action='store_true',help='Retomar Ollama, 9Router, Gemini e agentes, preservando dependências, Telegram e início já preparados.')
     parser.add_argument('--resumo',action='store_true',help='Somente metadados locais, sem serviços ou alterações.')
     args=parser.parse_args(argv)
     try:
@@ -269,7 +297,7 @@ def main(argv=None):
         if sys.platform!='win32':raise RuntimeError('Abra o configurador na sessão Windows do PC.')
         from nucleo import ler_env
         if arquivo_env(BASE).is_file():ler_env()
-        return assistente()
+        return assistente(etapas=_RETOMAR_ETAPAS) if args.retomar else assistente()
     except (EOFError,KeyboardInterrupt):
         print('\nConfiguração interrompida. As etapas concluídas foram mantidas; nenhuma nova etapa será enviada.')
         return 0
@@ -277,7 +305,7 @@ def main(argv=None):
         print('Configuração local não iniciada. Confira a sessão Windows e os requisitos da instalação.')
         return 2
     finally:
-        if args.assistente:
+        if args.assistente or args.retomar:
             try:
                 if sys.stdin.isatty():input('\nPressione Enter para fechar o configurador.')
             except (EOFError,KeyboardInterrupt):pass

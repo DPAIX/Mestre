@@ -18,6 +18,7 @@ import configurar_9router as cliente
 import diagnostico_ollama as diagnostico
 import integracoes_9stack as stack
 import roteador_9router as gateway
+import instancia_assistente
 
 
 class ConfiguracaoAssistente(unittest.TestCase):
@@ -202,6 +203,69 @@ class ConfiguracaoAssistente(unittest.TestCase):
         with patch.object(local,'assistente',side_effect=EOFError),contextlib.redirect_stdout(io.StringIO()) as saida:
             self.assertEqual(local.main([]),0)
         self.assertIn('nenhuma nova etapa',saida.getvalue())
+
+    def test_inicio_ollama_vem_depois_da_politica_e_antes_dos_modelos(self):
+        nomes=[n for n,_ in local._ETAPAS]
+        self.assertLess(nomes.index('politica_ollama'),nomes.index('iniciar_ollama'))
+        self.assertLess(nomes.index('iniciar_ollama'),nomes.index('modelos_ollama'))
+        self.assertLess(nomes.index('iniciar_ollama'),nomes.index('perfil_cpu'))
+
+    def test_inicio_ollama_confirmado_usa_trava_compartilhada_e_preserva_resultado(self):
+        import iniciar_servicos_locais as servicos
+        import instancia_assistente as instancia
+        from unittest.mock import MagicMock
+        trava=MagicMock()
+        with patch.object(instancia,'instancia_unica',return_value=trava) as unica,patch.object(servicos,'garantir_ollama',return_value={'ok':False,'iniciado':False,'mensagem':'Porta ocupada.'}) as garantir:
+            texto=local.executar_etapa('iniciar_ollama',confirmado=True)
+        unica.assert_called_once_with(self.raiz/'dados-ficticios')
+        garantir.assert_called_once_with();trava.__enter__.assert_called_once()
+        self.assertIn('Porta ocupada',texto);self.assertIn('dependente',texto)
+
+    def test_bot_ativo_impede_preparar_ollama_sem_expor_erro(self):
+        import iniciar_servicos_locais as servicos
+        import instancia_assistente as instancia
+        with patch.object(instancia,'instancia_unica',side_effect=instancia.InstanciaAtiva('SEGREDO_FIXTURE')),patch.object(servicos,'garantir_ollama') as garantir:
+            texto=local.executar_etapa('iniciar_ollama',confirmado=True)
+        garantir.assert_not_called();self.assertIn('encerre o assistente',texto);self.assertNotIn('SEGREDO',texto)
+
+    def test_politica_persistida_vale_antes_do_inicio_da_mesma_sessao(self):
+        import configurar_ia_local as configurador
+        import iniciar_servicos_locais as servicos
+        with patch.dict(os.environ,{'OLLAMA_INICIAR_SERVICO':'0'}),patch('builtins.input',return_value='1'),patch.object(configurador,'_atualizar_opcoes_env') as gravar,patch.object(servicos,'garantir_ollama',side_effect=lambda:{'ok':os.environ['OLLAMA_INICIAR_SERVICO']=='1','iniciado':True,'mensagem':'Metadados disponíveis.'}) as garantir:
+            local.executar_etapa('politica_ollama',confirmado=True)
+            texto=local.executar_etapa('iniciar_ollama',confirmado=True)
+        gravar.assert_called_once_with({'OLLAMA_INICIAR_SERVICO':'1'},caminho=self.raiz/'config-ficticia.env')
+        garantir.assert_called_once_with();self.assertIn('Agora pode escolher',texto)
+
+    def test_retomada_nao_repete_deps_telegram_startup_ou_interface_remota(self):
+        with patch.object(local,'resumo_configuracao',return_value='Resumo.'),patch('builtins.input',return_value='sim') as entrada,patch.object(local,'executar_etapa',return_value='Etapa conferida.') as executar,contextlib.redirect_stdout(io.StringIO()):
+            local.assistente(etapas=local._RETOMAR_ETAPAS)
+        nomes=[c.args[0] for c in executar.call_args_list]
+        self.assertEqual(len(nomes),len(local._RETOMAR_ETAPAS))
+        self.assertTrue(set(nomes).isdisjoint({'dependencias_voz','telegram','inicio_gerenciado','instalar_node','instalar_9router','instalar_9remote','abrir_9remote'}))
+        self.assertLess(nomes.index('iniciar_ollama'),nomes.index('modelos_ollama'))
+
+    def test_erro_gemini_orienta_campos_sem_mencionar_node_ou_ecoar_chave(self):
+        with patch.object(local,'resumo_configuracao',return_value='Resumo.'),patch('builtins.input',return_value='sim'),patch.object(local,'executar_etapa',side_effect=ValueError('SEGREDO_FIXTURE')),contextlib.redirect_stdout(io.StringIO()) as saida:
+            local.assistente(etapas={'gemini'})
+        texto=saida.getvalue();self.assertIn('Interactions',texto);self.assertNotIn('Node.js',texto);self.assertNotIn('SEGREDO',texto)
+
+    def test_agente_escolhe_modelo_na_interface_oficial(self):
+        import integracoes_agentes as agentes
+        with patch('builtins.input',return_value='hermes') as entrada,patch.object(agentes,'catalogo_agentes',return_value=[{'agente':'hermes','nome':'Hermes Agent'}]),patch.object(agentes,'abrir_agente',return_value='Configuração solicitada.') as abrir,contextlib.redirect_stdout(io.StringIO()):
+            local.executar_etapa('agentes',confirmado=True)
+        entrada.assert_called_once();abrir.assert_called_once_with('hermes',modelo='',configurar=True,confirmado=True)
+
+    def test_gemini_com_retorno_de_falha_continua_pendente(self):
+        import configurar_gemini
+        with patch.object(configurar_gemini,'main',return_value=2):
+            texto=local.executar_etapa('gemini',confirmado=True)
+        self.assertIn('pendente',texto)
+
+    def test_cli_retomar_restringe_etapas_e_nao_exige_reinstalacao(self):
+        with patch.object(local,'assistente',return_value=0) as assistente,patch.object(local.sys.stdin,'isatty',return_value=False):
+            self.assertEqual(local.main(['--retomar']),0)
+        assistente.assert_called_once_with(etapas=local._RETOMAR_ETAPAS)
 
 
 if __name__=='__main__':unittest.main()

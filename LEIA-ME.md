@@ -1,3 +1,5 @@
+> **v2.10.1:** [Corrigir e retomar as etapas pendentes](GUIA_RETOMAR_CONFIGURACAO.md). Use `retomar_configuracao.bat` para Ollama, 9Router e Gemini sem repetir bibliotecas, Telegram ou Startup.
+
 > **v2.10.0:** [Preparar todos os recursos e Gemini Interactions/Managed Agents](GUIA_ASSISTENTE_INTEGRADO.md). Use `preparar_assistente_completo.bat` com o bot encerrado, sem substituir seu .env. [Mudanças, testes e reversão](REVISAO_V2_10_0.md).
 
 > **v2.9.2:** [Diagnóstico de rede no Windows e preservação do bloqueio de nuvem](REVISAO_V2_9_2.md). Abra `diagnosticar_rede.bat` antes de reproduzir a falha; não há reparo de rede automático nem causa confirmada.

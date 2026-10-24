@@ -8,9 +8,32 @@ from caminhos_instalacao import arquivo_env
 from configurar_ia_local import _atualizar_opcoes_env
 
 
+def _validar_modelo(modelo):
+    if (not isinstance(modelo,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}',modelo)
+            or modelo.casefold() in {'sim','nao','não','yes','no','interactions','generate_content','confirmar'}):
+        raise ValueError('Este campo pede um ID de modelo, por exemplo gemini-3.8-flash; Enter usa esse padrão.')
+    if re.fullmatch(r'(?:sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{25,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})',modelo,re.IGNORECASE):
+        raise ValueError('Esse valor parece uma credencial. Informe o ID do modelo aqui e a chave somente na entrada oculta.')
+    return modelo
+
+
+def _escolher(prompt,validar,padrao):
+    for _ in range(3):
+        try:return validar(input(prompt).strip() or padrao)
+        except ValueError as erro:print(str(erro))
+    raise ValueError('Três entradas inválidas. A etapa continua pendente; nenhuma opção foi salva.')
+
+
+def _modo(valor):
+    modos={'1':'interactions','2':'generate_content','interactions':'interactions','generate_content':'generate_content'}
+    if valor.casefold() not in modos:
+        raise ValueError('Escolha 1 ou 2 neste campo; Enter usa 1. Não é uma pergunta de sim/não.')
+    return modos[valor.casefold()]
+
+
 def salvar_configuracao(modo, modelo, *, chave=None, caminho=None):
     if modo not in ('interactions','generate_content'):raise ValueError('Escolha interactions ou generate_content.')
-    if not isinstance(modelo,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}',modelo):raise ValueError('Identificador de modelo Gemini inválido.')
+    modelo=_validar_modelo(modelo)
     opcoes={'GEMINI_API_MODO':modo,'GEMINI_MODEL':modelo}
     if chave is not None:
         if not isinstance(chave,str) or not 1<=len(chave)<=256 or any(c.isspace() for c in chave):raise ValueError('Chave Gemini inválida.')
@@ -19,11 +42,12 @@ def salvar_configuracao(modo, modelo, *, chave=None, caminho=None):
     return {'modo':modo,'modelo':modelo,'chave_alterada':chave is not None,'conexao_testada':False}
 
 
-def main():
+def _main_interativo():
     print('Gemini API: Interactions para modelos e agentes. A cota da API é separada da assinatura Colab.')
     print('Nenhuma pergunta será enviada durante esta configuração.')
-    modo=input('API: interactions ou generate_content [interactions]: ').strip() or 'interactions'
-    modelo=input('Modelo [gemini-3.8-flash]: ').strip() or 'gemini-3.8-flash'
+    print('As próximas perguntas pedem opções específicas. Enter aceita o padrão; não responda sim a todos os campos.')
+    modo=_escolher('API: 1 = interactions, 2 = generate_content [1]: ',_modo,'1')
+    modelo=_escolher('ID do modelo, não a chave [gemini-3.8-flash]: ',_validar_modelo,'gemini-3.8-flash')
     chave=getpass.getpass('Chave Gemini (Enter preserva a atual): ').strip() or None
     if input('Digite SALVAR GEMINI para gravar: ').strip()!='SALVAR GEMINI':
         print('Configuração cancelada.');return 0
@@ -32,6 +56,15 @@ def main():
     return 0
 
 
+def main():
+    try:return _main_interativo()
+    except (EOFError,KeyboardInterrupt):
+        print('\nConfiguração Gemini cancelada; nenhuma nova opção foi salva.');return 0
+    except ValueError as erro:
+        print('Configuração Gemini não concluída: '+str(erro));return 2
+    except OSError:
+        print('Não foi possível gravar a configuração Gemini. Confira permissões e espaço.');return 2
+
+
 if __name__=='__main__':
-    try:raise SystemExit(main())
-    except (ValueError,OSError,EOFError,KeyboardInterrupt):raise SystemExit('Configuração não concluída; nenhuma credencial foi exibida.')
+    raise SystemExit(main())

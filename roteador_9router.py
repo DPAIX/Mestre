@@ -66,6 +66,8 @@ def validar_modelo(valor):
     if (not isinstance(valor,str) or not valor.strip() or valor!=valor.strip()
             or len(valor)>200 or any(not c.isprintable() for c in valor)):
         raise _falha('Selecione um identificador de modelo ou combo 9Router, com até 200 caracteres e sem controles.')
+    if re.fullmatch(r'(?:sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{25,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+\S{12,})',valor,re.IGNORECASE):
+        raise _falha('Esse valor parece uma credencial, não um modelo/combo. Use o ID mostrado no catálogo; informe chaves somente na entrada oculta.')
     return valor
 
 

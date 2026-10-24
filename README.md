@@ -1,4 +1,6 @@
-# MeuControlePC v2.10.0
+# MeuControlePC v2.10.1
+
+**Retomar a configuração:** se as bibliotecas/Telegram já foram preparados, abra `retomar_configuracao.bat`. A nova ordem inicia o Ollama autorizado antes de escolher modelos e valida os campos Gemini/9Router antes de pedir chaves. [Passos para concluir](GUIA_RETOMAR_CONFIGURACAO.md).
 
 **Preparação integrada e Gemini:** abra `preparar_assistente_completo.bat` com o bot encerrado. Painel com estado das integrações, modelos 9Router por conversa, memória com exclusão/exportação e Gemini Interactions/Managed Agents. [Instalar, usar e reverter](GUIA_ASSISTENTE_INTEGRADO.md) · [Validação v2.10.0](REVISAO_V2_10_0.md). Contas, cota e pareamento precisam ser configurados no PC; a rede existente é preservada.
 

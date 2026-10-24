@@ -27,7 +27,7 @@ MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
     'gemini_interactions.py','servicos_gemini.py','configurar_gemini.py','prontidao_assistente.py',
-    'configurar_gemini.bat','preparar_assistente_completo.bat','GUIA_ASSISTENTE_INTEGRADO.md',
+    'configurar_gemini.bat','preparar_assistente_completo.bat','retomar_configuracao.bat','GUIA_RETOMAR_CONFIGURACAO.md','testes/test_configuradores_entrada.py','GUIA_ASSISTENTE_INTEGRADO.md',
     'exemplos/gemini_agentes_assistente.ipynb','testes/test_contrato_sdk_gemini.py','testes/test_integracao_v210.py',
     'configuracao_assistente.py','configurar_assistente.bat','REVISAO_V2_9_1.md',
     'diagnostico_rede.py','diagnosticar_rede.bat','REVISAO_V2_9_2.md','testes/test_diagnostico_rede.py',
