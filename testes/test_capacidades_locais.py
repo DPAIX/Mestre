@@ -21,6 +21,26 @@ class CapacidadesLocais(unittest.TestCase):
             with self.subTest(texto=texto):
                 self.assertEqual(natural.resposta_rapida_local(texto),natural.texto_capacidades())
 
+    def test_parafrases_completas_sem_enumerar_cada_frase(self):
+        for texto in ('me diga quais as suas capacidades',
+                      'Me diga quais são as suas capacidades?',
+                      'Me fale quais suas capacidades.',
+                      'Mostre suas funções', 'Liste as suas habilidades',
+                      'Explique seus recursos', 'Descreva suas capacidades',
+                      'Me conte quais são seus recursos',
+                      'Fale sobre as suas funções',
+                      'Você pode me dizer quais são suas capacidades?',
+                      'Você consegue me mostrar seus recursos?',
+                      'Poderia descrever suas habilidades?',
+                      'Vc pode me contar o que você sabe fazer?',
+                      'O que você sabe fazer?', 'O que vc consegue fazer?',
+                      'Em que você pode me ajudar?',
+                      'Por favor me diga quais as suas capacidades',
+                      'Me diga quais as suas capacidades, por favor!',
+                      'Por favor, me diga quais as suas capacidades, por favor!'):
+            with self.subTest(texto=texto):
+                self.assertEqual(natural.resposta_rapida_local(texto),natural.texto_capacidades())
+
     def test_descricao_pura_nao_fabrica_estado_ou_disponibilidade(self):
         with patch.object(nucleo,'vida',side_effect=AssertionError('Não ler registros privados.')), \
                 patch.object(app.ROTEADOR,'catalogo_ollama',side_effect=AssertionError('Não consultar serviço.')):
@@ -42,11 +62,25 @@ class CapacidadesLocais(unittest.TestCase):
                       'explique a frase me fale suas capacidades',
                       'como você pode me ajudar a resolver esta questão?',
                       'Se eu pedir me fale suas capacidades','me fale suas capacidades, depois reinicie',
-                      '{"mensagem":"me fale suas capacidades"}'):
+                      '{"mensagem":"me fale suas capacidades"}',
+                      'me diga quais as suas capacidades e abra o VS Code',
+                      'Não me diga quais as suas capacidades',
+                      'me diga quais as suas capacidades; registre água',
+                      'me diga quais as suas capacidades\nabra o agente',
+                      '"me diga quais as suas capacidades"',
+                      'Você pode me dizer quais são suas capacidades em Python?',
+                      'Liste suas funções e seus recursos',
+                      'Explique seus recursos para abrir o terminal',
+                      'Se conseguir, me diga quais as suas capacidades',
+                      'o que você sabe fazer com este código?',
+                      'por favor, não liste suas funções',
+                      'me diga quais são as capacidades de uma GPU',
+                      'me diga quais as suas capacidades ' * 4):
             with self.subTest(texto=texto):
                 self.assertIsNone(natural.resposta_rapida_local(texto))
 
     def test_capacidades_na_conversa_nao_consultam_modelos_e_preservam_historico(self):
+        texto='me diga quais as suas capacidades'
         chat={'id':'fixture-chat'}
         progresso=Mock()
         with patch.object(app.CENTRAL,'obter_chat_ativo',return_value=chat), \
@@ -54,9 +88,9 @@ class CapacidadesLocais(unittest.TestCase):
                 patch.object(app.SERVICOS,'conversar') as conversar, \
                 patch.object(app.ROTEADOR,'catalogo_ollama') as catalogo, \
                 patch.object(app,'executar_plano_natural') as executar:
-            resultado=app.preparar_pedido_natural('me fale suas capacidades','fixture-contexto',progresso=progresso)
+            resultado=app.preparar_pedido_natural(texto,'fixture-contexto',progresso=progresso)
         self.assertEqual(resultado,{'mensagem':natural.texto_capacidades(),'plano':None,'chat_id':'fixture-chat'})
-        registrar.assert_called_once_with('fixture-contexto','me fale suas capacidades',
+        registrar.assert_called_once_with('fixture-contexto',texto,
                                          natural.texto_capacidades(),'auto',chat_id='fixture-chat')
         conversar.assert_not_called();catalogo.assert_not_called()
         executar.assert_not_called();progresso.assert_not_called()

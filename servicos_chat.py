@@ -9,8 +9,8 @@ _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 _CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','tarefa_projeto','tarefa_status',
-    'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem','tarefa_projeto','tarefa_status',
+    'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia','9router_configurar',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
 
@@ -24,7 +24,7 @@ def campo_texto(obj,nome,limite=200,obrigatorio=True):
     return valor
 
 
-def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
+def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parcial=None):
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma pergunta para a conversa.')
     if len(texto)>12000:raise ValueError('A mensagem deve ter até 12000 caracteres.')
     if retornar_plano and len(texto)>8000:raise ValueError('Envie mensagens de até 8000 caracteres para interpretar pedidos.')
@@ -43,7 +43,10 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
     try:
         politica=chat.get('equipe_politica','automatica')
         if politica not in ('automatica','manual'):raise ValueError('Política de equipe inválida nesta conversa; arquivo preservado.')
-        if politica=='automatica':
+        from roteador_9router import configurado as nine_router_configurado
+        if politica=='automatica' and nine_router_configurado():
+            chat=central.configurar_roteador_automatico(contexto,chat['id'])
+        elif politica=='automatica':
             from configurar_ia_local import validar_modelo
             catalogo=roteador.catalogo_ollama()
             if not isinstance(catalogo,dict) or catalogo.get('habilitado') is not True:
@@ -60,6 +63,8 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
         if modelo:opcoes['modelo_ollama']=modelo
         pergunta=texto.strip()
+        prefixo=''
+        marcador='\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'
         if retornar_plano:
             from interpretacao_natural import instrucoes_ia,extrair_resposta
             import datetime
@@ -68,14 +73,25 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None):
             except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
             compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' and
                       bool(chat.get('equipe_paralela')) and chat.get('equipe_modo','paralela')=='cooperativa')
-            pergunta=(instrucoes_ia(compacto=compacto)+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
-                      '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'+pergunta[:8000])
+            prefixo=(instrucoes_ia(compacto=compacto)+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
+                     '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.')
+        # As notas são escritas manualmente após confirmação e pertencem a
+        # esta conversa. Reserve espaço sem cortar o último pedido do dono.
+        from memoria_assistente import contexto_chat,contexto_ia
+        disponivel=min(1500,11000-len(prefixo)-len(marcador)-len(pergunta)-2)
+        memoria=(contexto_ia(contexto_chat(contexto,chat['id']),texto,limite=disponivel)
+                 if disponivel>=120 else '')
+        if retornar_plano:
+            pergunta=prefixo+('\n\n'+memoria if memoria else '')+marcador+pergunta
+        elif memoria:
+            pergunta=memoria+marcador+pergunta
         equipe=bool(chat.get('equipe_paralela'))
         if equipe:
             from conversa_equipe import consultar_modelos
+            extras={'parcial':parcial} if parcial is not None else {}
             equipe_resultado=consultar_modelos(pergunta,historico,chat.get('equipe_modelos'),roteador,
                 interpretar=retornar_plano,modo=chat.get('equipe_modo','paralela'),
-                progresso=progresso)
+                progresso=progresso,**extras)
             resposta=equipe_resultado['texto'];provedor='Ollama'
         else:resposta,provedor=roteador.responder(pergunta,**opcoes)
         resposta=nucleo.redigir(resposta)
@@ -102,7 +118,7 @@ def resumo_chats(contexto):
         linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
         if chat.get('equipe_paralela'):linhas.append('  Equipe '+chat.get('equipe_modo','paralela')+': '+', '.join(chat['equipe_modelos']))
         if chat.get('equipe_politica','automatica')=='automatica':
-            linhas.append('  Automática: todos os modelos do catálogo serão usados na próxima mensagem que precisar de IA.')
+            linhas.append('  Automática: usa o 9Router quando habilitado com modelo/combo; caso contrário, usa a equipe Ollama do catálogo.')
     linhas.extend(['/chat novo Nome | /chat usar ID | /chat provedor Ollama',
                    '/modelos ollama lista o catálogo; /chat modelo NOME seleciona por conversa; /chat modelo padrao usa a configuração geral.',
                    '/chat modo on ativa conversa por mensagens comuns; /chat modo off desativa.',
@@ -150,13 +166,38 @@ def texto_equipe(resultado):
 
 def executar_acao(acao,obj,contexto,roteador):
     # Disco, ambiente e seleção do chat devem observar a mesma configuração.
-    if acao in ('ollama_perfil','modelo_padrao'):
+    if acao in ('ollama_perfil','modelo_padrao','ollama_nuvem','9router_configurar'):
         with _CONFIG_OLLAMA_LOCK:
             return _executar_acao(acao,obj,contexto,roteador)
     return _executar_acao(acao,obj,contexto,roteador)
 
 
 def _executar_acao(acao,obj,contexto,roteador):
+    if acao=='9router_configurar':
+        if not isinstance(obj,dict) or set(obj)-{'acao','ativo','modelo','url','confirmacao','contexto'}:
+            raise ValueError('Use somente as opções públicas de ativação, modelo e base local do 9Router. A chave só pode ser configurada no console local.')
+        if obj.get('confirmacao')!='CONFIGURAR 9ROUTER':raise ValueError('Confirme CONFIGURAR 9ROUTER.')
+        from configurar_9router import salvar_configuracao
+        from roteador_9router import URL_PADRAO
+        salvar_configuracao(obj.get('ativo'),obj.get('modelo',''),obj.get('url',URL_PADRAO),
+                            caminho=nucleo.arquivo_env(nucleo.BASE))
+        atualizar=getattr(type(roteador),'atualizar_configuracao_9router',None)
+        if callable(atualizar):atualizar(roteador)
+        nucleo.registrar('9router_configuracao','configurado','Opções públicas do 9Router atualizadas; nenhuma consulta executada.')
+        return ('Configuração pública do 9Router salva. Conversas automáticas usarão o modelo/combo habilitado; escolhas manuais permanecem. '
+                'Mensagens e o histórico usado na resposta podem ser encaminhados a provedores externos com cota. '
+                'Nenhuma conta ou conexão foi testada. Configure a chave opcional somente no console local.')
+    if acao=='ollama_nuvem':
+        ativo=obj.get('ativo')
+        if type(ativo) is not bool:raise ValueError('A autorização de nuvem deve ser booleana.')
+        esperado='AUTORIZAR NUVEM' if ativo else 'DESATIVAR NUVEM'
+        if obj.get('confirmacao')!=esperado:raise ValueError('Confirme '+esperado+'.')
+        from configurar_ia_local import configurar_nuvem
+        configurar_nuvem(ativo,caminho=nucleo.arquivo_env(nucleo.BASE))
+        os.environ['OLLAMA_NUVEM_HABILITADA']='1' if ativo else '0'
+        nucleo.registrar('ollama_nuvem','configurado','Nuvem no perfil CPU '+('autorizada' if ativo else 'restrita'))
+        return ('Nuvem no perfil CPU '+('autorizada: modelos remotos registrados podem receber as próximas mensagens e histórico, usando conta, Internet e cota.' if ativo else 'restrita: próximas consultas CPU usam somente modelos locais. Consultas já enviadas não foram canceladas.')+
+                ' O perfil padrão do serviço e os aplicativos externos mantêm suas próprias configurações. Nenhum modelo foi registrado, baixado ou consultado agora.')
     if acao=='ollama_perfil':
         perfil=campo_texto(obj,'perfil',20).casefold()
         if perfil not in ('cpu','padrao'):raise ValueError('Escolha o perfil cpu ou padrao.')

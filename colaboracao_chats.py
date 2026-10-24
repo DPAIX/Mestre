@@ -18,7 +18,7 @@ import zipfile
 import nucleo
 
 ARQUIVO = 'colaboracao_chats.json'
-PROVEDORES = ('auto','Gemini','OpenAI','Claude','Ollama')
+PROVEDORES = ('auto','Gemini','OpenAI','Claude','Ollama','9Router')
 MAX_CHATS = 500
 MAX_TROCAS = 20
 MAX_MENSAGEM = 4096
@@ -26,6 +26,12 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'integracoes_agentes.py','roteador_9router.py','integracoes_9stack.py','configurar_9router.py','memoria_assistente.py',
+    'gerenciar_agentes.bat','adicionar_gemma_nuvem.bat','gerenciar_9stack.bat','configurar_9router.bat',
+    'GUIA_INTEGRACOES_V2_9.md','REVISAO_V2_9_0.md',
+    'testes/test_integracoes_agentes.py','testes/test_planos_agentes_naturais.py','testes/test_fluxos_agentes.py',
+    'testes/test_prazos_equipe.py','testes/test_nuvem_cpu.py','testes/test_nuvem_configuracao.py','testes/test_composicao_multi_ia.py',
+    'testes/test_roteador_9router.py','testes/test_integracoes_9stack.py','testes/test_memoria_assistente.py','testes/test_servicos_9router_memoria.py','testes/test_fluxos_9stack_memoria.py',
     'assistente_pc.py','nucleo.py','multi_ia.py','colaboracao_chats.py',
     'servicos_chat.py','equipe_ia.py','conversa_equipe.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','autorizar_google.py',
     'caminhos_instalacao.py','redirecionar_assistente.py','iniciar_redirecionado.bat','idempotencia_painel.py',
@@ -84,7 +90,7 @@ def _provedor(nome):
     if not isinstance(nome,str):raise ValueError('Provedor inválido.')
     for provedor in PROVEDORES:
         if nome.casefold()==provedor.casefold():return provedor
-    raise ValueError('Provedor inválido. Escolha auto, Gemini, OpenAI, Claude ou Ollama.')
+    raise ValueError('Provedor inválido. Escolha auto, Gemini, OpenAI, Claude, Ollama ou 9Router.')
 
 
 def _ler():
@@ -229,6 +235,18 @@ def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_oll
             raise ValueError('Equipe ativa exige Ollama e uma lista de modelos.')
         chat['atualizado_em']=_agora();original.clear();original.update(chat);_salvar(dados)
         return copy.deepcopy(chat)
+
+
+def configurar_roteador_automatico(contexto,chat_id):
+    """Aplica o gateway autorizado sem substituir uma escolha manual recente."""
+    with nucleo._LOCK:
+        atual=obter_chat_ativo(contexto)
+        if atual['id']!=chat_id or atual.get('equipe_politica','automatica')!='automatica':
+            raise RuntimeError('A conversa ou sua configuração mudou. Envie o pedido novamente.')
+        if atual.get('provedor')=='9Router' and not atual.get('equipe_paralela'):
+            return atual
+        return configurar_chat(contexto,chat_id,provedor='9Router',equipe_paralela=False,
+                               equipe_politica='automatica')
 
 
 def configurar_equipe_automatica(contexto,chat_id,modelos):

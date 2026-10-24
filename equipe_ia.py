@@ -5,8 +5,8 @@ import colaboracao_chats as central
 from configurar_ia_local import validar_modelo, modelo_instalado
 from nucleo import redigir
 
-PROVEDORES=('Gemini','OpenAI','Claude','Ollama')
-PAPEIS={'Gemini':'implementação','OpenAI':'arquitetura','Claude':'revisão','Ollama':'alternativa Ollama'}
+PROVEDORES=('Gemini','OpenAI','Claude','Ollama','9Router')
+PAPEIS={'Gemini':'implementação','OpenAI':'arquitetura','Claude':'revisão','Ollama':'alternativa Ollama','9Router':'roteamento pelo modelo ou combo configurado'}
 _TRAVA=threading.Lock()
 
 
@@ -21,11 +21,11 @@ def consultar_equipe(objetivo,roteador,provedores=None,tarefa_id=None,*,confirma
     estados=roteador.estado_local()
     if provedores is None:nomes=[n for n in PROVEDORES if estados.get(n,{}).get('configurado')]
     else:
-        if not isinstance(provedores,list) or (not provedores and not modelos) or len(provedores)>4:raise ValueError('Selecione de um a quatro participantes.')
+        if not isinstance(provedores,list) or (not provedores and not modelos) or len(provedores)>5:raise ValueError('Selecione até cinco provedores, dentro do total de oito participantes.')
         if any(not isinstance(n,str) or n not in PROVEDORES for n in provedores):raise ValueError('Provedor não permitido na equipe.')
         nomes=list(dict.fromkeys(provedores))
     if modelos:nomes=[nome for nome in nomes if nome!='Ollama']
-    if len(nomes)+len(modelos)>4:raise ValueError('A equipe pode ter no máximo quatro participantes, incluindo os modelos Ollama.')
+    if len(nomes)+len(modelos)>8:raise ValueError('A equipe pode ter no máximo oito participantes, incluindo os modelos Ollama.')
     if tarefa_id and tarefa_id not in {t['id'] for t in central.estado_central('equipe')['tarefas']}:
         raise ValueError('Tarefa do projeto não encontrada.')
     if not _TRAVA.acquire(blocking=False):raise RuntimeError('Uma equipe já está trabalhando. Aguarde a conclusão.')

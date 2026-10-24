@@ -1,4 +1,6 @@
-# MeuControlePC v2.8.2
+# MeuControlePC v2.9.0
+
+> **v2.9.0:** [Instalar e integrar modelos, agentes, 9Router, 9Remote e memória](GUIA_INTEGRACOES_V2_9.md) · [Correções e validação](REVISAO_V2_9_0.md). Após substituir as fontes completas em C:, abra `atualizar_assistente.bat`. Novas integrações são configuradas na aba **Integrações & memória**, com confirmação e contas próprias.
 
 **Recuperação após patch externo:** fontes completas sem hooks, resposta local para “me fale suas capacidades” e `/logs` com detalhe redigido da última falha. Preserva confirmação, seleção de modelos e registros existentes. [Recuperar no Windows](GUIA_RECUPERACAO_PATCH.md) · [Auditoria do patch e revisão v2.8.2](REVISAO_V2_8_2.md).
 

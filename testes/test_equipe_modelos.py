@@ -64,9 +64,18 @@ class EquipeModelos(unittest.TestCase):
             consultar_equipe('Objetivo', self.roteador, [], modelos_ollama=['qwen3.5:4b'])
         self.roteador.estado_local.assert_not_called()
         with self.assertRaises(ValueError):
-            self.consultar(['qwen3.5:4b', 'gemma4:31b-cloud'], ['Gemini', 'OpenAI', 'Claude'])
+            self.consultar(['qwen3.5:4b'] * 5, ['Gemini', 'OpenAI', 'Claude'])
         self.roteador.catalogo_ollama.assert_not_called()
         self.roteador.responder.assert_not_called()
+
+    def test_cinco_provedores_incluem_9router_sem_duplicar_uma_chamada(self):
+        self.roteador.estado_local.return_value['9Router']={'configurado':True,'em_pausa':False}
+        resultado=self.consultar(provedores=['Gemini','OpenAI','Claude','Ollama','9Router'])
+        self.assertEqual(len(resultado['resultados']),5)
+        self.assertTrue(all(item['ok'] for item in resultado['resultados']))
+        chamadas=self.roteador.responder.call_args_list
+        self.assertEqual(len(chamadas),5)
+        self.assertEqual({c.kwargs['provedor'] for c in chamadas},{'Gemini','OpenAI','Claude','Ollama','9Router'})
 
     def test_nomes_invalidos_ou_fora_do_catalogo_nao_consultam_modelos(self):
         for modelos in ('qwen3.5:4b', [None], ['modelo;comando'], ['ausente:4b']):

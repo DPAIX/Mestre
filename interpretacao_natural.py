@@ -12,12 +12,12 @@ import re
 import unicodedata
 
 LIMITE_RESPOSTA = 12000
-CONSULTAS = {'status', 'rotina', 'financas', 'kanban', 'robotask', 'agenda'}
+CONSULTAS = {'status', 'rotina', 'financas', 'kanban', 'robotask', 'agenda', 'agentes', 'memoria'}
 COMANDOS_PC = {
     'desktop', 'taskmgr', 'explorer', 'notepad', 'calc', 'vscode_pc', 'enter',
     'print', 'f8', 'f9', 'f10', 'furg', 'agenda', 'colab',
 }
-ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao'}
+ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'agente_abrir','9stack','memoria_salvar'}
 DIAS = {'segunda': 'Segunda', 'terca': 'Terça', 'quarta': 'Quarta', 'quinta': 'Quinta',
         'sexta': 'Sexta', 'sabado': 'Sábado', 'domingo': 'Domingo'}
 _VALOR = r'(?:[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)'
@@ -45,9 +45,39 @@ def texto_capacidades():
         '• Status, diagnóstico local e leitura da agenda Google quando autorizada.\n'
         '• Conversa com os modelos Ollama disponíveis e transcrição de áudio local, '
         'quando serviço, modelos e dependências estiverem prontos.\n'
+        '• Agentes externos: consultar as integrações e abrir aplicativos pelo Ollama '
+        'após confirmação, quando instalação e conta necessárias estiverem prontas. '
+        'Exemplo: "mostre meus agentes" ou "abra o Claude Code".\n'
+        '• 9Router: conversar pelo modelo ou combo configurado no gateway. '
+        '9Remote: preparar a interface oficial; o acesso remoto exige pareamento.\n'
+        '• Memória: guardar notas informadas e confirmadas, isoladas por conversa. '
+        'Exemplo: "guarde na memória Estudos: estudar cálculo às 20h".\n'
         'Pedidos de alteração são apresentados para sua confirmação. '
         'Esta lista descreve funções; não verifica a conexão das contas ou dos modelos.'
     )
+
+
+def _pergunta_capacidades(normal):
+    """Aceita uma pergunta inteira, sem descartar complemento ou outra ação.
+
+    Os componentes combinam paráfrases comuns em português. Não procuramos
+    somente a palavra "capacidades": citações, negações, condições e assuntos
+    específicos precisam continuar disponíveis ao interpretador normal.
+    """
+    normal = re.sub(r'^por favor,? ', '', normal)
+    normal = re.sub(r',? por favor$', '', normal)
+    recursos = (r'(?:(?:as )?suas (?:capacidades|funcoes|habilidades)|'
+                r'(?:os )?seus recursos)')
+    perguntas = (rf'quais (?:sao )?{recursos}|'
+                 r'o que (?:voce|vc) (?:(?:pode|consegue|sabe) fazer|faz)|'
+                 r'(?:como|em que) (?:voce|vc) (?:pode|consegue) me ajudar')
+    assunto = rf'(?:{recursos}|{perguntas})'
+    pedido = (r'(?:me )?(?:fale|diga|mostre|liste|explique|descreva|conte) '
+              rf'(?:sobre )?{assunto}')
+    pedido_educado = (r'(?:(?:voce|vc) )?(?:pode|consegue|poderia) (?:me )?'
+                     r'(?:falar|dizer|mostrar|listar|explicar|descrever|contar) '
+                     rf'(?:sobre )?{assunto}')
+    return re.fullmatch(rf'(?:{perguntas}|{pedido}|{pedido_educado})', normal) is not None
 
 
 def resposta_rapida_local(texto):
@@ -60,13 +90,7 @@ def resposta_rapida_local(texto):
     if not isinstance(texto,str) or len(texto)>100 or any(c in texto for c in ('\n','\r',';')):
         return None
     normal=_normalizar(texto).strip(' .!?')
-    if ' '.join(normal.split()) in (
-            'me fale suas capacidades','me fale as suas capacidades',
-            'quais sao suas capacidades','quais sao as suas capacidades',
-            'quais suas capacidades','quais as suas capacidades',
-            'o que voce pode fazer','o que voce faz','o que voce consegue fazer',
-            'como voce pode me ajudar','quais sao seus recursos','quais sao suas funcoes',
-            'por favor, me fale suas capacidades','por favor me fale suas capacidades'):
+    if _pergunta_capacidades(' '.join(normal.split())):
         return texto_capacidades()
     if normal in ('oi','ola','alo','bom dia','boa tarde','boa noite'):
         return 'Olá! Posso ajudar com sua rotina, tarefas e ações do assistente. Escreva o que precisa.'
@@ -154,6 +178,8 @@ def validar_plano(obj):
         'status': 'Consultar o estado do PC', 'rotina': 'Consultar sua rotina',
         'financas': 'Consultar saldo e finanças registrados', 'kanban': 'Consultar seu Kanban',
         'robotask': 'Consultar o catálogo RoboTask', 'agenda': 'Consultar a agenda autorizada',
+        'agentes': 'Consultar as integrações de agentes externos',
+        'memoria': 'Consultar as notas salvas nesta conversa',
         'agua': 'Registrar um copo de água', 'pomodoro': 'Iniciar Pomodoro de 25 minutos',
     }.get(acao)
     if acao in CONSULTAS | {'agua', 'pomodoro'}:
@@ -199,6 +225,27 @@ def validar_plano(obj):
         _campos(campos, ('modelo',))
         campos={'modelo':validar_modelo(_texto(campos['modelo'],'Modelo',200))}
         descricao='Usar '+campos['modelo']+' como padrão do Ollama e nesta conversa'
+    elif acao == 'agente_abrir':
+        from integracoes_agentes import preparar_lancamento
+        _campos(campos, ('agente',), ('modelo', 'configurar'))
+        agente = _texto(campos['agente'], 'Agente', 80)
+        modelo = _texto(campos.get('modelo', ''), 'Modelo', 200, opcional=True)
+        preparado = preparar_lancamento(agente, modelo, campos.get('configurar', False))
+        campos = {nome: preparado[nome] for nome in ('agente', 'modelo', 'configurar')}
+        descricao = preparado['descricao']
+    elif acao == '9stack':
+        from integracoes_9stack import preparar_9stack
+        _campos(campos,('servico','operacao'))
+        preparado=preparar_9stack(campos['servico'],campos['operacao'])
+        campos={nome:preparado[nome] for nome in ('servico','operacao')}
+        descricao=preparado['descricao']
+    elif acao == 'memoria_salvar':
+        _campos(campos,('titulo','texto'))
+        titulo=_texto(campos['titulo'],'Título da nota',80)
+        texto=_texto(campos['texto'],'Texto da nota',800)
+        if any(c in titulo for c in ('\n','\r','\t')):raise ValueError('O título deve ocupar uma linha.')
+        campos={'titulo':titulo,'texto':texto}
+        descricao='Salvar a nota “'+titulo+'” nesta conversa: '+texto[:200]+'. Um título igual atualiza a nota após confirmação'
     elif acao == 'concluir':
         _campos(campos, ('id',))
         campos = {'id': _texto(campos['id'], 'Identificador da atividade', 100)}
@@ -219,6 +266,10 @@ def interpretar_local(texto):
     original = unicodedata.normalize('NFC', texto.strip())
     if original.startswith(('"', "'", '`', '{', '[')) or '\n' in original or ';' in original:
         return None
+    nota=re.fullmatch(r'(?:guarde|salve|registre|anote) (?:na memoria|na memória)\s+([^:]{1,80}):\s*(.+)',original,re.I)
+    if nota:
+        try:return _plano('memoria_salvar',titulo=nota[1],texto=nota[2])
+        except ValueError:return None
     normal = _normalizar(original).strip(' .!?')
     if re.search(r'\b(?:nao|nunca|talvez|se|quando|como abrir|como executar|como registrar|o que acontece)\b', normal):
         return None
@@ -238,9 +289,38 @@ def interpretar_local(texto):
         'mostre minhas tarefas': 'rotina', 'quais sao minhas tarefas': 'rotina',
         'mostre minha agenda': 'agenda', 'minha agenda': 'agenda',
         'mostre o catalogo robotask': 'robotask', 'liste as macros': 'robotask',
+        'mostre meus agentes': 'agentes', 'mostre os meus agentes': 'agentes',
+        'mostre os agentes': 'agentes', 'liste meus agentes': 'agentes',
+        'liste os meus agentes': 'agentes', 'liste os agentes': 'agentes',
+        'quais agentes estao disponiveis': 'agentes',
+        'quais sao os agentes disponiveis': 'agentes',
+        'mostre minha memoria':'memoria','mostre minhas notas':'memoria',
+        'liste minhas notas':'memoria','minhas notas salvas':'memoria',
     }
     if normal in leituras:
         return _plano(leituras[normal])
+    stack=re.fullmatch(r'(abra|abrir|inicie|iniciar|instale|instalar) (?:o )?(9router|9remote)',normal)
+    if stack:
+        operacao='instalar' if stack[1] in ('instale','instalar') else 'iniciar' if stack[1] in ('inicie','iniciar') else 'abrir'
+        return _plano('9stack',servico=stack[2],operacao=operacao)
+    # Preserve a tag do modelo como foi escrita, sem transformar nomes de
+    # aplicativos em comandos. Somente um alvo da allowlist produz plano.
+    pedido_agente = original.strip(' .!?')
+    pedido_agente = re.sub(r'^por favor[, ]+', '', pedido_agente, flags=re.I)
+    pedido_agente = re.sub(r',? por favor$', '', pedido_agente, flags=re.I)
+    pedido_agente = re.sub(r'^(?:voc[eê] )?(?:pode|consegue) (?:me )?', '', pedido_agente, flags=re.I)
+    agente = re.fullmatch(
+        r'(abra|abrir|inicie|iniciar|configure|configurar)\s+(?:[oa]\s+)?(?:agente\s+)?(.+?)'
+        r'(?:\s+(?:com|usando)\s+(?:o\s+modelo\s+)?([A-Za-z0-9][A-Za-z0-9._:/-]*))?',
+        pedido_agente, re.I)
+    if agente:
+        try:
+            return _plano('agente_abrir', agente=agente[2], modelo=agente[3] or '',
+                          configurar=agente[1].casefold() in ('configure', 'configurar'))
+        except ValueError:
+            # Abrir programas conhecidos segue abaixo; não promover nomes
+            # desconhecidos ou comandos compostos a integrações de agentes.
+            pass
     # A rotina já representa os registros do proprietário. Reconheça a leitura
     # semanal completa antes da IA, sem confundi-la com criar/alterar atividades.
     rotina_semanal = re.fullmatch(
@@ -393,6 +473,11 @@ def extrair_resposta(texto):
         if dados['acao'] == 'nenhuma':
             _campos(dados['campos'])
             return {'texto': resposta or 'Como posso ajudar?', 'plano': None}
+        # A integração de um agente abre um aplicativo com permissões próprias.
+        # Ela exige um alvo literal no pedido local; uma sugestão do modelo ou
+        # conteúdo de histórico não pode produzir esse plano.
+        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar'):
+            raise ValueError('Esta integração exige um pedido explícito reconhecido localmente.')
         plano = validar_plano({'acao': dados['acao'], 'campos': dados['campos']})
         return {'texto': resposta or 'Entendi o pedido: ' + plano['descricao'] + '.', 'plano': plano}
     except (ValueError, TypeError, RecursionError):

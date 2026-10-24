@@ -1,3 +1,5 @@
+> **v2.9.0:** [Modelos, agentes, 9Router, 9Remote e memória explícita](GUIA_INTEGRACOES_V2_9.md) · [Revisão técnica](REVISAO_V2_9_0.md). A frase da captura responde localmente; a equipe apresenta contribuição provisória e controla o orçamento de novos envios.
+
 > **v2.8.2:** [Recuperação de fontes após patch externo](GUIA_RECUPERACAO_PATCH.md) · [Auditoria, correções e testes](REVISAO_V2_8_2.md). A resposta sobre capacidades é local; alterações mantêm confirmação e os registros atuais são preservados.
 
 > **v2.8.0:** [Manutenção e dependências por duplo clique](GUIA_MANUTENCAO.md) · [Otimizações e reversão](REVISAO_V2_8_0.md). Após atualizar as fontes em C:, feche o bot e abra `atualizar_assistente.bat`; o início automático existente é preservado.

@@ -39,7 +39,7 @@ TOKEN_PAINEL=secrets.token_urlsafe(32)
 CONFIRMACOES_WINDOWS={}
 SAIDA_AGENDADA=threading.Event()
 PEDIDOS_PAINEL={}
-LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda'}
+LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda','agentes','memoria'}
 CONTROLE_PAINEL=ControleAcoes()
 
 
@@ -94,7 +94,7 @@ MENU_BOTOES=[
     '🌐 Multi-IA, Exa & Logs','💻 Ferramentas do PC','📓 VS Code, Colab & Dados',
     '🧠 Auto-Análise & Evolução','🍅 Foco Pomodoro (25m)',
     '🛠️ Melhorias Seguras','🔄 Reiniciar Assistente','🖥️ Reiniciar Windows'
-    ,'💬 Chats e projeto','🔌 Testar conexões IA'
+    ,'💬 Chats e projeto','🔌 Testar conexões IA','🧩 Agentes e integrações'
 ]
 
 def donos():
@@ -224,6 +224,27 @@ def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
               'kanban':mostrar_kanban,'robotask':mostrar_robotask,'agenda':mostrar_agenda}
     extra={}
     if acao in leituras:resultado=leituras[acao]()
+    elif acao=='agentes':
+        from integracoes_agentes import resumo_agentes
+        from integracoes_9stack import resumo_9stack
+        resultado=resumo_agentes()+'\n\n'+resumo_9stack()
+    elif acao=='agente_abrir':
+        from integracoes_agentes import abrir_agente
+        resultado=abrir_agente(campos['agente'],modelo=campos['modelo'],
+                              configurar=campos['configurar'],confirmado=True)
+    elif acao=='9stack':
+        from integracoes_9stack import executar_9stack
+        resultado=executar_9stack(campos['servico'],campos['operacao'],confirmado=True)
+    elif acao in ('memoria','memoria_salvar'):
+        from memoria_assistente import contexto_chat,listar_notas,salvar_nota
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        chave=contexto_chat(contexto,atual['id'])
+        if acao=='memoria_salvar':
+            nota=salvar_nota(chave,campos['titulo'],campos['texto'],confirmado=True)
+            resultado='Nota salva nesta conversa: '+nota['titulo']+'. Nenhuma ação descrita na nota foi executada.'
+        else:
+            notas=listar_notas(chave)
+            resultado='📝 Notas desta conversa:\n'+('\n'.join('• '+n['titulo']+': '+n['texto'] for n in notas) or 'Nenhuma nota salva.')
     elif acao=='pc':
         if campos['comando']=='print':
             foto=captura()
@@ -264,7 +285,7 @@ def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
     return {'mensagem':str(resultado),**extra}
 
 
-def preparar_pedido_natural(texto,contexto,*,progresso=None):
+def preparar_pedido_natural(texto,contexto,*,progresso=None,parcial=None):
     from interpretacao_natural import interpretar_local,resposta_rapida_local
     if not isinstance(texto,str) or not texto.strip():raise ValueError('Digite uma mensagem.')
     tipo=classificar_texto(texto)
@@ -280,6 +301,7 @@ def preparar_pedido_natural(texto,contexto,*,progresso=None):
     else:
         try:
             opcoes={'progresso':progresso} if progresso is not None else {}
+            if parcial is not None:opcoes['parcial']=parcial
             resultado=SERVICOS.conversar(texto,contexto,ROTEADOR,retornar_plano=True,**opcoes)
         except FalhaAPI as exc:
             return {'mensagem':'⚠️ '+str(exc)+'\nPosso consultar sua rotina, saldo e status, ou preparar ações locais por mensagens diretas.','plano':None,'chat_id':chat['id']}
@@ -293,6 +315,7 @@ def responder_natural_telegram(m,texto):
     contexto=contexto_mensagem(m)
     chat=CENTRAL.obter_chat_ativo(contexto)
     aviso=[None]
+    parcial_enviada=[False]
     def progresso(evento):
         if evento.get('estado')!='inicio':return
         etapa='Consolidando a resposta' if evento.get('etapa')=='sintese' else 'Consultando modelo'
@@ -302,8 +325,20 @@ def responder_natural_telegram(m,texto):
                 aviso[0]=BOT.send_message(m.chat.id,mensagem)
             else:BOT.edit_message_text(mensagem,chat_id=m.chat.id,message_id=aviso[0].message_id)
         except Exception:pass
+    def parcial(evento):
+        # Só conteúdo provisório; planos e ferramentas seguem o resultado final.
+        if parcial_enviada[0] or not isinstance(evento,dict):return
+        modelo=evento.get('modelo');contribuicao=evento.get('texto')
+        if not isinstance(modelo,str) or not isinstance(contribuicao,str) or not contribuicao.strip():return
+        parcial_enviada[0]=True
+        try:
+            mensagem=('💬 Primeira contribuição de '+str(redigir(modelo))[:160]+
+                      ' (provisória; a equipe ainda está avaliando):\n'+str(redigir(contribuicao))[:1400]+
+                      '\nNenhuma ação foi executada. Aguarde o resultado final antes de confirmar um pedido.')
+            BOT.send_message(m.chat.id,mensagem)
+        except Exception:pass
     informar=bool(chat.get('equipe_politica','automatica')=='automatica' or (chat.get('equipe_paralela') and chat.get('equipe_modo')=='cooperativa'))
-    try:resultado=preparar_pedido_natural(texto,contexto,**({'progresso':progresso} if informar else {}))
+    try:resultado=preparar_pedido_natural(texto,contexto,**({'progresso':progresso,'parcial':parcial} if informar else {}))
     finally:
         if aviso[0] is not None:
             try:BOT.edit_message_text('👥 Consulta da equipe encerrada. Confira o resultado abaixo.',chat_id=m.chat.id,message_id=aviso[0].message_id)
@@ -334,7 +369,30 @@ def confirmar_pedido_por_texto(m,texto):
 
 
 def responder_natural_painel(texto):
-    resultado=preparar_pedido_natural(texto,'painel');plano=resultado.pop('plano',None);chat_id=resultado.pop('chat_id',None)
+    return registrar_pedido_painel(preparar_pedido_natural(texto,'painel'))
+
+
+def preparar_agente_painel(obj):
+    from interpretacao_natural import validar_plano
+    plano=validar_plano({'acao':'agente_abrir','campos':{
+        'agente':obj.get('agente'),'modelo':obj.get('modelo',''),
+        'configurar':obj.get('configurar',False)}})
+    chat=CENTRAL.obter_chat_ativo('painel')
+    return registrar_pedido_painel({'mensagem':plano['descricao'],'plano':plano,'chat_id':chat['id']})
+
+
+def preparar_integracao_painel(obj):
+    from interpretacao_natural import validar_plano
+    acao='9stack' if obj.get('acao')=='9stack_preparar' else 'memoria_salvar'
+    nomes=('servico','operacao') if acao=='9stack' else ('titulo','texto')
+    plano=validar_plano({'acao':acao,'campos':{nome:obj.get(nome) for nome in nomes}})
+    chat=CENTRAL.obter_chat_ativo('painel')
+    return registrar_pedido_painel({'mensagem':plano['descricao'],'plano':plano,'chat_id':chat['id']})
+
+
+def registrar_pedido_painel(resultado):
+    resultado=dict(resultado)
+    plano=resultado.pop('plano',None);chat_id=resultado.pop('chat_id',None)
     if plano:
         token=secrets.token_urlsafe(18)
         with PEND_LOCK:
@@ -348,7 +406,7 @@ def responder_natural_painel(texto):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.8.2 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.9.0 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -358,6 +416,9 @@ def mensagem_ajuda():
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
             '/robotask /pc /print /reparar /logs /exportar\n'
             '/ia pergunta | /pesquisar assunto | /modelos\n'
+            'Diga "mostre meus agentes" ou "abra o agente Claude Code"; a abertura pede confirmação. /agentes lista as integrações.\n'
+            'Diga "instale o 9Router", "inicie o 9Router" ou "abra o 9Remote"; revise e confirme cada pedido.\n'
+            'Diga "guarde na memória Título: conteúdo" para salvar uma nota após confirmar. /memoria mostra as notas desta conversa.\n'
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
             '/chat modelo qwen3.5:4b | /modelos ollama\n'
             '/modelos perfil cpu ativa Llama local em CPU; /modelos perfil padrao reverte o perfil\n'
@@ -406,7 +467,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.8.2'
+    server_version='MeuControlePC/2.9.0'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -491,7 +552,8 @@ class PainelHandler(BaseHTTPRequestHandler):
                          'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
                          'robotask':dados_robotask.get('tarefas',[])[:100],
                          'autoanalise':ler_json('ultima_autoanalise.json',{}),
-                         'colaboracao':CENTRAL.estado_central('painel'),'versao_estado':versao}
+                         'colaboracao':CENTRAL.estado_central('painel'),
+                         'ollama_nuvem':os.getenv('OLLAMA_NUVEM_HABILITADA','0')=='1','versao_estado':versao}
             except (ValueError,OSError,TypeError,AttributeError):
                 return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
             self._json(estado)
@@ -520,6 +582,27 @@ class PainelHandler(BaseHTTPRequestHandler):
             try:return self._json(ROTEADOR.catalogo_ollama())
             except (FalhaAPI,ValueError) as exc:
                 return self._json({'erro':str(redigir(exc))},503)
+        elif caminho=='/api/agentes':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            from integracoes_agentes import catalogo_agentes
+            return self._json({'agentes':catalogo_agentes()})
+        elif caminho=='/api/9stack':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            from integracoes_9stack import catalogo_9stack
+            from roteador_9router import diagnostico_local
+            return self._json({'servicos':catalogo_9stack(),'roteador':diagnostico_local()})
+        elif caminho=='/api/modelos_9router':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            from roteador_9router import listar_modelos
+            try:return self._json(listar_modelos())
+            except FalhaAPI as exc:return self._json({'erro':str(redigir(exc))},503)
+        elif caminho=='/api/memoria':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            from memoria_assistente import listar_notas,contexto_chat
+            try:
+                chat=CENTRAL.obter_chat_ativo('painel')
+                return self._json({'notas':listar_notas(contexto_chat('painel',chat['id']))})
+            except (ValueError,OSError) as exc:return self._json({'erro':str(redigir(exc))},503)
         elif caminho=='/api/contexto':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             try:
@@ -580,6 +663,10 @@ class PainelHandler(BaseHTTPRequestHandler):
                 resultado=executar_plano_natural(pend['plano'],'painel',pend['chat_id'])
                 imagem=resultado.pop('imagem',None)
                 return self._json({'ok':True,**resultado},imagem=imagem)
+            if acao=='agente_preparar':
+                return self._json({'ok':True,**preparar_agente_painel(obj)})
+            if acao in ('9stack_preparar','memoria_preparar'):
+                return self._json({'ok':True,**preparar_integracao_painel(obj)})
             if acao in SERVICOS.ACOES_CENTRAL:resultado=SERVICOS.executar_acao(acao,obj,'painel',ROTEADOR)
             elif acao=='agua':r=registrar_agua(); resultado=f'Água: {r[0]}/{r[1]}'
             elif acao=='concluir':resultado='Tarefa: '+concluir_tarefa(str(obj.get('id','')))
@@ -677,6 +764,10 @@ def menu_secundario(chat_id,botao,user_id):
     elif botao==MENU_BOTOES[13]:confirmar(chat_id,user_id,'reiniciar_windows','ATENÇÃO: reiniciar o Windows encerra aplicativos e pode FECHAR aplicativos à força e perder dados não salvos. Exigirá confirmação por código; reinício terá aviso de 60 segundos ou mais.')
     elif botao==MENU_BOTOES[14]:enviar_texto_grande(chat_id,SERVICOS.resumo_chats(f'{user_id}:{chat_id}:0')+'\n\n'+SERVICOS.resumo_projeto(f'{user_id}:{chat_id}:0'))
     elif botao==MENU_BOTOES[15]:confirmar(chat_id,user_id,'conexoes_ia','Fazer uma consulta real por provedor configurado? Pode consumir cota/créditos.',{'confirmacao':'TESTAR CONEXOES'})
+    elif botao==MENU_BOTOES[16]:
+        from integracoes_agentes import resumo_agentes
+        from integracoes_9stack import resumo_9stack
+        enviar_texto_grande(chat_id,resumo_agentes()+'\n\n'+resumo_9stack())
 
 def mostrar_robotask():
     r=ler_json('robotask_conhecimento.json',{})
@@ -727,6 +818,33 @@ def contexto_mensagem(m):
 def tratar_comandos_novos(m,chave,args,contexto):
     chat=m.chat.id;usuario=m.from_user.id
     if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/agentes':
+        from integracoes_agentes import resumo_agentes
+        from integracoes_9stack import resumo_9stack
+        enviar_texto_grande(chat,resumo_agentes()+'\n\n'+resumo_9stack())
+    elif chave=='/memoria':
+        from interpretacao_natural import validar_plano
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        plano=validar_plano({'acao':'memoria','campos':{}})
+        enviar_texto_grande(chat,executar_plano_natural(plano,contexto,atual['id'])['mensagem'])
+    elif chave=='/agente':
+        from interpretacao_natural import validar_plano
+        sub,_,valor=args.partition(' ')
+        if sub not in ('abrir','configurar') or not valor.strip():
+            raise ValueError('Diga “abra o agente Claude Code” ou use /agente abrir claude | modelo:tag (modelo opcional).')
+        nome,_,modelo=valor.partition('|')
+        plano=validar_plano({'acao':'agente_abrir','campos':{
+            'agente':nome.strip(),'modelo':modelo.strip(),'configurar':sub=='configurar'}})
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        confirmar(chat,usuario,'pedido_natural',plano['descricao'],
+                  {'plano':plano,'contexto':contexto,'chat_id':atual['id']})
+    elif chave=='/modelos' and args.casefold() in ('nuvem on','nuvem off'):
+        ativo=args.casefold()=='nuvem on'
+        confirmar(chat,usuario,'ollama_nuvem',
+            ('Autorizar modelos de nuvem nas próximas consultas do perfil CPU? Mensagens e histórico poderão sair do PC e usar conta, Internet e cota. ' if ativo else
+             'Restringir as próximas consultas do perfil CPU a modelos locais? Consultas já enviadas não serão canceladas. ')+
+            'Isso não altera o perfil padrão nem os aplicativos externos.',
+            {'ativo':ativo,'confirmacao':'AUTORIZAR NUVEM' if ativo else 'DESATIVAR NUVEM','contexto':contexto})
     elif chave=='/modelos' and args.casefold() in ('perfil cpu','perfil padrao','perfil padrão'):
         perfil='cpu' if args.casefold()=='perfil cpu' else 'padrao'
         atual=CENTRAL.obter_chat_ativo(contexto)
@@ -1041,7 +1159,7 @@ def configurar_bot():
                     dados=pend['dados']
                     resultado=executar_plano_natural(dados['plano'],dados['contexto'],dados['chat_id'],c.message.chat.id)
                     enviar_texto_grande(c.message.chat.id,resultado['mensagem']);return
-                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao','ollama_perfil'):
+                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem'):
                     dados=pend.get('dados',{})
                     enviar_texto_grande(c.message.chat.id,SERVICOS.executar_acao(acao,dados,dados.get('contexto',f'{c.from_user.id}:{c.message.chat.id}:0'),ROTEADOR))
                     return
@@ -1088,7 +1206,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.8.2')
+        print('MeuControlePC v2.9.0')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
