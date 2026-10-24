@@ -160,7 +160,6 @@ function tipoModelo(nome){
 }
 function rotuloModelo(nome){return `${nome} · ${{nuvem:'nuvem (conta, internet e cota)',local:'local',desconhecido:'tipo a verificar'}[tipoModelo(nome)]}`}
 function perfilModelo(nome){const item=catalogoOllama?.modelos?.find(m=>m.nome===nome);return item?.familia?` · ${item.familia}`:''}
-const orientacaoOllama404='Ollama retornou HTTP 404. Em «Chats e projeto», atualize os modelos, escolha uma tag presente na lista e clique «Definir como padrão do Ollama». Depois solicite «Testar resposta deste modelo». Se o modelo continuar listado e retornar 404, confira o serviço/rota do Ollama. Backup e arquivos locais não corrigem essa resposta.';
 function avisoModeloOllama(){
  const nome=$('chat-modelo-ollama').value||catalogoOllama?.padrao||'';
  text($('chat-modelo-aviso'),!nome?'Sem escolha específica: esta conversa usará o modelo Ollama definido no .env.':tipoModelo(nome)==='nuvem'?'Modelo em nuvem: ao salvar esta escolha, as mensagens usarão a conta Ollama e dependerão de internet e cota.':tipoModelo(nome)==='local'?'Modelo local: ao salvar esta escolha, a execução dependerá da memória e do serviço Ollama no PC.':'Atualize a lista do Ollama para verificar o tipo do modelo salvo. Um alias também pode apontar para um modelo em nuvem.');
@@ -381,13 +380,6 @@ async function testarModeloOllama(){
  const d=await agir('modelo_testar',{modelo,confirmacao:'TESTAR MODELO'});
  text($('teste-modelo-ollama'),d?.mensagem||'Não foi possível concluir o teste. Confira o aviso.');
 }
-async function definirPadraoModeloOllama(){
- if(pedidosAtivos.size)return;
- const modelo=$('chat-modelo-ollama').value||catalogoOllama?.padrao;
- if(!modelo||!catalogoOllama?.modelos?.some(item=>item.nome===modelo))return aviso('Atualize a lista do Ollama e escolha um modelo presente no catálogo para definir como padrão.');
- const d=await agir('modelo_padrao',{modelo});
- if(d)await atualizarModelosOllama();
-}
 function renderColaboracao(dados){
  const c=dados&&typeof dados==='object'?dados:null;
  const chats=Array.isArray(c?.chats)?c.chats:[],tarefas=Array.isArray(c?.tarefas)?c.tarefas:[],propostas=Array.isArray(c?.contribuicoes)?c.contribuicoes:[];
@@ -561,7 +553,6 @@ $('atualizar-memoria').addEventListener('click',atualizarMemoria);
 $('form-memoria').addEventListener('submit',prepararMemoria);
 $('chat-detalhes-modelo').addEventListener('click',verDetalhesModeloOllama);
 $('chat-testar-modelo').addEventListener('click',testarModeloOllama);
-$('chat-modelo-padrao').addEventListener('click',definirPadraoModeloOllama);
 $('criar-chats-modelos').addEventListener('click',criarChatsModelosOllama);
 $('chat-modelo-ollama').addEventListener('change',avisoModeloOllama);
 $('chat-salvar-modelo').addEventListener('click',()=>{if(!chatAtivoId)return aviso('Crie ou selecione uma conversa primeiro.');return agir('chat_modelo',{id:chatAtivoId,modelo:$('chat-modelo-ollama').value})});

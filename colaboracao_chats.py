@@ -39,9 +39,8 @@ FONTES_EXPORTAVEIS = (
     'testes/test_prazos_equipe.py','testes/test_nuvem_cpu.py','testes/test_nuvem_configuracao.py','testes/test_composicao_multi_ia.py',
     'testes/test_roteador_9router.py','testes/test_integracoes_9stack.py','testes/test_memoria_assistente.py','testes/test_servicos_9router_memoria.py','testes/test_fluxos_9stack_memoria.py',
     'assistente_pc.py','nucleo.py','multi_ia.py','colaboracao_chats.py',
-    'servicos_chat.py','equipe_ia.py','conversa_equipe.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','autorizar_google.py',
-    'caminhos_instalacao.py','redirecionar_assistente.py','iniciar_redirecionado.bat','idempotencia_painel.py',
-    'GUIA_MULTIPLOS_CHATS.md','GUIA_CONVERSA.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md','REVISAO_V2_3_2.md','REVISAO_V2_4_0.md','GOOGLE_AGENDA.md',
+    'servicos_chat.py','equipe_ia.py','rotina_ativa.py','configurar_ia_local.py',
+    'GUIA_MULTIPLOS_CHATS.md','REVISAO_V2_3_0.md','REVISAO_V2_3_1.md','REVISAO_V2_3_2.md',
     'automacao_pc.py','evolucao_segura.py','reinicio_seguro.py',
     'reiniciar_assistente.py','agenda_google.py','verificacao_ambiente.py',
     'configurar_telegram.py','startup_windows.py','ponte_robotask.py',
@@ -176,9 +175,6 @@ def preparar_chats_modelos(contexto,modelos):
             if chat is None:
                 chat=_novo_chat(dados,espaco,('Ollama · '+modelo)[:100],'Ollama')
                 chat['modelo_ollama']=modelo;criados+=1
-            # Preparar uma conversa para uma tag é uma escolha individual
-            # explícita, inclusive quando a conversa reaproveitada é legada.
-            chat['equipe_politica']='manual'
             selecionados.append(copy.deepcopy(chat))
         espaco['ativo']=selecionados[0]['id'];_salvar(dados)
         return {'chats':selecionados,'criados':criados}
