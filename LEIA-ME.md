@@ -1,3 +1,5 @@
+> **v2.9.1:** [Configuração local guiada, correção da frase e reversão](REVISAO_V2_9_1.md). “Faça as configurações necessárias” não consulta modelos; confirme e acompanhe as etapas na janela do PC.
+
 > **v2.9.0:** [Modelos, agentes, 9Router, 9Remote e memória explícita](GUIA_INTEGRACOES_V2_9.md) · [Revisão técnica](REVISAO_V2_9_0.md). A frase da captura responde localmente; a equipe apresenta contribuição provisória e controla o orçamento de novos envios.
 
 > **v2.8.2:** [Recuperação de fontes após patch externo](GUIA_RECUPERACAO_PATCH.md) · [Auditoria, correções e testes](REVISAO_V2_8_2.md). A resposta sobre capacidades é local; alterações mantêm confirmação e os registros atuais são preservados.

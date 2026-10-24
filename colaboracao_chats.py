@@ -26,6 +26,8 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'configuracao_assistente.py','configurar_assistente.bat','REVISAO_V2_9_1.md',
+    'testes/test_configuracao_assistente.py','testes/test_intencoes_configuracao.py','testes/test_fluxos_configuracao.py',
     'integracoes_agentes.py','roteador_9router.py','integracoes_9stack.py','configurar_9router.py','memoria_assistente.py',
     'gerenciar_agentes.bat','adicionar_gemma_nuvem.bat','gerenciar_9stack.bat','configurar_9router.bat',
     'GUIA_INTEGRACOES_V2_9.md','REVISAO_V2_9_0.md',

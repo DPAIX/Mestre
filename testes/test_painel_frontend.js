@@ -1117,14 +1117,14 @@ test('equipe aceita cinco provedores incluindo 9Router com quatro modelos Ollama
  assert.deepEqual(enviado.provedores,['Gemini','OpenAI','Claude','9Router','Ollama']);assert.equal(enviado.modelos_ollama.length,4);
 });
 
-test('integrações e memórias pendentes somem ao trocar conversa e não são consultadas pelo polling',async()=>{
+test('integrações, configuração e memórias pendentes somem ao trocar conversa e não são consultadas pelo polling',async()=>{
  const centro={chats:[],chat_ativo:{id:'primeiro',titulo:'Um',provedor:'Ollama',equipe_politica:'manual'},tarefas:[],contribuicoes:[]};
  const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),urls=[];
  p.contexto.fetch=async(url)=>{urls.push(url);return resposta({...estado,colaboracao:{...centro,chat_ativo:{id:'segundo',titulo:'Dois',provedor:'Ollama',equipe_politica:'manual'}}})};
- p.executar("exibirPedidoConversa('9stack-resposta',{id:'n1',descricao:'Iniciar remoto.'});exibirPedidoConversa('memoria-resposta',{id:'n2',descricao:'Salvar nota.'})");
- assert.equal(p.obter('9stack-pedido').children.length,1);assert.equal(p.obter('memoria-pedido').children.length,1);
+ p.executar("exibirPedidoConversa('9stack-resposta',{id:'n1',descricao:'Iniciar remoto.'});exibirPedidoConversa('memoria-resposta',{id:'n2',descricao:'Salvar nota.'});exibirPedidoConversa('configuracao-resposta',{id:'n3',descricao:'Abrir configuração local.'})");
+ assert.equal(p.obter('9stack-pedido').children.length,1);assert.equal(p.obter('memoria-pedido').children.length,1);assert.equal(p.obter('configuracao-pedido').children.length,1);
  await p.executar('atualizar()');
- assert.deepEqual(urls,['/api/estado']);assert.equal(p.obter('9stack-pedido').children.length,0);assert.equal(p.obter('memoria-pedido').children.length,0);
+ assert.deepEqual(urls,['/api/estado']);assert.equal(p.obter('9stack-pedido').children.length,0);assert.equal(p.obter('memoria-pedido').children.length,0);assert.equal(p.obter('configuracao-pedido').children.length,0);
 });
 
 test('9Router automático não aparece como equipe Ollama nem reativa antigas tags locais',async()=>{
@@ -1137,4 +1137,49 @@ test('9Router automático não aparece como equipe Ollama nem reativa antigas ta
  assert.doesNotMatch(p.obter('chat-provedor').textContent,/equipe automática cooperativa/);
  assert.match(p.obter('lista-chats').children[0].textContent,/roteador automático/);
  assert.equal(p.obter('chat-ativo-provedor').value,'9Router');
+});
+
+test('configuração local verifica metadados só por clique com token, sem POST ou modelo',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,method:opt.method,token:opt.headers['X-Painel-Token']});
+  return resposta({mensagem:'Node localizado; <b>conta pendente</b>. Nenhum modelo consultado.'});
+ };
+ await p.obter('verificar-configuracao').eventos.click();
+ assert.deepEqual(chamadas,[{url:'/api/configuracao',method:undefined,token:'__PAINEL_TOKEN__'}]);
+ assert.match(p.obter('configuracao-resposta').textContent,/<b>conta pendente<\/b>/);
+ assert.equal(p.obter('configuracao-pedido').children.length,0);
+ p.contexto.fetch=async()=>resposta({erro:'NÃO_EXIBIR'},403);
+ await p.obter('verificar-configuracao').eventos.click();
+ assert.match(p.obter('configuracao-resposta').textContent,/Recarregue o painel/);
+ assert.doesNotMatch(p.obter('configuracao-resposta').textContent,/NÃO_EXIBIR/);
+});
+
+test('configurar assistente prepara sem IA e só confirma o nonce uma vez',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='configuracao_preparar'?{mensagem:'Configuração local pendente.',pedido:{id:'nonce-config-local',descricao:'Abrir etapas guiadas no PC, sem iniciar acesso remoto.'}}:{mensagem:'Configurador solicitado na janela do PC.'});
+ };
+ await p.obter('configurar-assistente').eventos.click();
+ assert.deepEqual(posts,[{acao:'configuracao_preparar'}]);
+ const confirmar=p.obter('configuracao-pedido').children[0].children[3].children[0];
+ const primeira=confirmar.eventos.click();await confirmar.eventos.click();await primeira;
+ assert.deepEqual(posts,[{acao:'configuracao_preparar'},{acao:'pedido_confirmar',id:'nonce-config-local'}]);
+ assert.equal(p.obter('configuracao-resposta').textContent,'Configurador solicitado na janela do PC.');
+ assert.equal(posts.filter(body=>body.acao==='pergunta').length,0);
+});
+
+test('cancelar configuração local não envia comandos de instalação, modelos ou acesso remoto',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='configuracao_preparar'?{pedido:{id:'nonce-config-cancelar',descricao:'Abrir configuração local.'}}:{mensagem:'Pedido cancelado.'});
+ };
+ await p.obter('configurar-assistente').eventos.click();
+ await p.obter('configuracao-pedido').children[0].children[3].children[1].eventos.click();
+ assert.deepEqual(posts,[{acao:'configuracao_preparar'},{acao:'pedido_cancelar',id:'nonce-config-cancelar'}]);
+ assert.equal(p.obter('configuracao-resposta').textContent,'Pedido cancelado.');
 });

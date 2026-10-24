@@ -1,4 +1,6 @@
-# MeuControlePC v2.9.0
+# MeuControlePC v2.9.1
+
+**Configuração local sem esperar modelos:** “faça as configurações necessárias” abre um plano local e, após confirmar, uma janela de configuração no PC. Também há botão no Telegram/painel e `configurar_assistente.bat`. [Aplicar, validar e reverter](REVISAO_V2_9_1.md).
 
 > **v2.9.0:** [Instalar e integrar modelos, agentes, 9Router, 9Remote e memória](GUIA_INTEGRACOES_V2_9.md) · [Correções e validação](REVISAO_V2_9_0.md). Após substituir as fontes completas em C:, abra `atualizar_assistente.bat`. Novas integrações são configuradas na aba **Integrações & memória**, com confirmação e contas próprias.
 

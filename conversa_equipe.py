@@ -183,7 +183,6 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
                 raise ValueError('O snapshot da nuvem deve conter somente participantes da equipe.')
             nuvem=tuple(snapshot)
     for indice,modelo in enumerate(ordem):
-        _progresso(progresso,'modelo','inicio',modelo,indice+1,total)
         item={'modelo':modelo,'ok':False,'texto':'','plano':None,'papel':PAPEIS[indice%len(PAPEIS)]}
         restante=prazo-time.monotonic()
         if interrupcao is None and restante<=0:
@@ -194,6 +193,7 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
             itens.append(item)
             _progresso(progresso,'modelo','adiado',modelo,indice+1,total)
             continue
+        _progresso(progresso,'modelo','inicio',modelo,indice+1,total)
         try:
             copia=json.loads(json.dumps(historico,allow_nan=False))
             resposta,provedor=_responder_com_prazo(roteador,

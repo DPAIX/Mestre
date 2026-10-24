@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.9.0 · Centro de comando</title>
+<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.9.1 · Centro de comando</title>
 <style>
 :root{color-scheme:dark;--bg:#090f1c;--panel:#151f31;--inner:#0e1727;--border:#29384c;--text:#eaf1fa;--muted:#95a9c1;--accent:#5caafc;--success:#6dd8b3;--warn:#e0ba69}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,'Segoe UI',sans-serif}
@@ -13,7 +13,7 @@ input[type=checkbox]{min-width:0;width:auto;margin:0 5px 0 0}fieldset{border:1px
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-size:12px}td button{padding:5px 9px}.scroll{overflow:auto}.status{border-left:3px solid var(--accent);background:var(--inner);border-radius:8px;padding:10px;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere} .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.flex{flex:1;min-width:160px}.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kcol{min-width:0;background:var(--inner);border:1px solid var(--border);border-radius:12px;padding:14px}.item{background:#1d2b40;padding:9px;margin-bottom:8px;border-radius:8px;overflow-wrap:anywhere}.pill{font-size:11px;padding:4px 7px;background:#264564;border-radius:20px;white-space:nowrap}#aviso{white-space:pre-wrap;position:sticky;bottom:12px;background:#11304e;border:1px solid #4f83b7;border-radius:9px;padding:12px;max-width:700px;display:none;margin:10px auto}
 @media(max-width:800px){main{padding:12px}header{padding:15px}.duo{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}table{min-width:700px}} 
 </style></head>
-<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.9.0</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
+<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.9.1</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
 <main>
 <div class="grid"><div class="tile">Rotina concluída<strong id="progresso">—</strong></div><div class="tile">Saldo registrado<strong id="saldo">—</strong></div><div class="tile">Ações aprendidas<strong id="aprendizado">—</strong></div><div class="tile">Disco livre<strong id="disco">—</strong></div></div>
 <nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="colaboracao">💬 Chats e projeto</button><button data-tab="integracoes">🧩 Integrações & memória</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
@@ -31,6 +31,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;
 <div class="panel"><h2>Importar contribuição</h2><p class="muted">Cole uma proposta obtida em outro chat. Revise antes de aceitar: a aprovação registra uma proposta para o projeto, sem aplicar código automaticamente.</p><form id="form-contribuicao" class="form-grade"><label for="contribuicao-origem">Origem</label><input id="contribuicao-origem" maxlength="80" required placeholder="Ex.: ChatGPT · revisão do painel"><label for="contribuicao-titulo">Título</label><input id="contribuicao-titulo" maxlength="150" required><label for="contribuicao-tarefa">Tarefa relacionada (opcional)</label><select id="contribuicao-tarefa"><option value="">Sem tarefa relacionada</option></select><label for="contribuicao-texto">Texto ou proposta</label><textarea id="contribuicao-texto" maxlength="30000" required></textarea><button type="submit">Importar para revisão</button></form><div id="lista-contribuicoes"></div></div></div>
 </section>
 <section class="section" id="integracoes">
+<div class="panel" style="margin-bottom:18px"><h2>Configuração local do assistente</h2><p>Verifique o que está pronto ou abra as etapas guiadas de configuração no PC. Este fluxo funciona sem consultar modelos de IA. Você revisa as etapas na janela local e conclui o login das contas quando necessário; o acesso remoto do 9Remote e o uso de modelos em nuvem continuam separados.</p><div class="row"><button id="verificar-configuracao" type="button">Verificar configuração local</button><button id="configurar-assistente" type="button">Configurar assistente</button></div><div id="configuracao-resposta" class="status" role="status">A verificação consulta somente metadados locais; abrir o configurador exige sua confirmação.</div><div id="configuracao-pedido" aria-live="polite"></div></div>
 <div class="duo" style="margin-bottom:18px"><div class="panel"><h2>9Router e 9Remote</h2><p>O 9Router encaminha consultas de IA aos provedores configurados no seu dashboard. O 9Remote permite acesso remoto ao PC e tem seu próprio pareamento e suas próprias permissões. São serviços separados dos modelos Ollama e do painel MeuControlePC.</p><div class="row"><button id="atualizar-9stack" type="button">Conferir instalações e configuração</button><label for="9stack-servico">Serviço</label><select id="9stack-servico"><option value="9router">9Router</option><option value="9remote">9Remote</option></select></div><p id="9stack-status" class="muted" role="status">Nenhum serviço foi iniciado ou instalado por esta página.</p><div class="row"><button id="9stack-instalar" type="button">Preparar instalação</button><button id="9stack-abrir" type="button">Preparar abertura</button><button id="9stack-iniciar" type="button">Preparar início</button></div><p class="muted">Revise o pedido antes de confirmar. A instalação usa a versão indicada pelo assistente em uma pasta separada. Abrir o 9Remote mostra sua interface; iniciar o 9Remote é uma ação de acesso remoto. Faça login, pareie dispositivos e gerencie a parada ou revogação na interface oficial. Chaves, QR codes e códigos de acesso não são enviados para esta página. A configuração de rede desses aplicativos é própria; o painel MeuControlePC continua no endereço local.</p><div id="9stack-resposta" class="status" role="status">Escolha o serviço e a operação para revisar o pedido.</div><div id="9stack-pedido" aria-live="polite"></div></div>
 <div class="panel"><h2>Usar 9Router nas conversas</h2><p>Depois de instalar e iniciar o serviço, configure suas contas e seus modelos ou combos no dashboard do 9Router. O assistente usa a API compatível com OpenAI; um endpoint local pode encaminhar o histórico para provedores externos e consumir cota.</p><p id="9router-status" class="status" role="status">Configuração ainda não conferida. Uma configuração salva não comprova conectividade.</p><form id="form-9router" class="form-grade"><label for="9router-ativo"><input id="9router-ativo" type="checkbox"> Preferir 9Router nas conversas automáticas</label><label for="9router-url">Base da API local</label><input id="9router-url" maxlength="250" value="http://127.0.0.1:20128/v1" required><label for="9router-modelo">Modelo ou combo do 9Router</label><input id="9router-modelo" maxlength="200" list="9router-modelos" placeholder="Identificador definido no dashboard"><datalist id="9router-modelos"></datalist><button id="atualizar-modelos-9router" type="button">Consultar modelos e combos</button><p id="9router-modelos-status" class="muted" role="status">A consulta ao catálogo pode contatar os provedores conectados ao 9Router; não testa geração de respostas.</p><button type="submit">Revisar e salvar configuração</button></form><p class="muted">A habilitação passa a preferir 9Router nas conversas automáticas. Escolhas manuais de provedor ou modelo são preservadas. Se o serviço exigir uma chave, configure-a pelo console local, sem enviar chaves no chat ou neste formulário. Instalar o serviço não cria contas nem compra créditos.</p></div></div>
 <div class="panel"><h2>Memória explícita do assistente</h2><p>Guarde preferências e informações que você quer reutilizar neste contexto. As notas só são gravadas depois de confirmar; a IA não cria memórias automaticamente. Notas relevantes podem acompanhar as próximas mensagens enviadas ao modelo escolhido. Não salve senhas ou chaves.</p><button id="atualizar-memoria" type="button">Ler notas deste contexto</button><p id="memoria-status" class="muted" role="status">Nenhuma nota foi carregada nesta página.</p><div id="lista-memoria"></div><form id="form-memoria" class="form-grade"><label for="memoria-titulo">Título da nota</label><input id="memoria-titulo" maxlength="80" required><label for="memoria-texto">Informação a lembrar</label><textarea id="memoria-texto" maxlength="800" required></textarea><button type="submit">Preparar nota para confirmação</button></form><div id="memoria-resposta" class="status" role="status">Revise o conteúdo antes de salvar uma nota.</div><div id="memoria-pedido" aria-live="polite"></div></div>
@@ -222,6 +223,25 @@ async function prepararAgente(configurar=false){
   if(dados){text($('agentes-resposta'),dados.mensagem||'Pedido preparado.');exibirPedidoConversa('agentes-resposta',dados.pedido)}
  }catch(erro){text($('agentes-resposta'),'⚠️ '+erro.message)}
 }
+async function verificarConfiguracaoLocal(){
+ if(pedidosAtivos.size)return;pedidosAtivos.add('configuracao-local');atualizarBotoes();
+ text($('configuracao-resposta'),'Verificando os metadados locais, sem consultar modelos...');
+ try{
+  const dados=await api('/api/configuracao');
+  if(!dados||typeof dados.mensagem!=='string'||!dados.mensagem.trim()||dados.mensagem.length>6000)throw Error('O servidor retornou uma verificação de configuração inválida.');
+  text($('configuracao-resposta'),dados.mensagem);
+ }catch(erro){text($('configuracao-resposta'),'⚠️ '+erro.message)}
+ finally{pedidosAtivos.delete('configuracao-local');atualizarBotoes()}
+}
+async function prepararConfiguracaoLocal(){
+ if(pedidosAtivos.size)return;
+ exibirPedidoConversa('configuracao-resposta',null);
+ text($('configuracao-resposta'),'Preparando a configuração local para revisão; nenhum modelo será consultado...');
+ try{
+  const dados=await enviarAcao('configuracao_preparar');
+  if(dados){text($('configuracao-resposta'),dados.mensagem||'Pedido preparado.');exibirPedidoConversa('configuracao-resposta',dados.pedido)}
+ }catch(erro){text($('configuracao-resposta'),'⚠️ '+erro.message)}
+}
 function mostrarConfiguracao9Router(meta){
  if(!meta||typeof meta!=='object'||Array.isArray(meta))throw Error('O servidor retornou uma configuração 9Router inválida.');
  if(typeof meta.url==='string'&&meta.url.length<=250)$('9router-url').value=meta.url;
@@ -365,7 +385,7 @@ function renderColaboracao(dados){
  text($('resumo-projeto'),c?`${chats.length} conversa(s) · ${tarefas.length} tarefa(s) · ${propostas.length} contribuição(ões).`:'Central de chats indisponível nesta versão do servidor. Atualize o assistente para usar esta aba.');
  const ativo=c?.chat_ativo;
  const proximoChat=ativo?.id||'';
- if(chatAtivoId!==proximoChat){$('chat-pedido').replaceChildren();$('pedido-resposta').replaceChildren();$('agentes-pedido').replaceChildren();$('9stack-pedido').replaceChildren();$('memoria-pedido').replaceChildren()}
+ if(chatAtivoId!==proximoChat){$('chat-pedido').replaceChildren();$('pedido-resposta').replaceChildren();$('agentes-pedido').replaceChildren();$('9stack-pedido').replaceChildren();$('memoria-pedido').replaceChildren();$('configuracao-pedido').replaceChildren()}
  chatAtivoId=proximoChat;
  const modo=$('chat-modo-conversa');
  modo.checked=ativo?.modo_conversa!==false;
@@ -409,7 +429,7 @@ async function configurarEquipeConversa(ativo){
  return d;
 }
 function exibirPedidoConversa(saida,pedido){
- const destino=$(({ 'chat-resposta':'chat-pedido','agentes-resposta':'agentes-pedido','9stack-resposta':'9stack-pedido','memoria-resposta':'memoria-pedido' })[saida]||'pedido-resposta');destino.replaceChildren();
+ const destino=$(({ 'chat-resposta':'chat-pedido','agentes-resposta':'agentes-pedido','9stack-resposta':'9stack-pedido','memoria-resposta':'memoria-pedido','configuracao-resposta':'configuracao-pedido' })[saida]||'pedido-resposta');destino.replaceChildren();
  if(pedido===undefined||pedido===null)return;
  if(typeof pedido!=='object'||Array.isArray(pedido)||typeof pedido.id!=='string'||!pedido.id||pedido.id.length>200||typeof pedido.descricao!=='string'||!pedido.descricao.trim()||pedido.descricao.length>2000){
   destino.append(el('p','A resposta trouxe uma solicitação inválida para confirmação. Descreva novamente o que deseja fazer.','muted'));return;
@@ -518,6 +538,8 @@ $('atualizar-agentes').addEventListener('click',atualizarAgentes);
 $('agente-abrir').addEventListener('click',()=>prepararAgente(false));
 $('agente-configurar').addEventListener('click',()=>prepararAgente(true));
 $('atualizar-9stack').addEventListener('click',atualizar9Stack);
+$('verificar-configuracao').addEventListener('click',verificarConfiguracaoLocal);
+$('configurar-assistente').addEventListener('click',prepararConfiguracaoLocal);
 $('9stack-instalar').addEventListener('click',()=>preparar9Stack('instalar'));
 $('9stack-abrir').addEventListener('click',()=>preparar9Stack('abrir'));
 $('9stack-iniciar').addEventListener('click',()=>preparar9Stack('iniciar'));

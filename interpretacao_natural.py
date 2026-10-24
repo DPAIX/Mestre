@@ -12,12 +12,12 @@ import re
 import unicodedata
 
 LIMITE_RESPOSTA = 12000
-CONSULTAS = {'status', 'rotina', 'financas', 'kanban', 'robotask', 'agenda', 'agentes', 'memoria'}
+CONSULTAS = {'status', 'rotina', 'financas', 'kanban', 'robotask', 'agenda', 'agentes', 'memoria', 'configuracao'}
 COMANDOS_PC = {
     'desktop', 'taskmgr', 'explorer', 'notepad', 'calc', 'vscode_pc', 'enter',
     'print', 'f8', 'f9', 'f10', 'furg', 'agenda', 'colab',
 }
-ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'agente_abrir','9stack','memoria_salvar'}
+ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'agente_abrir','9stack','memoria_salvar','configurar_assistente'}
 DIAS = {'segunda': 'Segunda', 'terca': 'Terça', 'quarta': 'Quarta', 'quinta': 'Quinta',
         'sexta': 'Sexta', 'sabado': 'Sábado', 'domingo': 'Domingo'}
 _VALOR = r'(?:[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)'
@@ -52,6 +52,9 @@ def texto_capacidades():
         '9Remote: preparar a interface oficial; o acesso remoto exige pareamento.\n'
         '• Memória: guardar notas informadas e confirmadas, isoladas por conversa. '
         'Exemplo: "guarde na memória Estudos: estudar cálculo às 20h".\n'
+        '• Configuração local guiada: verificar requisitos e abrir as etapas de preparação '
+        'sem consultar modelos. Exemplo: "faça as configurações necessárias". '
+        'Contas e permissões são confirmadas na janela do PC.\n'
         'Pedidos de alteração são apresentados para sua confirmação. '
         'Esta lista descreve funções; não verifica a conexão das contas ou dos modelos.'
     )
@@ -180,11 +183,17 @@ def validar_plano(obj):
         'robotask': 'Consultar o catálogo RoboTask', 'agenda': 'Consultar a agenda autorizada',
         'agentes': 'Consultar as integrações de agentes externos',
         'memoria': 'Consultar as notas salvas nesta conversa',
+        'configuracao': 'Consultar a preparação local do assistente, sem consultar modelos',
         'agua': 'Registrar um copo de água', 'pomodoro': 'Iniciar Pomodoro de 25 minutos',
     }.get(acao)
     if acao in CONSULTAS | {'agua', 'pomodoro'}:
         _campos(campos)
         campos = {}
+    elif acao == 'configurar_assistente':
+        from configuracao_assistente import preparar_configuracao
+        _campos(campos)
+        campos = {}
+        descricao = _texto(preparar_configuracao()['descricao'], 'Descrição da configuração', 500)
     elif acao == 'pc':
         _campos(campos, ('comando',))
         comando = campos['comando']
@@ -278,6 +287,12 @@ def interpretar_local(texto):
     normal = re.sub(r'^por favor[, ]+', '', normal)
     normal = re.sub(r',? por favor$', '', normal)
     normal = re.sub(r'^(?:voce )?(?:pode|consegue) (?:me )?', '', normal)
+    # Configurar o próprio assistente é uma intenção local. Nunca depende de
+    # inferência para abrir as etapas permitidas, mas não deve absorver outro
+    # alvo, complemento, condição ou ação contida na mesma mensagem.
+    configuracao = _intencao_configuracao(' '.join(normal.split()))
+    if configuracao:
+        return _plano(configuracao)
     leituras = {
         'status': 'status', 'status do pc': 'status', 'como esta o pc': 'status',
         'como esta meu pc': 'status', 'mostre o status': 'status', 'mostre o status do pc': 'status',
@@ -388,6 +403,25 @@ def interpretar_local(texto):
     return None
 
 
+def _intencao_configuracao(normal):
+    """Reconhece um pedido completo de preparação ou sua consulta local."""
+    preparar = (
+        r'(?:faca|fazer|realize|realizar) (?:todas )?(?:as )?configuracoes necessarias|'
+        r'(?:faca|fazer|realize|realizar) (?:a )?configuracao (?:necessaria|inicial(?: do assistente)?)|'
+        r'(?:configure|configurar|prepare|preparar) (?:o )?(?:assistente|meucontrolepc)|'
+        r'(?:prepare|preparar|configure|configurar) (?:as )?integracoes(?: do assistente)?'
+    )
+    if re.fullmatch(preparar, normal):
+        return 'configurar_assistente'
+    consultar = (
+        r'(?:diagnostique|diagnosticar|verifique|verificar|mostre|mostrar|consulte|consultar) '
+        r'(?:(?:a )?configuracao|(?:as )?configuracoes)(?: local| do assistente| atual(?: do assistente)?)?'
+    )
+    if re.fullmatch(consultar, normal):
+        return 'configuracao'
+    return None
+
+
 def instrucoes_ia(*, compacto=False):
     if not isinstance(compacto, bool):
         raise ValueError('A opção de instruções compactas deve ser booleana.')
@@ -476,7 +510,7 @@ def extrair_resposta(texto):
         # A integração de um agente abre um aplicativo com permissões próprias.
         # Ela exige um alvo literal no pedido local; uma sugestão do modelo ou
         # conteúdo de histórico não pode produzir esse plano.
-        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar'):
+        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar','configurar_assistente'):
             raise ValueError('Esta integração exige um pedido explícito reconhecido localmente.')
         plano = validar_plano({'acao': dados['acao'], 'campos': dados['campos']})
         return {'texto': resposta or 'Entendi o pedido: ' + plano['descricao'] + '.', 'plano': plano}

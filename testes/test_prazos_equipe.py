@@ -76,6 +76,18 @@ class PrazosEquipeTeste(unittest.TestCase):
         self.assertTrue(resultado['sintese']['adiada'])
         self.assertIn('síntese adicional não foi enviada',resultado['texto'])
 
+    def test_timeout_nao_anuncia_consulta_dos_participantes_adiados(self):
+        eventos=[]
+        def responder(mensagem,modelo,segundos):
+            raise ia.FalhaAPI('Ollama',0,'Prazo fictício encerrado.','tempo_esgotado')
+        roteador=RoteadorComPrazo(responder)
+        with self.assertRaisesRegex(RuntimeError,'Nenhum modelo'):
+            self.consultar(roteador,progresso=eventos.append)
+        self.assertEqual([modelo for _,modelo,_ in roteador.chamadas],MODELOS[:1])
+        self.assertEqual([e['modelo'] for e in eventos if e['estado']=='inicio'],MODELOS[:1])
+        self.assertEqual([e['modelo'] for e in eventos if e['estado']=='adiado'],MODELOS[1:])
+        self.assertEqual([e['estado'] for e in eventos],['inicio','falha','adiado','adiado','adiado'])
+
     def test_callback_lento_de_sintese_nao_permite_envio_apos_prazo(self):
         eventos=[]
         def progresso(evento):

@@ -39,7 +39,7 @@ TOKEN_PAINEL=secrets.token_urlsafe(32)
 CONFIRMACOES_WINDOWS={}
 SAIDA_AGENDADA=threading.Event()
 PEDIDOS_PAINEL={}
-LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda','agentes','memoria'}
+LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda','agentes','memoria','configuracao'}
 CONTROLE_PAINEL=ControleAcoes()
 
 
@@ -94,7 +94,7 @@ MENU_BOTOES=[
     '🌐 Multi-IA, Exa & Logs','💻 Ferramentas do PC','📓 VS Code, Colab & Dados',
     '🧠 Auto-Análise & Evolução','🍅 Foco Pomodoro (25m)',
     '🛠️ Melhorias Seguras','🔄 Reiniciar Assistente','🖥️ Reiniciar Windows'
-    ,'💬 Chats e projeto','🔌 Testar conexões IA','🧩 Agentes e integrações'
+    ,'💬 Chats e projeto','🔌 Testar conexões IA','🧩 Agentes e integrações','⚙️ Configurar assistente'
 ]
 
 def donos():
@@ -224,6 +224,12 @@ def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
               'kanban':mostrar_kanban,'robotask':mostrar_robotask,'agenda':mostrar_agenda}
     extra={}
     if acao in leituras:resultado=leituras[acao]()
+    elif acao=='configuracao':
+        from configuracao_assistente import resumo_configuracao
+        resultado=resumo_configuracao()
+    elif acao=='configurar_assistente':
+        from configuracao_assistente import abrir_configuracao
+        resultado=abrir_configuracao(confirmado=True)
     elif acao=='agentes':
         from integracoes_agentes import resumo_agentes
         from integracoes_9stack import resumo_9stack
@@ -390,6 +396,13 @@ def preparar_integracao_painel(obj):
     return registrar_pedido_painel({'mensagem':plano['descricao'],'plano':plano,'chat_id':chat['id']})
 
 
+def preparar_configuracao_painel():
+    from interpretacao_natural import validar_plano
+    plano=validar_plano({'acao':'configurar_assistente','campos':{}})
+    chat=CENTRAL.obter_chat_ativo('painel')
+    return registrar_pedido_painel({'mensagem':plano['descricao'],'plano':plano,'chat_id':chat['id']})
+
+
 def registrar_pedido_painel(resultado):
     resultado=dict(resultado)
     plano=resultado.pop('plano',None);chat_id=resultado.pop('chat_id',None)
@@ -406,7 +419,7 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.9.0 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.9.1 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -418,6 +431,7 @@ def mensagem_ajuda():
             '/ia pergunta | /pesquisar assunto | /modelos\n'
             'Diga "mostre meus agentes" ou "abra o agente Claude Code"; a abertura pede confirmação. /agentes lista as integrações.\n'
             'Diga "instale o 9Router", "inicie o 9Router" ou "abra o 9Remote"; revise e confirme cada pedido.\n'
+            'Diga "faça as configurações necessárias" para abrir a configuração local guiada, sem consultar IA.\n'
             'Diga "guarde na memória Título: conteúdo" para salvar uma nota após confirmar. /memoria mostra as notas desta conversa.\n'
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
             '/chat modelo qwen3.5:4b | /modelos ollama\n'
@@ -467,7 +481,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.9.0'
+    server_version='MeuControlePC/2.9.1'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -591,6 +605,11 @@ class PainelHandler(BaseHTTPRequestHandler):
             from integracoes_9stack import catalogo_9stack
             from roteador_9router import diagnostico_local
             return self._json({'servicos':catalogo_9stack(),'roteador':diagnostico_local()})
+        elif caminho=='/api/configuracao':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            from configuracao_assistente import resumo_configuracao
+            try:return self._json({'mensagem':resumo_configuracao()})
+            except (ValueError,OSError,RuntimeError) as exc:return self._json({'erro':str(redigir(exc))},503)
         elif caminho=='/api/modelos_9router':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             from roteador_9router import listar_modelos
@@ -665,6 +684,8 @@ class PainelHandler(BaseHTTPRequestHandler):
                 return self._json({'ok':True,**resultado},imagem=imagem)
             if acao=='agente_preparar':
                 return self._json({'ok':True,**preparar_agente_painel(obj)})
+            if acao=='configuracao_preparar':
+                return self._json({'ok':True,**preparar_configuracao_painel()})
             if acao in ('9stack_preparar','memoria_preparar'):
                 return self._json({'ok':True,**preparar_integracao_painel(obj)})
             if acao in SERVICOS.ACOES_CENTRAL:resultado=SERVICOS.executar_acao(acao,obj,'painel',ROTEADOR)
@@ -993,6 +1014,7 @@ def tratar_pedido(m):
         BOT.reply_to(m,'⛔ Acesso negado. Use /id e configure o seu identificador no .env do computador.')
         return
     if confirmar_pedido_por_texto(m,texto):return
+    if texto==MENU_BOTOES[17]:return responder_natural_telegram(m,'configure o assistente')
     if texto==MENU_BOTOES[14]:return enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto)+'\n\n'+SERVICOS.resumo_projeto(contexto))
     if texto in MENU_BOTOES:return menu_secundario(chat,texto,usuario)
     t=texto.casefold()
@@ -1206,7 +1228,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.9.0')
+        print('MeuControlePC v2.9.1')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
