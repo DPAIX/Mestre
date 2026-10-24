@@ -130,6 +130,36 @@ class InicioOllamaTeste(unittest.TestCase):
         self.assertEqual(self.iniciar.call_args.kwargs['env']['OLLAMA_MODELS'], str(modelos))
         self.assertFalse(self.env_externo.exists())
 
+    def test_bloqueio_nuvem_verdadeiro_e_preservado_normalizado_no_servidor(self):
+        for valor in ('1', 'true', 'TRUE', 'TrUe'):
+            with self.subTest(valor=valor), patch.dict(os.environ, {'OLLAMA_NO_CLOUD': valor}):
+                self.consultar.side_effect = [{'ok': False}, self.respondeu()]
+                self.iniciar.reset_mock()
+                resultado = servicos.garantir_ollama()
+                self.assertTrue(resultado['ok'])
+                self.iniciar.assert_called_once()
+                ambiente = self.iniciar.call_args.kwargs['env']
+                self.assertEqual(ambiente['OLLAMA_NO_CLOUD'], '1')
+                self.assertEqual(ambiente['OLLAMA_HOST'], 'http://127.0.0.1:11434')
+                self.assertNotIn(self.segredo, repr(ambiente))
+
+    def test_bloqueio_nuvem_aceita_nome_de_variavel_sem_distinguir_caixa_no_windows(self):
+        for nome in ('ollama_no_cloud', 'Ollama_No_Cloud'):
+            with self.subTest(nome=nome), patch.dict(os.environ, {
+                    nome: 'TrUe', 'OLLAMA_MODELS': str(self.raiz / 'modelos')}, clear=True):
+                ambiente = servicos._ambiente_servidor('http://127.0.0.1:11434')
+                self.assertEqual(ambiente['OLLAMA_NO_CLOUD'], '1')
+                self.assertEqual(sum(k.upper() == 'OLLAMA_NO_CLOUD' for k in ambiente), 1)
+
+    def test_bloqueio_nuvem_ausente_ou_falso_nao_e_injetado_no_servidor(self):
+        for valor in (None, '', '0', 'false', 'FALSE', 'yes', 'true-invalido'):
+            entradas = {'OLLAMA_MODELS': str(self.raiz / 'modelos')}
+            if valor is not None:
+                entradas['OLLAMA_NO_CLOUD'] = valor
+            with self.subTest(valor=valor), patch.dict(os.environ, entradas, clear=True):
+                ambiente = servicos._ambiente_servidor('http://127.0.0.1:11434')
+                self.assertNotIn('OLLAMA_NO_CLOUD', ambiente)
+
     def test_pasta_vazia_nao_substitui_diretorio_padrao_de_modelos(self):
         (self.raiz / 'Models').mkdir()
         self.consultar.side_effect = [{'ok': False}, self.respondeu()]

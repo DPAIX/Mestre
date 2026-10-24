@@ -1,3 +1,5 @@
+> **v2.9.2:** [Diagnóstico de rede no Windows e preservação do bloqueio de nuvem](REVISAO_V2_9_2.md). Abra `diagnosticar_rede.bat` antes de reproduzir a falha; não há reparo de rede automático nem causa confirmada.
+
 > **v2.9.1:** [Configuração local guiada, correção da frase e reversão](REVISAO_V2_9_1.md). “Faça as configurações necessárias” não consulta modelos; confirme e acompanhe as etapas na janela do PC.
 
 > **v2.9.0:** [Modelos, agentes, 9Router, 9Remote e memória explícita](GUIA_INTEGRACOES_V2_9.md) · [Revisão técnica](REVISAO_V2_9_0.md). A frase da captura responde localmente; a equipe apresenta contribuição provisória e controla o orçamento de novos envios.

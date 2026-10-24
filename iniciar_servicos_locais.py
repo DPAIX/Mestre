@@ -49,6 +49,9 @@ def _ambiente_servidor(url):
     # Evita repassar chaves, proxy, Python ou hosts remotos ao processo local.
     ambiente = {k: v for k, v in os.environ.items() if k.upper() in _AMBIENTE_PUBLICO}
     ambiente['OLLAMA_HOST'] = url
+    if any(k.upper() == 'OLLAMA_NO_CLOUD' and v.lower() in ('1', 'true')
+           for k, v in os.environ.items()):
+        ambiente['OLLAMA_NO_CLOUD'] = '1'
     if not any(k.upper() == 'OLLAMA_MODELS' for k in ambiente):
         # Na instalação redirecionada F:\MeuControlePC_v2\.env, reaproveita
         # F:\Models apenas se a estrutura do catálogo já existir.

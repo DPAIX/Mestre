@@ -1,4 +1,6 @@
-# MeuControlePC v2.9.1
+# MeuControlePC v2.9.2
+
+**Quedas de navegação no Windows:** `diagnosticar_rede.bat` registra apenas metadados de conectividade e recursos durante 90 segundos, sem alterar a rede. O início automático também preserva `OLLAMA_NO_CLOUD=1` quando definido. [Diagnóstico, limites e reversão](REVISAO_V2_9_2.md).
 
 **Configuração local sem esperar modelos:** “faça as configurações necessárias” abre um plano local e, após confirmar, uma janela de configuração no PC. Também há botão no Telegram/painel e `configurar_assistente.bat`. [Aplicar, validar e reverter](REVISAO_V2_9_1.md).
 

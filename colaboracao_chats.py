@@ -27,6 +27,7 @@ MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
     'configuracao_assistente.py','configurar_assistente.bat','REVISAO_V2_9_1.md',
+    'diagnostico_rede.py','diagnosticar_rede.bat','REVISAO_V2_9_2.md','testes/test_diagnostico_rede.py',
     'testes/test_configuracao_assistente.py','testes/test_intencoes_configuracao.py','testes/test_fluxos_configuracao.py',
     'integracoes_agentes.py','roteador_9router.py','integracoes_9stack.py','configurar_9router.py','memoria_assistente.py',
     'gerenciar_agentes.bat','adicionar_gemma_nuvem.bat','gerenciar_9stack.bat','configurar_9router.bat',

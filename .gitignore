@@ -47,3 +47,6 @@ Thumbs.db
 *.jpeg
 *.ogg
 *.mp3
+
+# Relatórios locais do diagnóstico de conectividade
+diagnosticos_rede/
