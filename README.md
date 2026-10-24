@@ -1,4 +1,6 @@
-# MeuControlePC v2.9.2
+# MeuControlePC v2.10.0
+
+**Preparação integrada e Gemini:** abra `preparar_assistente_completo.bat` com o bot encerrado. Painel com estado das integrações, modelos 9Router por conversa, memória com exclusão/exportação e Gemini Interactions/Managed Agents. [Instalar, usar e reverter](GUIA_ASSISTENTE_INTEGRADO.md) · [Validação v2.10.0](REVISAO_V2_10_0.md). Contas, cota e pareamento precisam ser configurados no PC; a rede existente é preservada.
 
 **Quedas de navegação no Windows:** `diagnosticar_rede.bat` registra apenas metadados de conectividade e recursos durante 90 segundos, sem alterar a rede. O início automático também preserva `OLLAMA_NO_CLOUD=1` quando definido. [Diagnóstico, limites e reversão](REVISAO_V2_9_2.md).
 

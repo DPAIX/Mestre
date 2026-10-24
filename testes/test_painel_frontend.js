@@ -1183,3 +1183,43 @@ test('cancelar configuração local não envia comandos de instalação, modelos
  assert.deepEqual(posts,[{acao:'configuracao_preparar'},{acao:'pedido_cancelar',id:'nonce-config-cancelar'}]);
  assert.equal(p.obter('configuracao-resposta').textContent,'Pedido cancelado.');
 });
+
+test('abrir painel não consulta Gemini remoto nem catálogos de IA',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push([url,opt.method]);return resposta(estado)};
+ await p.executar('atualizar()');
+ assert.deepEqual(chamadas.map(c=>c[0]),['/api/estado']);
+});
+
+test('tarefa Gemini é apenas preparada e exige nonce de confirmação',async()=>{
+ const p=await painel(),posts=[];p.executar("chatAtivoId='chat-fixture'");
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta({...estado,colaboracao:{chat_ativo:{id:'chat-fixture'},chats:[],tarefas:[],contribuicoes:[]}});
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta({ok:true,mensagem:'Confira',pedido:{id:'nonce-fixture',descricao:'Enviar à nuvem para análise.'}});
+ };
+ await p.executar("prepararGemini({operacao:'tarefa',texto:'Analise',agente:'antigravity-preview-09-2026'})");
+ assert.equal(posts.length,1);assert.equal(posts[0].acao,'gemini_preparar');assert.equal(posts[0].chat_id,'chat-fixture');
+ assert.equal(p.obter('gemini-pedido').children.length,1);
+});
+
+test('resposta de confirmação antiga não aparece na nova conversa',async()=>{
+ const p=await painel();let liberar;p.executar("chatAtivoId='chat-antigo'");
+ p.executar("exibirPedidoConversa('gemini-resposta',{id:'nonce-fixture',descricao:'Enviar tarefa.'})");
+ const confirmar=p.obter('gemini-pedido').children[0].children[3].children[0];
+ p.contexto.fetch=(_url,opt)=>opt.method==='POST'?new Promise(resolve=>liberar=resolve):Promise.resolve(resposta(estado));
+ const pendente=confirmar.eventos.click();await new Promise(setImmediate);
+ p.executar("chatAtivoId='chat-novo'");p.obter('gemini-resposta').textContent='Conversa nova';
+ liberar(resposta({ok:true,mensagem:'Resultado da antiga'}));await pendente;
+ assert.equal(p.obter('gemini-resposta').textContent,'Conversa nova');
+});
+
+test('tarefas remotas são renderizadas como texto e não como HTML',async()=>{
+ const p=await painel();p.executar("chatAtivoId='chat-fixture'");
+ const tarefa={id:'g1234567890abcdef',estado:'completed',agente:'antigravity-preview-09-2026',titulo:'<img src=x onerror=alert(1)>',texto:'<script>acao()</script>'};
+ p.contexto.fetch=async()=>resposta({chat_id:'chat-fixture',configuracao:{},tarefas:[tarefa],perfis:[]});
+ await p.executar('atualizarGemini()');
+ const cartao=p.obter('gemini-tarefas').children[0];
+ assert.ok(cartao.children.some(e=>e.textContent===tarefa.texto));
+ assert.equal(p.obter('gemini-pedido').children.length,0);
+});

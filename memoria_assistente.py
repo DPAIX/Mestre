@@ -27,6 +27,11 @@ MAX_TITULO = 80
 MAX_TEXTO = 800
 MAX_ARQUIVO = 256_000
 MAX_CONTEXTO = 1500
+MAX_EXPORTACAO = 55_000
+AVISO_MEMORIA_INDISPONIVEL = (
+    'A memória desta conversa não pôde ser consultada; arquivo preservado. '
+    'Esta resposta continua sem notas.'
+)
 _CAMPOS_NOTA = {'id', 'titulo', 'texto', 'atualizado_em'}
 _IGNORAR_BUSCA = {'a', 'ao', 'as', 'com', 'da', 'das', 'de', 'do', 'dos', 'e', 'em',
                   'eu', 'me', 'meu', 'minha', 'na', 'nas', 'no', 'nos', 'o', 'os',
@@ -129,7 +134,13 @@ def listar_notas(contexto):
     """Cópias redigidas das notas deste contexto, sem migração ou autoescrita."""
     with nucleo._LOCK:
         notas = _ler(contexto)['notas']
-    return copy.deepcopy(nucleo.redigir(notas))
+    publicas = copy.deepcopy(nucleo.redigir(notas))
+    for nota in publicas:
+        # A redação de um segredo pode expandir o texto de um arquivo que foi
+        # editado fora do assistente. Preserve os limites da interface também.
+        nota['titulo'] = nota['titulo'][:MAX_TITULO]
+        nota['texto'] = nota['texto'][:MAX_TEXTO]
+    return publicas
 
 
 def salvar_nota(contexto, titulo, texto, *, confirmado=False):
@@ -168,10 +179,34 @@ def salvar_nota(contexto, titulo, texto, *, confirmado=False):
         return copy.deepcopy(nota)
 
 
+def remover_nota(contexto, nota_id, *, confirmado=False):
+    """Exclui somente o ID confirmado deste contexto; repetição é idempotente."""
+    nome = _nome(contexto)
+    if not isinstance(nota_id, str) or not re.fullmatch(r'm[a-f0-9]{16}', nota_id):
+        raise ValueError('Informe o ID válido da nota desta conversa.')
+    if confirmado is not True:
+        raise PermissionError('Confirme a exclusão desta memória antes de remover.')
+    with nucleo._LOCK:
+        dados = _ler(contexto)
+        restantes = [nota for nota in dados['notas'] if nota['id'] != nota_id]
+        removida = len(restantes) != len(dados['notas'])
+        if removida:
+            dados['notas'] = restantes
+            nucleo.gravar_json(nome, dados)
+    return {'id': nota_id, 'removida': removida}
+
+
 def _termos(texto):
     normal = ''.join(c for c in unicodedata.normalize('NFD', texto.casefold())
                      if not unicodedata.combining(c))
     return {t for t in re.findall(r'[a-z0-9]{2,40}', normal) if t not in _IGNORAR_BUSCA}
+
+
+def _validar_consulta(consulta, limite):
+    if type(limite) is not int or not 120 <= limite <= MAX_CONTEXTO:
+        raise ValueError('O limite do contexto de memória deve ser inteiro entre 120 e 1500.')
+    if not isinstance(consulta, str) or len(consulta) > 12000:
+        raise ValueError('A consulta de memória deve ser texto de até 12000 caracteres.')
 
 
 def contexto_ia(contexto, consulta='', *, limite=MAX_CONTEXTO):
@@ -180,10 +215,7 @@ def contexto_ia(contexto, consulta='', *, limite=MAX_CONTEXTO):
     A interface pode desativar o uso por MEMORIA_HABILITADA=0. Só notas salvas
     explicitamente entram; não extrai preferências automaticamente do histórico.
     """
-    if type(limite) is not int or not 120 <= limite <= MAX_CONTEXTO:
-        raise ValueError('O limite do contexto de memória deve ser inteiro entre 120 e 1500.')
-    if not isinstance(consulta, str) or len(consulta) > 12000:
-        raise ValueError('A consulta de memória deve ser texto de até 12000 caracteres.')
+    _validar_consulta(consulta, limite)
     if os.getenv('MEMORIA_HABILITADA', '1') != '1':
         return ''
     termos = _termos(consulta)
@@ -212,6 +244,20 @@ def contexto_ia(contexto, consulta='', *, limite=MAX_CONTEXTO):
     return cabecalho + json.dumps(selecionadas, ensure_ascii=False, allow_nan=False)
 
 
+def contexto_seguro(contexto, consulta='', *, limite=MAX_CONTEXTO):
+    """Uma falha na memória não impede a resposta; arquivo e erros ficam locais.
+
+    Argumentos inválidos continuam sendo erros do chamador. A recuperação omite
+    apenas as notas, sem apagar arquivos, gravar modelos ou expor o erro bruto.
+    """
+    _nome(contexto)
+    _validar_consulta(consulta, limite)
+    try:
+        return {'texto': contexto_ia(contexto, consulta, limite=limite), 'aviso': ''}
+    except (ValueError, OSError):
+        return {'texto': '', 'aviso': AVISO_MEMORIA_INDISPONIVEL}
+
+
 def exportar_markdown(contexto):
     """Exportação textual explícita; não grava arquivos nem inclui outras conversas."""
     notas = listar_notas(contexto)
@@ -223,4 +269,7 @@ def exportar_markdown(contexto):
         linhas.extend(['## ' + nota['titulo'], '',
                        'ID: ' + nota['id'] + ' · Atualizada em ' + nota['atualizado_em'], '',
                        nota['texto'], ''])
-    return '\n'.join(linhas)
+    resultado = '\n'.join(linhas)
+    if len(resultado) > MAX_EXPORTACAO:
+        raise ValueError('A exportação da memória excedeu o limite; nenhuma nota foi alterada.')
+    return resultado

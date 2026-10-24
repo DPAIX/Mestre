@@ -1,3 +1,5 @@
+> **v2.10.0:** [Preparar todos os recursos e Gemini Interactions/Managed Agents](GUIA_ASSISTENTE_INTEGRADO.md). Use `preparar_assistente_completo.bat` com o bot encerrado, sem substituir seu .env. [Mudanças, testes e reversão](REVISAO_V2_10_0.md).
+
 > **v2.9.2:** [Diagnóstico de rede no Windows e preservação do bloqueio de nuvem](REVISAO_V2_9_2.md). Abra `diagnosticar_rede.bat` antes de reproduzir a falha; não há reparo de rede automático nem causa confirmada.
 
 > **v2.9.1:** [Configuração local guiada, correção da frase e reversão](REVISAO_V2_9_1.md). “Faça as configurações necessárias” não consulta modelos; confirme e acompanhe as etapas na janela do PC.

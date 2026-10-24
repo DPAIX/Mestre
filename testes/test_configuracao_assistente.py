@@ -138,7 +138,7 @@ class ConfiguracaoAssistente(unittest.TestCase):
             instalar.assert_called_once_with('9remote',confirmado=True)
 
     def test_etapa_9router_somente_inicia_gateway_e_abre_dashboard(self):
-        with patch.object(stack,'executar_9stack',side_effect=['Início solicitado.','Dashboard solicitado.']) as executar:
+        with patch.object(stack,'executar_9stack',side_effect=['Início solicitado.','Dashboard solicitado.']) as executar,patch.object(local,'_aguardar_9router',return_value=True):
             mensagem=local.executar_etapa('preparar_9router',confirmado=True)
         self.assertEqual([c.args for c in executar.call_args_list],[('9router','iniciar'),('9router','abrir')])
         self.assertTrue(all(c.kwargs=={'confirmado':True} for c in executar.call_args_list))

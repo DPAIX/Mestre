@@ -26,6 +26,9 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'gemini_interactions.py','servicos_gemini.py','configurar_gemini.py','prontidao_assistente.py',
+    'configurar_gemini.bat','preparar_assistente_completo.bat','GUIA_ASSISTENTE_INTEGRADO.md',
+    'exemplos/gemini_agentes_assistente.ipynb','testes/test_contrato_sdk_gemini.py','testes/test_integracao_v210.py',
     'configuracao_assistente.py','configurar_assistente.bat','REVISAO_V2_9_1.md',
     'diagnostico_rede.py','diagnosticar_rede.bat','REVISAO_V2_9_2.md','testes/test_diagnostico_rede.py',
     'testes/test_configuracao_assistente.py','testes/test_intencoes_configuracao.py','testes/test_fluxos_configuracao.py',
@@ -130,7 +133,7 @@ def _novo_chat(dados,espaco,titulo,provedor):
     total=sum(len(item.get('chats',[])) for item in dados['contextos'].values() if isinstance(item,dict))
     if len(espaco['chats'])>=limite or total>=MAX_CHATS:raise ValueError('Limite de conversas atingido. Use uma conversa existente.')
     agora=_agora()
-    chat={'id':'chat_'+uuid.uuid4().hex[:16],'titulo':titulo,'provedor':provedor,'modelo_ollama':'',
+    chat={'id':'chat_'+uuid.uuid4().hex[:16],'titulo':titulo,'provedor':provedor,'modelo_ollama':'','modelo_9router':'',
           'modo_conversa':True,'conversa_v240':True,'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'cooperativa',
           'equipe_politica':'automatica' if provedor=='auto' else 'manual',
           'criado_em':agora,'atualizado_em':agora,'mensagens':[]}
@@ -139,7 +142,7 @@ def _novo_chat(dados,espaco,titulo,provedor):
 
 
 def _metadados(chat):
-    return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',
+    return {'modelo_9router':'','equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',
             **{chave:copy.deepcopy(valor) for chave,valor in chat.items() if chave!='mensagens'},
             'total_mensagens':len(chat.get('mensagens',[]))}
 
@@ -191,7 +194,7 @@ def obter_chat_ativo(contexto):
             chat=_achar_chat(espaco)
             if not chat.get('conversa_v240'):
                 chat['modo_conversa']=True;chat['conversa_v240']=True;_salvar(dados)
-        return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',**copy.deepcopy(chat)}
+        return {'modelo_9router':'','equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',**copy.deepcopy(chat)}
 
 
 def selecionar_chat(contexto,chat_id):
@@ -199,16 +202,20 @@ def selecionar_chat(contexto,chat_id):
     with nucleo._LOCK:
         dados=_ler();espaco=_espaco(dados,chave);chat=_achar_chat(espaco,chat_id)
         espaco['ativo']=chat['id'];_salvar(dados)
-        return {'equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',**copy.deepcopy(chat)}
+        return {'modelo_9router':'','equipe_modelos':[],'equipe_paralela':False,'equipe_modo':'paralela','equipe_politica':'automatica',**copy.deepcopy(chat)}
 
 
 def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_ollama=None,
-                    equipe_modelos=None,equipe_paralela=None,equipe_modo=None,equipe_politica=None):
+                    equipe_modelos=None,equipe_paralela=None,equipe_modo=None,equipe_politica=None,modelo_9router=None):
     chave=_contexto(contexto)
     if provedor is not None:provedor=_provedor(provedor)
     if modelo_ollama is not None:
         from configurar_ia_local import validar_modelo
         if modelo_ollama!='':modelo_ollama=validar_modelo(modelo_ollama)
+    if modelo_9router is not None:
+        from roteador_9router import validar_modelo as validar_modelo_9router
+        if modelo_9router!='':modelo_9router=validar_modelo_9router(modelo_9router)
+        if modelo_ollama is not None:raise ValueError('Escolha um único provedor para o modelo da conversa.')
     if modo_conversa is not None and not isinstance(modo_conversa,bool):raise ValueError('Modo de conversa deve ser verdadeiro ou falso.')
     if equipe_paralela is not None and not isinstance(equipe_paralela,bool):raise ValueError('Modo equipe deve ser verdadeiro ou falso.')
     if equipe_modo is not None and equipe_modo not in ('cooperativa','paralela'):
@@ -217,25 +224,33 @@ def configurar_chat(contexto,chat_id,provedor=None,modo_conversa=None,modelo_oll
         raise ValueError('Política da equipe deve ser automatica ou manual.')
     if equipe_modelos is not None:
         from configurar_ia_local import validar_modelo
-        if not isinstance(equipe_modelos,list) or len(equipe_modelos)>8:raise ValueError('Selecione até oito modelos.')
+        from conversa_equipe import MAX_MODELOS_COOPERATIVA
+        if not isinstance(equipe_modelos,list) or len(equipe_modelos)>MAX_MODELOS_COOPERATIVA:
+            raise ValueError('Selecione até '+str(MAX_MODELOS_COOPERATIVA)+' modelos cooperativos.')
         equipe_modelos=list(dict.fromkeys(validar_modelo(m) for m in equipe_modelos))
     with nucleo._LOCK:
         dados=_ler();original=_achar_chat(_espaco(dados,chave),chat_id);chat=copy.deepcopy(original)
-        if provedor is not None or modelo_ollama is not None:
+        chat.setdefault('modelo_9router','')
+        if provedor is not None or modelo_ollama is not None or modelo_9router is not None:
             chat.update({'equipe_modelos':[],'equipe_paralela':False})
         if provedor is not None:chat['provedor']=provedor
         if modo_conversa is not None:chat['modo_conversa']=modo_conversa;chat['conversa_v240']=True
         if modelo_ollama is not None:chat['modelo_ollama']=modelo_ollama
+        if modelo_9router is not None:
+            if chat.get('provedor')!='9Router':raise ValueError('Selecione 9Router para configurar um modelo ou combo desse gateway.')
+            chat['modelo_9router']=modelo_9router
         if equipe_modelos is not None:chat['equipe_modelos']=equipe_modelos
         if equipe_paralela is not None:chat['equipe_paralela']=equipe_paralela
         if equipe_modo is not None:chat['equipe_modo']=equipe_modo
         if equipe_politica is not None:chat['equipe_politica']=equipe_politica
-        elif any(valor is not None for valor in (provedor,modelo_ollama,equipe_modelos,equipe_paralela,equipe_modo)):
+        elif any(valor is not None for valor in (provedor,modelo_ollama,modelo_9router,equipe_modelos,equipe_paralela,equipe_modo)):
             # Configuradores usados pelas interfaces expressam uma escolha
             # explícita. Ela permanece após reinícios e atualização do catálogo.
             chat['equipe_politica']='manual'
         if chat.get('equipe_paralela') and (chat.get('provedor')!='Ollama' or not chat.get('equipe_modelos')):
             raise ValueError('Equipe ativa exige Ollama e uma lista de modelos.')
+        if chat.get('equipe_modo','paralela')=='paralela' and len(chat.get('equipe_modelos',[]))>8:
+            raise ValueError('A equipe paralela permite até oito modelos; use cooperação para catálogos maiores.')
         chat['atualizado_em']=_agora();original.clear();original.update(chat);_salvar(dados)
         return copy.deepcopy(chat)
 
@@ -254,8 +269,9 @@ def configurar_roteador_automatico(contexto,chat_id):
 
 def configurar_equipe_automatica(contexto,chat_id,modelos):
     """Aplica o catálogo lido fora da trava, sem substituir uma escolha recente."""
-    if not isinstance(modelos,list) or not 1<=len(modelos)<=8:
-        raise ValueError('A equipe automática exige de um a oito modelos no catálogo Ollama.')
+    from conversa_equipe import MAX_MODELOS_COOPERATIVA
+    if not isinstance(modelos,list) or not 1<=len(modelos)<=MAX_MODELOS_COOPERATIVA:
+        raise ValueError('A equipe automática exige de um a '+str(MAX_MODELOS_COOPERATIVA)+' modelos no catálogo Ollama.')
     with nucleo._LOCK:
         atual=obter_chat_ativo(contexto)
         if atual['id']!=chat_id or atual.get('equipe_politica','automatica')!='automatica':
@@ -275,7 +291,7 @@ def historico_chat(contexto,chat_id=None):
         return [{'role':item['role'],'content':item['content']} for item in chat['mensagens']]
 
 
-def registrar_troca(contexto,pergunta,resposta,provedor,chat_id=None,modelo_ollama=None):
+def registrar_troca(contexto,pergunta,resposta,provedor,chat_id=None,modelo_ollama=None,modelo_9router=None):
     """A interface chama esta função somente após uma resposta bem sucedida."""
     chave=_contexto(contexto)
     pergunta=_texto(pergunta,'Pergunta',MAX_MENSAGEM,truncar=True)
@@ -287,6 +303,10 @@ def registrar_troca(contexto,pergunta,resposta,provedor,chat_id=None,modelo_olla
         if modelo_ollama:
             from configurar_ia_local import validar_modelo
             mensagem['modelo_ollama']=validar_modelo(modelo_ollama)
+        if modelo_9router:
+            from roteador_9router import validar_modelo as validar_modelo_9router
+            if provedor!='9Router':raise ValueError('O modelo 9Router exige uma resposta desse provedor.')
+            mensagem['modelo_9router']=validar_modelo_9router(modelo_9router)
         chat['mensagens'].extend(({'role':'user','content':pergunta,'quando':agora},mensagem))
         chat['mensagens']=chat['mensagens'][-MAX_TROCAS*2:];chat['atualizado_em']=agora
         _salvar(dados)

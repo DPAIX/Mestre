@@ -434,6 +434,11 @@ class Roteador:
                 else:result[nome]='configurado; não testado'
             return result
     def gemini(self,pergunta,historico=None):
+        modo=os.getenv('GEMINI_API_MODO','generate_content')
+        if modo=='interactions':
+            from gemini_interactions import responder
+            return responder(pergunta,historico)
+        if modo!='generate_content':raise FalhaAPI('Gemini',0,'Escolha GEMINI_API_MODO=interactions ou generate_content.','configuracao')
         chave=os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
         if not chave:raise FalhaAPI('Gemini',0,'Chave não configurada.','configuracao')
         try:from google import genai
@@ -532,10 +537,11 @@ class Roteador:
         """Snapshot da ordenação da rodada, sem rede ou inferência adicional."""
         with self.mutex:return tuple(self._nuvem_equipe_cpu_snapshot)
 
-    def nine_router(self,pergunta,historico=None):
+    def nine_router(self,pergunta,historico=None,*,modelo=None):
         # Importação tardia evita ciclo: o conector reutiliza FalhaAPI e redação.
         from roteador_9router import responder
-        return responder(pergunta,historico=historico)
+        opcoes={'modelo':modelo} if modelo is not None else {}
+        return responder(pergunta,historico=historico,**opcoes)
 
     def catalogo_ollama(self):
         """Leitura explícita do serviço no PC; não gera respostas nem baixa modelos."""
@@ -734,7 +740,7 @@ class Roteador:
         return self.responder(pergunta,historico=historico,provedor='Ollama',
             modelo_ollama=modelo_ollama,modo_cooperativo=True,limite_segundos=limite_segundos)
 
-    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None,*,modo_cooperativo=False,limite_segundos=None):
+    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None,*,modo_cooperativo=False,limite_segundos=None,modelo_9router=None):
         if not isinstance(modo_cooperativo,bool):raise ValueError('Modo cooperativo inválido.')
         limite_segundos=validar_limite_segundos(limite_segundos)
         escolhido=self._selecionar_provedor(provedor)
@@ -747,6 +753,11 @@ class Roteador:
             modelo_ollama=validar_modelo(modelo_ollama)
             if escolhido!='Ollama' or pesquisa:
                 raise ValueError('Selecione Ollama para escolher um modelo dessa integração.')
+        if modelo_9router is not None:
+            if escolhido!='9Router' or pesquisa:
+                raise ValueError('Selecione 9Router para escolher um modelo ou combo desse gateway.')
+            from roteador_9router import validar_modelo as validar_modelo_9router
+            modelo_9router=validar_modelo_9router(modelo_9router)
         pergunta_original=pergunta
         mensagens=preparar_mensagens(pergunta,historico)
         pergunta=mensagens[-1]['content']
@@ -765,6 +776,19 @@ class Roteador:
                 registrar('api_Ollama','indisponivel','Modelo '+modelo_ollama+'; '+str(exc),'Ollama')
                 raise FalhaAPI('Ollama',exc.codigo,'Modelo '+modelo_ollama+': '+exc.detalhe,
                                exc.categoria,exc.retry_after) from None
+        if modelo_9router is not None:
+            # Escolha por conversa não altera o padrão nem seus registros de
+            # saúde. Respeita a pausa do gateway e nunca tenta outro provedor.
+            if not self.disponivel('9Router'):
+                estado=self.estado_local().get('9Router',{})
+                raise FalhaAPI('9Router',estado.get('codigo') or 0,
+                    self._explicar_indisponibilidade('9Router',estado),'suspenso')
+            texto=self.nine_router(pergunta_original,historico=historico,modelo=modelo_9router)
+            if not isinstance(texto,str) or not texto.strip():
+                raise FalhaAPI('9Router',0,'Resposta vazia.','resposta_invalida')
+            self.ultimo_provedor='9Router'
+            registrar('pergunta','sucesso','Modelo/combo 9Router '+str(redigir(modelo_9router)),'9Router')
+            return texto,'9Router'
         if pesquisa:
             if escolhido not in ('auto','Exa'):raise ValueError('Pesquisa usa Exa; escolha auto ou Exa.')
             prov='Exa'

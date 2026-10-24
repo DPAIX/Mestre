@@ -210,10 +210,14 @@ def _requisicao(cfg,recurso,*,payload=None,timeout=None):
         raise _falha('Não foi possível acessar o endpoint local do 9Router. Confira o processo, endereço e porta; nenhuma nova tentativa foi enviada.','rede') from None
 
 
-def listar_modelos():
+def listar_modelos(*,timeout=None):
     """Catálogo por solicitação explícita. O servidor pode consultar provedores."""
     cfg=_configuracao()
-    dados=_requisicao(cfg,'/models',timeout=min(PRAZO_CATALOGO,cfg.timeout))
+    if timeout is not None and (isinstance(timeout,bool) or not isinstance(timeout,(int,float))
+            or not math.isfinite(timeout) or not 0<timeout<=120):
+        raise ValueError('O prazo do catálogo deve ser finito, positivo e de até 120 segundos.')
+    prazo=min(PRAZO_CATALOGO,cfg.timeout) if timeout is None else min(PRAZO_CATALOGO,cfg.timeout,timeout)
+    dados=_requisicao(cfg,'/models',timeout=prazo)
     itens=dados.get('data')
     if not isinstance(itens,list) or len(itens)>LIMITE_MODELOS:
         raise _falha('O 9Router retornou um catálogo fora do formato ou limite esperado.','resposta_invalida')
@@ -234,12 +238,14 @@ def listar_modelos():
             'habilitado':cfg.habilitado,'geracao_testada':False}
 
 
-def responder(pergunta,historico=None):
+def responder(pergunta,historico=None,*,modelo=None):
     """Retorna somente texto. Respostas e tool_calls nunca são executados."""
     from multi_ia import preparar_mensagens,SISTEMA
     if not isinstance(pergunta,str) or not pergunta.strip() or len(pergunta)>LIMITE_TEXTO:
         raise ValueError('Envie uma pergunta de até 12000 caracteres para o 9Router.')
-    cfg=_configuracao(exigir_modelo=True)
+    if modelo is not None:modelo=validar_modelo(modelo)
+    cfg=_configuracao(exigir_modelo=modelo is None)
+    selecionado=cfg.modelo if modelo is None else modelo
     # A redação da chave opcional ocorre também no pedido/histórico, antes de sair.
     pergunta=_seguro(pergunta,cfg.chave)
     if len(pergunta)>LIMITE_TEXTO:
@@ -256,7 +262,7 @@ def responder(pergunta,historico=None):
         saldo-=len(conteudo)
     mensagens=list(reversed(anteriores))+[{'role':'user','content':pergunta}]
     dados=_requisicao(cfg,'/chat/completions',payload={
-        'model':cfg.modelo,'messages':[{'role':'system','content':SISTEMA}]+mensagens,
+        'model':selecionado,'messages':[{'role':'system','content':SISTEMA}]+mensagens,
         'stream':False,'max_tokens':800})
     escolhas=dados.get('choices')
     if not isinstance(escolhas,list) or not escolhas or not isinstance(escolhas[0],dict):

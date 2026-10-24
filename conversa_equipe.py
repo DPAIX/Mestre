@@ -12,6 +12,8 @@ from nucleo import redigir
 
 _TRAVA = threading.Lock()
 MAX_MODELOS = 8
+MAX_MODELOS_PARALELA = MAX_MODELOS
+MAX_MODELOS_COOPERATIVA = 32
 PAPEIS = ('análise do pedido', 'proposta prática', 'revisão crítica', 'riscos e verificação')
 LIMITE_PROMPT = 11000
 
@@ -268,13 +270,23 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
     # original, inclusive participantes adiados pelo orçamento de memória.
     itens.sort(key=lambda item:modelos.index(item['modelo']))
     linhas=[f'👥 Equipe cooperativa Ollama: {len(sucessos)}/{total} modelos responderam.']
+    ampliada = total > MAX_MODELOS_PARALELA
+    participacao = '\nParticipação: '+', '.join(
+        ('✅ ' if r['ok'] else '⚠️ ')+r['modelo']+
+        (' ['+r.get('categoria','falha')[:30]+']' if ampliada and not r['ok'] else '')
+        for r in itens)
+    # Em equipes grandes, reserve primeiro o registro de todos os selecionados.
+    # O corte final nunca deve esconder as últimas tags ou seus adiamentos.
+    if ampliada:
+        linhas.append(participacao)
+        texto = texto[:max(500, 10500-len(participacao))]
     if sintese['ok']:
         linhas.append('Resposta consolidada por '+escolhido+':\n'+texto)
     else:
         linhas.append('Resposta de '+escolhido+':\n'+texto)
         if sintese['tentada']:linhas.append('A síntese adicional não respondeu; foi preservada a contribuição acima.')
         elif sintese.get('adiada'):linhas.append('A síntese adicional não foi enviada: '+sintese['erro'])
-    linhas.append('\nParticipação: '+', '.join(('✅ ' if r['ok'] else '⚠️ ')+r['modelo'] for r in itens))
+    if not ampliada:linhas.append(participacao)
     for item in itens:
         if not item['ok']:linhas.append(item['modelo']+': '+item['erro'][:250])
     if plano:
@@ -289,11 +301,12 @@ def consultar_modelos(texto, historico, modelos, roteador, *, interpretar=False,
                       modo='paralela', coordenador=None, progresso=None, parcial=None):
     if not isinstance(texto, str) or not texto.strip() or len(texto)>12000:
         raise ValueError('Envie uma mensagem de até 12000 caracteres para a equipe.')
-    if not isinstance(modelos, list) or not 1<=len(modelos)<=MAX_MODELOS:
-        raise ValueError('A equipe aceita entre um e oito modelos.')
+    if modo not in ('paralela','cooperativa'):raise ValueError('Escolha equipe paralela ou cooperativa.')
+    limite = MAX_MODELOS_COOPERATIVA if modo == 'cooperativa' else MAX_MODELOS_PARALELA
+    if not isinstance(modelos, list) or not 1<=len(modelos)<=limite:
+        raise ValueError(f'A equipe {modo} aceita entre um e {limite} modelos.')
     modelos=list(dict.fromkeys(validar_modelo(m) for m in modelos))
     if not isinstance(historico, list):raise ValueError('Histórico de equipe inválido.')
-    if modo not in ('paralela','cooperativa'):raise ValueError('Escolha equipe paralela ou cooperativa.')
     if coordenador is not None:
         coordenador=validar_modelo(coordenador)
         if coordenador not in modelos:raise ValueError('O coordenador deve pertencer à equipe selecionada.')

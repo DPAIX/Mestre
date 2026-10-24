@@ -119,16 +119,18 @@ class DefaultsIntegracaoTeste(unittest.TestCase):
                 patch.object(servicos,'garantir_ollama') as iniciar,contextlib.redirect_stdout(io.StringIO()):app.main()
         trava.assert_not_called();iniciar.assert_not_called()
 
-    def test_inicio_windows_garante_ollama_antes_do_painel_sem_instalacao(self):
+    def test_inicio_windows_abre_painel_sem_esperar_ollama(self):
         ordem=[];servidor=MagicMock();bot=MagicMock()
         sistema=SimpleNamespace(name='nt',getenv=os.getenv,environ=os.environ)
         with patch.object(app,'os',sistema),patch.object(app,'registrar'), \
-                patch.object(servicos,'garantir_ollama',side_effect=lambda:ordem.append('ollama') or {'ok':True,'mensagem':'Metadados locais'}), \
+                patch.object(servicos,'garantir_ollama',side_effect=lambda:ordem.append('ollama') or {'ok':True,'mensagem':'Metadados locais'}) as iniciar, \
                 patch.object(app,'iniciar_painel',side_effect=lambda:ordem.append('painel') or servidor), \
-                patch.object(app.threading,'Thread'),patch.object(app,'catalogo_robotask'), \
+                patch.object(app.threading,'Thread') as threads,patch.object(app,'catalogo_robotask'), \
                 patch.object(app,'configurar_bot',return_value=bot),contextlib.redirect_stdout(io.StringIO()):
             app._executar_instancia(SimpleNamespace(somente_painel=False))
-        self.assertEqual(ordem,['ollama','painel'])
+        self.assertEqual(ordem,['painel'])
+        self.assertTrue(any(c.kwargs.get('target') is app.preparar_ia_em_segundo_plano for c in threads.call_args_list))
+        iniciar.assert_not_called()
         bot.infinity_polling.assert_called_once();servidor.shutdown.assert_called_once();servidor.server_close.assert_called_once()
 
 

@@ -94,7 +94,8 @@ MENU_BOTOES=[
     '🌐 Multi-IA, Exa & Logs','💻 Ferramentas do PC','📓 VS Code, Colab & Dados',
     '🧠 Auto-Análise & Evolução','🍅 Foco Pomodoro (25m)',
     '🛠️ Melhorias Seguras','🔄 Reiniciar Assistente','🖥️ Reiniciar Windows'
-    ,'💬 Chats e projeto','🔌 Testar conexões IA','🧩 Agentes e integrações','⚙️ Configurar assistente'
+    ,'💬 Chats e projeto','🔌 Testar conexões IA','🧩 Agentes e integrações','⚙️ Configurar assistente',
+    '📋 Estado das integrações','🛰️ Agentes Gemini'
 ]
 
 def donos():
@@ -217,7 +218,11 @@ def interpretar_comando(texto,contexto=None):
 
 def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
     from interpretacao_natural import validar_plano
-    plano=validar_plano(plano);acao=plano['acao'];campos=plano['campos']
+    if isinstance(plano,dict) and str(plano.get('acao','')).startswith('gemini_'):
+        from servicos_gemini import validar_plano as validar_gemini
+        plano=validar_gemini(plano)
+    else:plano=validar_plano(plano)
+    acao=plano['acao'];campos=plano['campos']
     if chat_id and CENTRAL.obter_chat_ativo(contexto)['id']!=chat_id:
         raise ValueError('Este pedido pertence a outra conversa. Volte à conversa de origem ou envie novamente o que deseja fazer.')
     leituras={'status':mostrar_status,'rotina':mostrar_rotina,'financas':mostrar_financeiro,
@@ -241,16 +246,27 @@ def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
     elif acao=='9stack':
         from integracoes_9stack import executar_9stack
         resultado=executar_9stack(campos['servico'],campos['operacao'],confirmado=True)
-    elif acao in ('memoria','memoria_salvar'):
-        from memoria_assistente import contexto_chat,listar_notas,salvar_nota
+    elif acao.startswith('gemini_'):
+        from servicos_gemini import executar as executar_gemini
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        resultado=executar_gemini(plano,contexto,atual['id'])
+    elif acao=='equipe_modelos':
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        resultado=SERVICOS.executar_acao('chat_equipe',{'id':atual['id'],'ativo':campos['modo']!='individual',
+            'modo':'cooperativa' if campos['modo']=='individual' else campos['modo']},contexto,ROTEADOR)
+    elif acao in ('memoria','memoria_salvar','memoria_remover'):
+        from memoria_assistente import contexto_chat,listar_notas,salvar_nota,remover_nota
         atual=CENTRAL.obter_chat_ativo(contexto)
         chave=contexto_chat(contexto,atual['id'])
         if acao=='memoria_salvar':
             nota=salvar_nota(chave,campos['titulo'],campos['texto'],confirmado=True)
             resultado='Nota salva nesta conversa: '+nota['titulo']+'. Nenhuma ação descrita na nota foi executada.'
+        elif acao=='memoria_remover':
+            remocao=remover_nota(chave,campos['nota_id'],confirmado=True)
+            resultado='Nota removida desta conversa.' if remocao['removida'] else 'Essa nota já não está nesta conversa; nenhuma outra foi alterada.'
         else:
             notas=listar_notas(chave)
-            resultado='📝 Notas desta conversa:\n'+('\n'.join('• '+n['titulo']+': '+n['texto'] for n in notas) or 'Nenhuma nota salva.')
+            resultado='📝 Notas desta conversa:\n'+('\n'.join('• '+n['id']+' | '+n['titulo']+': '+n['texto'] for n in notas) or 'Nenhuma nota salva.')
     elif acao=='pc':
         if campos['comando']=='print':
             foto=captura()
@@ -389,10 +405,30 @@ def preparar_agente_painel(obj):
 
 def preparar_integracao_painel(obj):
     from interpretacao_natural import validar_plano
-    acao='9stack' if obj.get('acao')=='9stack_preparar' else 'memoria_salvar'
-    nomes=('servico','operacao') if acao=='9stack' else ('titulo','texto')
+    acao={'9stack_preparar':'9stack','memoria_preparar':'memoria_salvar','memoria_remover_preparar':'memoria_remover'}.get(obj.get('acao'))
+    if not acao:raise ValueError('Preparação não permitida.')
+    nomes=('servico','operacao') if acao=='9stack' else (('nota_id',) if acao=='memoria_remover' else ('titulo','texto'))
     plano=validar_plano({'acao':acao,'campos':{nome:obj.get(nome) for nome in nomes}})
     chat=CENTRAL.obter_chat_ativo('painel')
+    if obj.get('chat_id') and obj['chat_id']!=chat['id']:raise ValueError('Volte à conversa de origem antes de preparar a nota.')
+    return registrar_pedido_painel({'mensagem':plano['descricao'],'plano':plano,'chat_id':chat['id']})
+
+
+def preparar_gemini_painel(obj):
+    import servicos_gemini as gemini
+    chat=CENTRAL.obter_chat_ativo('painel')
+    if obj.get('chat_id')!=chat['id']:raise ValueError('Volte à conversa de origem antes de preparar a operação Gemini.')
+    operacao=obj.get('operacao')
+    if operacao=='tarefa':
+        from gemini_interactions import AGENTE_PADRAO
+        plano=gemini.preparar_tarefa(obj.get('texto'),obj.get('agente',AGENTE_PADRAO),rede=obj.get('rede',False),anterior=obj.get('anterior',''))
+    elif operacao=='perfil_criar':
+        plano=gemini.validar_plano({'acao':'gemini_perfil_criar','campos':{
+            'operacao':'g'+secrets.token_hex(8),'titulo':obj.get('titulo'),'instrucoes':obj.get('instrucoes'),'rede':obj.get('rede',False)}})
+    else:
+        acao={'cancelar':'gemini_cancelar','excluir':'gemini_excluir','contribuir':'gemini_contribuir','perfil_excluir':'gemini_perfil_excluir'}.get(operacao)
+        if not acao:raise ValueError('Operação Gemini não permitida.')
+        plano=gemini.validar_plano({'acao':acao,'campos':{'id':obj.get('id')}})
     return registrar_pedido_painel({'mensagem':plano['descricao'],'plano':plano,'chat_id':chat['id']})
 
 
@@ -419,7 +455,7 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.9.2 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.10.0 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -434,7 +470,8 @@ def mensagem_ajuda():
             'Diga "faça as configurações necessárias" para abrir a configuração local guiada, sem consultar IA.\n'
             'Diga "guarde na memória Título: conteúdo" para salvar uma nota após confirmar. /memoria mostra as notas desta conversa.\n'
             '/chats /chat novo Nome /chat usar ID /chat provedor Ollama\n'
-            '/chat modelo qwen3.5:4b | /modelos ollama\n'
+            '/chat modelo qwen3.5:4b | /chat gateway MODELO | /modelos ollama\n'
+            '/integracoes | /integracoes testar | /gemini | /memoria exportar\n'
             '/modelos perfil cpu ativa Llama local em CPU; /modelos perfil padrao reverte o perfil\n'
             '/chat equipe on usa todos os modelos em cooperação e síntese; /chat equipe paralelo usa consultas simultâneas; /chat equipe off volta ao individual\n'
             '/modelos preparar mistral,llama3.2 | /modelos detalhes NOME | /modelos testar NOME\n'
@@ -481,7 +518,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.9.2'
+    server_version='MeuControlePC/2.10.0'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -544,6 +581,12 @@ class PainelHandler(BaseHTTPRequestHandler):
         # Validar antes de entregar o HTML, que contém o token da sessão.
         hosts=self.headers.get_all('Host',[])
         return len(hosts)==1 and hosts[0].lower() in self._hosts_locais()
+    def _chat_consulta(self):
+        ids=parse_qs(urlparse(self.path).query).get('chat_id',[])
+        if len(ids)>1:raise ValueError('Informe uma única conversa.')
+        chat=CENTRAL.obter_chat_ativo('painel')
+        if ids and ids[0]!=chat['id']:raise ValueError('A conversa mudou; atualize a página antes de consultar.')
+        return chat
     def do_GET(self):
         self._encerrar_prazo_leitura()
         if self._leitura_expirada or self.request_version=='HTTP/0.9':
@@ -610,16 +653,27 @@ class PainelHandler(BaseHTTPRequestHandler):
             from configuracao_assistente import resumo_configuracao
             try:return self._json({'mensagem':resumo_configuracao()})
             except (ValueError,OSError,RuntimeError) as exc:return self._json({'erro':str(redigir(exc))},503)
+        elif caminho=='/api/prontidao':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            from prontidao_assistente import coletar_prontidao,resumo_prontidao
+            relatorio=coletar_prontidao()
+            return self._json({'relatorio':relatorio,'mensagem':resumo_prontidao(relatorio)})
+        elif caminho=='/api/gemini':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            import servicos_gemini
+            try:return self._json(servicos_gemini.estado('painel',self._chat_consulta()['id']))
+            except (ValueError,OSError) as exc:return self._json({'erro':str(redigir(exc))},400)
         elif caminho=='/api/modelos_9router':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             from roteador_9router import listar_modelos
             try:return self._json(listar_modelos())
             except FalhaAPI as exc:return self._json({'erro':str(redigir(exc))},503)
-        elif caminho=='/api/memoria':
+        elif caminho in ('/api/memoria','/api/memoria_exportar'):
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
-            from memoria_assistente import listar_notas,contexto_chat
+            from memoria_assistente import listar_notas,contexto_chat,exportar_markdown
             try:
-                chat=CENTRAL.obter_chat_ativo('painel')
+                chat=self._chat_consulta()
+                if caminho=='/api/memoria_exportar':return self._json({'texto':exportar_markdown(contexto_chat('painel',chat['id'])),'chat_id':chat['id']})
                 return self._json({'notas':listar_notas(contexto_chat('painel',chat['id']))})
             except (ValueError,OSError) as exc:return self._json({'erro':str(redigir(exc))},503)
         elif caminho=='/api/contexto':
@@ -686,8 +740,19 @@ class PainelHandler(BaseHTTPRequestHandler):
                 return self._json({'ok':True,**preparar_agente_painel(obj)})
             if acao=='configuracao_preparar':
                 return self._json({'ok':True,**preparar_configuracao_painel()})
-            if acao in ('9stack_preparar','memoria_preparar'):
+            if acao in ('9stack_preparar','memoria_preparar','memoria_remover_preparar'):
                 return self._json({'ok':True,**preparar_integracao_painel(obj)})
+            if acao=='gemini_preparar':return self._json({'ok':True,**preparar_gemini_painel(obj)})
+            if acao=='gemini_consultar':
+                import servicos_gemini
+                chat=CENTRAL.obter_chat_ativo('painel')
+                if obj.get('chat_id')!=chat['id']:raise ValueError('Volte à conversa de origem para consultar a tarefa.')
+                tarefa=servicos_gemini.consultar('painel',chat['id'],obj.get('id'))
+                return self._json({'ok':True,'tarefa':tarefa,'mensagem':tarefa['estado']+'\n'+tarefa['texto']})
+            if acao=='prontidao_sondar':
+                from prontidao_assistente import coletar_prontidao,resumo_prontidao
+                relatorio=coletar_prontidao(sondar=True)
+                return self._json({'ok':True,'relatorio':relatorio,'mensagem':resumo_prontidao(relatorio)})
             if acao in SERVICOS.ACOES_CENTRAL:resultado=SERVICOS.executar_acao(acao,obj,'painel',ROTEADOR)
             elif acao=='agua':r=registrar_agua(); resultado=f'Água: {r[0]}/{r[1]}'
             elif acao=='concluir':resultado='Tarefa: '+concluir_tarefa(str(obj.get('id','')))
@@ -739,6 +804,17 @@ def iniciar_painel():
     thread.start()
     registrar('painel','iniciado','http://127.0.0.1:'+str(servidor.server_port))
     return servidor
+
+
+def preparar_ia_em_segundo_plano():
+    """Uma preparação finita; não bloqueia painel, Telegram ou rotinas locais."""
+    try:
+        from iniciar_servicos_locais import garantir_ollama
+        estado=garantir_ollama()
+        print(estado['mensagem'])
+        registrar('inicio_ollama','pronto' if estado['ok'] else 'aviso',estado['mensagem'])
+    except Exception:
+        registrar('inicio_ollama','aviso','Preparação local indisponível; comandos locais continuam acessíveis.')
 
 
 def teclado_principal():
@@ -839,11 +915,48 @@ def contexto_mensagem(m):
 def tratar_comandos_novos(m,chave,args,contexto):
     chat=m.chat.id;usuario=m.from_user.id
     if chave=='/chats':enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto))
+    elif chave=='/integracoes':
+        from prontidao_assistente import resumo_prontidao
+        if args not in ('','testar'):raise ValueError('Use /integracoes ou /integracoes testar para consultar os metadados dos serviços locais.')
+        enviar_texto_grande(chat,resumo_prontidao(sondar=args=='testar'))
+    elif chave=='/gemini':
+        import servicos_gemini as gemini
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        sub,_,valor=args.partition(' ');sub=sub.casefold();valor=valor.strip()
+        if sub=='consultar':
+            tarefa=gemini.consultar(contexto,atual['id'],valor)
+            enviar_texto_grande(chat,tarefa['id']+' | '+tarefa['estado']+'\n'+tarefa['texto']);return True
+        plano=None
+        if sub=='tarefa':plano=gemini.preparar_tarefa(valor)
+        elif sub in ('cancelar','excluir','contribuir'):
+            plano=gemini.validar_plano({'acao':'gemini_'+sub,'campos':{'id':valor}})
+        elif sub=='perfil':
+            titulo,sep,instrucoes=valor.partition('|')
+            if not sep:raise ValueError('Use /gemini perfil Título | Instruções do agente.')
+            plano=gemini.validar_plano({'acao':'gemini_perfil_criar','campos':{
+                'operacao':'g'+secrets.token_hex(8),'titulo':titulo.strip(),'instrucoes':instrucoes.strip(),'rede':False}})
+        if plano:
+            confirmar(chat,usuario,'pedido_natural',plano['descricao'],{'plano':plano,'contexto':contexto,'chat_id':atual['id']})
+        else:
+            estado=gemini.estado(contexto,atual['id'])
+            linhas=['Agentes Gemini — API e cota separadas do Colab. Tarefas rodam na nuvem; resultados são propostas.']
+            linhas.extend(t['id']+' | '+t['estado']+' | '+t['titulo'] for t in estado['tarefas'])
+            linhas.extend('Perfil: '+p['id']+' | '+p['titulo'] for p in estado['perfis'])
+            linhas.extend(['/gemini tarefa objetivo prepara um envio para confirmação.',
+                '/gemini consultar ID acompanha uma tarefa sem reenviar.',
+                '/gemini cancelar ID | excluir ID | contribuir ID',
+                '/gemini perfil Título | Instruções cria um agente gerenciado.',
+                'O painel também permite escolher agente, continuar uma tarefa e habilitar rede do sandbox.'])
+            enviar_texto_grande(chat,'\n'.join(linhas))
     elif chave=='/agentes':
         from integracoes_agentes import resumo_agentes
         from integracoes_9stack import resumo_9stack
         enviar_texto_grande(chat,resumo_agentes()+'\n\n'+resumo_9stack())
     elif chave=='/memoria':
+        if args.casefold()=='exportar':
+            from memoria_assistente import exportar_markdown,contexto_chat
+            atual=CENTRAL.obter_chat_ativo(contexto)
+            enviar_texto_grande(chat,exportar_markdown(contexto_chat(contexto,atual['id'])));return True
         from interpretacao_natural import validar_plano
         atual=CENTRAL.obter_chat_ativo(contexto)
         plano=validar_plano({'acao':'memoria','campos':{}})
@@ -909,6 +1022,11 @@ def tratar_comandos_novos(m,chave,args,contexto):
         if sub=='novo':resultado=SERVICOS.executar_acao('chat_criar',{'titulo':valor},contexto,ROTEADOR)
         elif sub=='usar':resultado=SERVICOS.executar_acao('chat_selecionar',{'id':valor},contexto,ROTEADOR)
         elif sub=='provedor':resultado=SERVICOS.executar_acao('chat_provedor',{'provedor':valor},contexto,ROTEADOR)
+        elif sub=='gateway':
+            atual=CENTRAL.obter_chat_ativo(contexto)
+            confirmar(chat,usuario,'chat_modelo_9router','Selecionar o modelo/combo 9Router '+valor+' para esta conversa? Mensagens e histórico poderão ir para o provedor configurado; pode usar cota.',
+                      {'modelo':valor,'chat_id':atual['id'],'confirmacao':'ALTERAR MODELO 9ROUTER','contexto':contexto})
+            return True
         elif sub=='modelo':resultado=SERVICOS.executar_acao('chat_modelo',{'modelo':'' if valor.casefold() in ('padrao','padrão') else valor},contexto,ROTEADOR)
         elif sub=='modo' and valor in ('on','off'):
             resultado=SERVICOS.executar_acao('chat_modo',{'ativo':valor=='on'},contexto,ROTEADOR)
@@ -1015,6 +1133,8 @@ def tratar_pedido(m):
         return
     if confirmar_pedido_por_texto(m,texto):return
     if texto==MENU_BOTOES[17]:return responder_natural_telegram(m,'configure o assistente')
+    if texto==MENU_BOTOES[18]:return tratar_comandos_novos(m,'/integracoes','',contexto)
+    if texto==MENU_BOTOES[19]:return tratar_comandos_novos(m,'/gemini','',contexto)
     if texto==MENU_BOTOES[14]:return enviar_texto_grande(chat,SERVICOS.resumo_chats(contexto)+'\n\n'+SERVICOS.resumo_projeto(contexto))
     if texto in MENU_BOTOES:return menu_secundario(chat,texto,usuario)
     t=texto.casefold()
@@ -1181,7 +1301,7 @@ def configurar_bot():
                     dados=pend['dados']
                     resultado=executar_plano_natural(dados['plano'],dados['contexto'],dados['chat_id'],c.message.chat.id)
                     enviar_texto_grande(c.message.chat.id,resultado['mensagem']);return
-                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem'):
+                if acao in ('conexoes_ia','equipe_ia','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem','chat_modelo_9router','modelo_testar_9router'):
                     dados=pend.get('dados',{})
                     enviar_texto_grande(c.message.chat.id,SERVICOS.executar_acao(acao,dados,dados.get('contexto',f'{c.from_user.id}:{c.message.chat.id}:0'),ROTEADOR))
                     return
@@ -1228,7 +1348,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.9.2')
+        print('MeuControlePC v2.10.0')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
@@ -1252,15 +1372,11 @@ def _executar_instancia(opt):
             raise RuntimeError('Token Telegram ausente ou invalido. Execute configurar_telegram.bat para corrigi-lo.')
         if not validar_ids(os.getenv('TELEGRAM_ALLOWED_USER_IDS','')):
             raise RuntimeError('TELEGRAM_ALLOWED_USER_IDS invalido. Corrija no .env.')
-    if os.name=='nt':
-        from iniciar_servicos_locais import garantir_ollama
-        estado=garantir_ollama()
-        print(estado['mensagem'])
-        registrar('inicio_ollama','pronto' if estado['ok'] else 'aviso',estado['mensagem'])
     servidor=iniciar_painel()
     print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
     try:
         monitor_parada=threading.Event()
+        if os.name=='nt':threading.Thread(target=preparar_ia_em_segundo_plano,daemon=True).start()
         threading.Thread(target=executar_agendador,args=(monitor_parada,),kwargs={'obter_estado_provedores':ROTEADOR.estado_local},daemon=True).start()
         if opt.somente_painel:
             print('Modo painel local, sem Telegram.')

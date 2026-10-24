@@ -17,7 +17,7 @@ COMANDOS_PC = {
     'desktop', 'taskmgr', 'explorer', 'notepad', 'calc', 'vscode_pc', 'enter',
     'print', 'f8', 'f9', 'f10', 'furg', 'agenda', 'colab',
 }
-ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'agente_abrir','9stack','memoria_salvar','configurar_assistente'}
+ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'agente_abrir','9stack','memoria_salvar','memoria_remover','equipe_modelos','configurar_assistente'}
 DIAS = {'segunda': 'Segunda', 'terca': 'Terça', 'quarta': 'Quarta', 'quinta': 'Quinta',
         'sexta': 'Sexta', 'sabado': 'Sábado', 'domingo': 'Domingo'}
 _VALOR = r'(?:[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)'
@@ -44,14 +44,17 @@ def texto_capacidades():
         'atalhos após confirmação. Exemplo: "abra o VS Code" ou "pressione F8".\n'
         '• Status, diagnóstico local e leitura da agenda Google quando autorizada.\n'
         '• Conversa com os modelos Ollama disponíveis e transcrição de áudio local, '
-        'quando serviço, modelos e dependências estiverem prontos.\n'
+        'quando serviço, modelos e dependências estiverem prontos. '
+        'Exemplo: "ative a equipe de modelos em paralelo" ou "desative a equipe de modelos".\n'
         '• Agentes externos: consultar as integrações e abrir aplicativos pelo Ollama '
         'após confirmação, quando instalação e conta necessárias estiverem prontas. '
         'Exemplo: "mostre meus agentes" ou "abra o Claude Code".\n'
         '• 9Router: conversar pelo modelo ou combo configurado no gateway. '
         '9Remote: preparar a interface oficial; o acesso remoto exige pareamento.\n'
         '• Memória: guardar notas informadas e confirmadas, isoladas por conversa. '
-        'Exemplo: "guarde na memória Estudos: estudar cálculo às 20h".\n'
+        'Exemplo: "guarde na memória Estudos: estudar cálculo às 20h". '
+        '"O que você lembra sobre mim?" consulta as notas; "remova a nota ID" '
+        'prepara a exclusão da nota identificada para confirmação.\n'
         '• Configuração local guiada: verificar requisitos e abrir as etapas de preparação '
         'sem consultar modelos. Exemplo: "faça as configurações necessárias". '
         'Contas e permissões são confirmadas na janela do PC.\n'
@@ -255,6 +258,25 @@ def validar_plano(obj):
         if any(c in titulo for c in ('\n','\r','\t')):raise ValueError('O título deve ocupar uma linha.')
         campos={'titulo':titulo,'texto':texto}
         descricao='Salvar a nota “'+titulo+'” nesta conversa: '+texto[:200]+'. Um título igual atualiza a nota após confirmação'
+    elif acao == 'memoria_remover':
+        _campos(campos, ('nota_id',))
+        nota_id = _texto(campos['nota_id'], 'Identificador da nota', 17)
+        if not re.fullmatch(r'm[a-f0-9]{16}', nota_id):
+            raise ValueError('Identificador de nota inválido; use o ID mostrado nas notas desta conversa.')
+        campos = {'nota_id': nota_id}
+        descricao = 'Remover a nota '+nota_id+' somente desta conversa após sua confirmação'
+    elif acao == 'equipe_modelos':
+        _campos(campos, ('modo',))
+        modo = campos['modo']
+        if not isinstance(modo, str) or modo not in ('cooperativa', 'paralela', 'individual'):
+            raise ValueError('Escolha equipe cooperativa, paralela ou modo individual.')
+        campos = {'modo': modo}
+        if modo == 'individual':
+            descricao = 'Usar o modelo individual nesta conversa, desativando sua equipe de modelos'
+        else:
+            descricao = ('Ativar a equipe '+modo+' de modelos Ollama nesta conversa. '
+                         'As próximas mensagens que precisarem de IA poderão consultar os modelos do catálogo; '
+                         'modelos de nuvem dependem de autorização, conta e cota')
     elif acao == 'concluir':
         _campos(campos, ('id',))
         campos = {'id': _texto(campos['id'], 'Identificador da atividade', 100)}
@@ -311,9 +333,22 @@ def interpretar_local(texto):
         'quais sao os agentes disponiveis': 'agentes',
         'mostre minha memoria':'memoria','mostre minhas notas':'memoria',
         'liste minhas notas':'memoria','minhas notas salvas':'memoria',
+        'o que voce lembra sobre mim':'memoria',
+        'o que voce tem na memoria sobre mim':'memoria',
+        'quais notas voce tem sobre mim':'memoria',
+        'quais sao minhas notas salvas':'memoria',
     }
     if normal in leituras:
         return _plano(leituras[normal])
+    equipe = re.fullmatch(
+        r'(?:ative|ativar) (?:a )?equipe de modelos'
+        r'(?: (?:em modo |em )?(cooperativa|cooperativo|paralela|paralelo))?', normal)
+    if equipe:
+        modo = 'paralela' if equipe[1] in ('paralela', 'paralelo') else 'cooperativa'
+        return _plano('equipe_modelos', modo=modo)
+    if (re.fullmatch(r'(?:desative|desativar) (?:a )?equipe de modelos', normal)
+            or normal in ('use o modo individual', 'usar o modo individual', 'volte ao modelo individual')):
+        return _plano('equipe_modelos', modo='individual')
     stack=re.fullmatch(r'(abra|abrir|inicie|iniciar|instale|instalar) (?:o )?(9router|9remote)',normal)
     if stack:
         operacao='instalar' if stack[1] in ('instale','instalar') else 'iniciar' if stack[1] in ('inicie','iniciar') else 'abrir'
@@ -324,6 +359,11 @@ def interpretar_local(texto):
     pedido_agente = re.sub(r'^por favor[, ]+', '', pedido_agente, flags=re.I)
     pedido_agente = re.sub(r',? por favor$', '', pedido_agente, flags=re.I)
     pedido_agente = re.sub(r'^(?:voc[eê] )?(?:pode|consegue) (?:me )?', '', pedido_agente, flags=re.I)
+    nota_remover = re.fullmatch(
+        r'(?:remova|remover|apague|apagar|exclua|excluir|esqueça|esqueca)\s+'
+        r'(?:a\s+)?nota\s+(m[a-f0-9]{16})', pedido_agente, re.I)
+    if nota_remover:
+        return _plano('memoria_remover', nota_id=nota_remover[1].lower())
     agente = re.fullmatch(
         r'(abra|abrir|inicie|iniciar|configure|configurar)\s+(?:[oa]\s+)?(?:agente\s+)?(.+?)'
         r'(?:\s+(?:com|usando)\s+(?:o\s+modelo\s+)?([A-Za-z0-9][A-Za-z0-9._:/-]*))?',
@@ -343,7 +383,10 @@ def interpretar_local(texto):
         r'(?:a )?(?:minha )?rotina(?: da semana| semanal)', normal)
     if rotina_semanal:
         return _plano('rotina')
-    modelo=re.fullmatch(r'(?:use|usar|configure|configurar) (?:o modelo )?([A-Za-z0-9][A-Za-z0-9._:/-]*) (?:como padrao|no ollama)',normal)
+    modelo=re.fullmatch(
+        r'(?:use|usar|configure|configurar)\s+(?:o\s+modelo\s+)?'
+        r'([A-Za-z0-9][A-Za-z0-9._:/-]*)\s+(?:como\s+padr[aã]o|no\s+ollama)',
+        pedido_agente, re.I)
     if modelo:
         try:return _plano('modelo_padrao',modelo=modelo[1])
         except ValueError:return None
@@ -409,13 +452,17 @@ def _intencao_configuracao(normal):
         r'(?:faca|fazer|realize|realizar) (?:todas )?(?:as )?configuracoes necessarias|'
         r'(?:faca|fazer|realize|realizar) (?:a )?configuracao (?:necessaria|inicial(?: do assistente)?)|'
         r'(?:configure|configurar|prepare|preparar) (?:o )?(?:assistente|meucontrolepc)|'
-        r'(?:prepare|preparar|configure|configurar) (?:as )?integracoes(?: do assistente)?'
+        r'(?:prepare|preparar|configure|configurar) (?:as )?integracoes(?: do assistente)?|'
+        r'(?:prepare|preparar|configure|configurar) todas as integracoes do assistente'
     )
     if re.fullmatch(preparar, normal):
         return 'configurar_assistente'
     consultar = (
         r'(?:diagnostique|diagnosticar|verifique|verificar|mostre|mostrar|consulte|consultar) '
-        r'(?:(?:a )?configuracao|(?:as )?configuracoes)(?: local| do assistente| atual(?: do assistente)?)?'
+        r'(?:(?:a )?configuracao|(?:as )?configuracoes)(?: local| do assistente| atual(?: do assistente)?)?|'
+        r'(?:diagnostique|diagnosticar|verifique|verificar) (?:o )?(?:assistente|meucontrolepc)|'
+        r'(?:faca|fazer|realize|realizar|mostre|mostrar|consulte|consultar) (?:o )?'
+        r'diagnostico (?:local )?do (?:assistente|meucontrolepc)'
     )
     if re.fullmatch(consultar, normal):
         return 'configuracao'
@@ -510,7 +557,7 @@ def extrair_resposta(texto):
         # A integração de um agente abre um aplicativo com permissões próprias.
         # Ela exige um alvo literal no pedido local; uma sugestão do modelo ou
         # conteúdo de histórico não pode produzir esse plano.
-        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar','configurar_assistente'):
+        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar','memoria_remover','equipe_modelos','configurar_assistente'):
             raise ValueError('Esta integração exige um pedido explícito reconhecido localmente.')
         plano = validar_plano({'acao': dados['acao'], 'campos': dados['campos']})
         return {'texto': resposta or 'Entendi o pedido: ' + plano['descricao'] + '.', 'plano': plano}

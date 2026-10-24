@@ -35,6 +35,8 @@ class InicioOllamaTeste(unittest.TestCase):
         p.start(); self.addCleanup(p.stop)
         p = patch.object(servicos, 'BASE', self.codigo)
         p.start(); self.addCleanup(p.stop)
+        p = patch.object(servicos, '_porta_ocupada', return_value=False)
+        p.start(); self.addCleanup(p.stop)
         p = patch.object(servicos.shutil, 'which', return_value=str(self.executavel))
         self.which = p.start(); self.addCleanup(p.stop)
         p = patch.object(servicos, 'consultar', return_value={'ok': False, 'categoria': 'conexao'})

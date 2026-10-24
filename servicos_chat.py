@@ -10,7 +10,7 @@ _TRAVAS_LOCK = threading.Lock()
 _CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
     'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem','tarefa_projeto','tarefa_status',
-    'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia','9router_configurar',
+    'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia','9router_configurar','chat_modelo_9router','modelo_testar_9router',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
 
@@ -55,13 +55,16 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
             if not isinstance(itens,list):raise ValueError('O catálogo da equipe automática é inválido.')
             try:modelos=list(dict.fromkeys(validar_modelo(item['nome']) for item in itens))
             except (KeyError,TypeError):raise ValueError('O catálogo da equipe automática é inválido.') from None
-            if not 1<=len(modelos)<=8:
-                raise ValueError('A equipe automática precisa de um a oito modelos no catálogo Ollama; nenhum participante foi descartado silenciosamente.')
+            from conversa_equipe import MAX_MODELOS_COOPERATIVA
+            if not 1<=len(modelos)<=MAX_MODELOS_COOPERATIVA:
+                raise ValueError('A equipe automática precisa de um a '+str(MAX_MODELOS_COOPERATIVA)+' modelos; selecione uma equipe manual para um catálogo maior. Nenhum participante foi descartado.')
             chat=central.configurar_equipe_automatica(contexto,chat['id'],modelos)
         historico=central.historico_chat(contexto,chat_id=chat['id'])
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
         if modelo:opcoes['modelo_ollama']=modelo
+        modelo_gateway=chat.get('modelo_9router','') if opcoes['provedor']=='9Router' else ''
+        if modelo_gateway:opcoes['modelo_9router']=modelo_gateway
         pergunta=texto.strip()
         prefixo=''
         marcador='\n\nÚLTIMA MENSAGEM DO PROPRIETÁRIO:\n'
@@ -77,10 +80,11 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
                      '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.')
         # As notas são escritas manualmente após confirmação e pertencem a
         # esta conversa. Reserve espaço sem cortar o último pedido do dono.
-        from memoria_assistente import contexto_chat,contexto_ia
+        from memoria_assistente import contexto_chat,contexto_seguro
         disponivel=min(1500,11000-len(prefixo)-len(marcador)-len(pergunta)-2)
-        memoria=(contexto_ia(contexto_chat(contexto,chat['id']),texto,limite=disponivel)
-                 if disponivel>=120 else '')
+        notas=(contexto_seguro(contexto_chat(contexto,chat['id']),texto,limite=disponivel)
+               if disponivel>=120 else {'texto':'','aviso':''})
+        memoria=notas['texto']
         if retornar_plano:
             pergunta=prefixo+('\n\n'+memoria if memoria else '')+marcador+pergunta
         elif memoria:
@@ -101,8 +105,10 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
         elif retornar_plano:
             resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
             if plano:resposta='Entendi: '+plano['descricao']+'. O pedido ainda não foi executado.'
-        central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo)
-        rotulo=('Equipe Ollama' if equipe else provedor+(' / '+modelo if modelo else ''))
+        if notas['aviso']:resposta+='\n\n'+notas['aviso']
+        extras_registro={'modelo_9router':modelo_gateway} if modelo_gateway else {}
+        central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo,**extras_registro)
+        rotulo=('Equipe Ollama' if equipe else provedor+(' / '+(modelo or modelo_gateway) if modelo or modelo_gateway else ''))
         if retornar_plano:return {'texto':f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta,'plano':plano,'chat_id':chat['id']}
         return f'🤖 {rotulo} · {chat["titulo"]}:\n'+resposta
     finally:trava.release()
@@ -114,7 +120,8 @@ def resumo_chats(contexto):
     linhas=['💬 Conversas deste chat/tópico:']
     for chat in estado['chats'][:30]:
         marca='▶' if chat['id']==ativo['id'] else '•'
-        modelo=(' / '+chat['modelo_ollama']) if chat.get('modelo_ollama') and chat['provedor']=='Ollama' else ''
+        escolhido=chat.get('modelo_ollama','') if chat['provedor']=='Ollama' else (chat.get('modelo_9router','') if chat['provedor']=='9Router' else '')
+        modelo=' / '+escolhido if escolhido else ''
         linhas.append(f'{marca} {chat["id"]} | {chat["titulo"]} | {chat["provedor"]}'+modelo)
         if chat.get('equipe_paralela'):linhas.append('  Equipe '+chat.get('equipe_modo','paralela')+': '+', '.join(chat['equipe_modelos']))
         if chat.get('equipe_politica','automatica')=='automatica':
@@ -173,6 +180,23 @@ def executar_acao(acao,obj,contexto,roteador):
 
 
 def _executar_acao(acao,obj,contexto,roteador):
+    if acao in ('chat_modelo_9router','modelo_testar_9router'):
+        from roteador_9router import validar_modelo,listar_modelos
+        teste=acao=='modelo_testar_9router'
+        esperado='TESTAR MODELO 9ROUTER' if teste else 'ALTERAR MODELO 9ROUTER'
+        if obj.get('confirmacao')!=esperado:raise ValueError('Confirme '+esperado+'.')
+        chat=central.obter_chat_ativo(contexto)
+        if obj.get('chat_id')!=chat['id']:raise ValueError('Volte à conversa de origem antes de alterar ou testar o modelo.')
+        modelo=campo_texto(obj,'modelo',200,obrigatorio=teste)
+        if modelo:
+            modelo=validar_modelo(modelo)
+            if modelo not in {m['id'] for m in listar_modelos()['modelos']}:
+                raise ValueError('Modelo/combo não encontrado no catálogo do 9Router.')
+        if teste:
+            texto=roteador.nine_router('Responda somente OK.',modelo=modelo)
+            return 'Resposta do 9Router / '+modelo+': '+str(nucleo.redigir(texto))[:500]+'. Nenhum histórico foi enviado.'
+        central.configurar_chat(contexto,chat['id'],provedor='9Router',modelo_9router=modelo,modo_conversa=True)
+        return '9Router selecionado nesta conversa: '+(modelo or 'padrão do gateway')+'. O padrão global e as demais conversas foram preservados.'
     if acao=='9router_configurar':
         if not isinstance(obj,dict) or set(obj)-{'acao','ativo','modelo','url','confirmacao','contexto'}:
             raise ValueError('Use somente as opções públicas de ativação, modelo e base local do 9Router. A chave só pode ser configurada no console local.')
@@ -231,7 +255,9 @@ def _executar_acao(acao,obj,contexto,roteador):
         catalogo=roteador.catalogo_ollama()
         if not catalogo.get('habilitado'):raise ValueError('Habilite a integração Ollama antes de ativar a equipe.')
         modelos=list(dict.fromkeys(m['nome'] for m in catalogo['modelos']))
-        if not 1<=len(modelos)<=8:raise ValueError('O catálogo precisa ter entre um e oito modelos para ativar todos.')
+        from conversa_equipe import MAX_MODELOS_COOPERATIVA,MAX_MODELOS_PARALELA
+        limite=MAX_MODELOS_COOPERATIVA if modo=='cooperativa' else MAX_MODELOS_PARALELA
+        if not 1<=len(modelos)<=limite:raise ValueError('O modo '+modo+' aceita de um a '+str(limite)+' modelos. Use cooperação ou escolha uma composição menor.')
         central.configurar_chat(contexto,chat['id'],provedor='Ollama',modo_conversa=True,
             equipe_modelos=modelos,equipe_paralela=True,equipe_modo=modo)
         nuvem=any(m.get('nuvem') for m in catalogo['modelos'])
@@ -328,7 +354,8 @@ def _executar_acao(acao,obj,contexto,roteador):
         return texto_conexoes(roteador.verificar_conexoes(provedor=obj.get('provedor','todos')))
     if acao=='equipe_ia':
         from equipe_ia import consultar_equipe
-        resultado=consultar_equipe(campo_texto(obj,'texto',8000),roteador,provedores=obj.get('provedores'),tarefa_id=obj.get('tarefa_id') or None,confirmacao=obj.get('confirmacao',''),modelos_ollama=obj.get('modelos_ollama'))
+        extras={'modelos_9router':obj['modelos_9router']} if obj.get('modelos_9router') else {}
+        resultado=consultar_equipe(campo_texto(obj,'texto',8000),roteador,provedores=obj.get('provedores'),tarefa_id=obj.get('tarefa_id') or None,confirmacao=obj.get('confirmacao',''),modelos_ollama=obj.get('modelos_ollama'),**extras)
         return texto_equipe(resultado)
     if acao=='rotina_criar':
         from rotina_ativa import cadastrar_tarefa
