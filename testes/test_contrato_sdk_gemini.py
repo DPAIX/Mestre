@@ -22,7 +22,13 @@ except ImportError:SDK=False
 class ContratoSDKGemini(unittest.TestCase):
     def setUp(self):
         self.req=[];self.status=200;self.excecao=None;self.resposta={'id':'fixture-interaction','status':'completed','steps':[{'type':'model_output','content':[{'type':'text','text':'OK'}]}]}
-        p=patch.dict(os.environ,{'GEMINI_API_KEY':'fixture-chave','GEMINI_MODEL':'gemini-3.8-flash'},clear=True);p.start();self.addCleanup(p.stop)
+        # OpenSSL no Windows/Python 3.14 precisa dos diretórios do sistema
+        # mesmo com HTTP fictício. Remover SYSTEMROOT pode impedir criar SSL.
+        ambiente={n:v for n,v in os.environ.items() if n.upper() in {
+            'SYSTEMROOT','WINDIR','SYSTEMDRIVE','PROGRAMDATA','USERPROFILE',
+            'APPDATA','LOCALAPPDATA','TEMP','TMP'}}
+        ambiente.update(GEMINI_API_KEY='fixture-chave',GEMINI_MODEL='gemini-3.8-flash')
+        p=patch.dict(os.environ,ambiente,clear=True);p.start();self.addCleanup(p.stop)
         def transporte(req):
             self.req.append({'rota':req.url.path,'metodo':req.method,'body':json.loads(req.content) if req.content else None})
             if self.excecao:raise self.excecao
