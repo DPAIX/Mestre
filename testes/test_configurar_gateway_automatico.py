@@ -1,7 +1,7 @@
 """Preparação 9Router com banco/credenciais fictícios; nenhuma geração real."""
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import closing, redirect_stdout
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO, StringIO
@@ -38,7 +38,7 @@ class PreparacaoGateway(unittest.TestCase):
         self.env.parent.mkdir()
         self.env.write_text('OUTRO=preservar\nNINE_ROUTER_API_KEY=fixture-anterior\n', encoding='utf-8')
         self.db = self.raiz / 'db' / 'data.sqlite'
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.executescript('''
                 CREATE TABLE _meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 INSERT INTO _meta VALUES('schemaVersion','2');
@@ -187,7 +187,7 @@ class PreparacaoGateway(unittest.TestCase):
         self.assertEqual(self.env.read_bytes(), original)
 
     def test_credencial_json_invalida_nao_falha_nem_habilita_recomendacao(self):
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute('DELETE FROM combos')
             db.execute("UPDATE providerConnections SET data='fora-de-json'")
         with patch.object(gateway, '_requisicao', side_effect=self.rede_criacao(['gc/gemini-flash'])):
@@ -195,14 +195,14 @@ class PreparacaoGateway(unittest.TestCase):
         self.assertFalse(resultado['configurado']);self.assertEqual(resultado['modelo'], '')
 
     def test_combo_com_nome_do_assistente_tem_preferencia_sem_adivinhar(self):
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute('INSERT INTO combos VALUES(?,?,?,?)', ('x', 'Assistente', 'llm', '["gc/gemini-flash"]'))
         with patch.object(gateway, '_requisicao', side_effect=self.rede_criacao(['Assistente', 'Minha Equipe'])):
             resultado = self.configurar()
         self.assertEqual(resultado['modelo'], 'Assistente');self.assertTrue(resultado['configurado'])
 
     def test_recomendacao_so_compacto_do_provedor_ativo_credenciado(self):
-        with sqlite3.connect(self.db) as db:db.execute('DELETE FROM combos')
+        with closing(sqlite3.connect(self.db)) as db, db:db.execute('DELETE FROM combos')
         modelos = ['openai/gpt-mini', 'gc/gemini-pro', 'gc/gemini-flash-preview',
                    'gc/gemini-flash', 'gc/gemini-flash-tts', 'desconhecido/flash']
         with patch.object(gateway, '_requisicao', side_effect=self.rede_criacao(modelos)):
@@ -212,7 +212,7 @@ class PreparacaoGateway(unittest.TestCase):
         self.assertEqual(gateway._recomendado(list(reversed(modelos)), ['gemini-cli']), resultado['modelo'])
 
     def test_sem_mapeamento_de_provedor_retorna_seletor_publico_limitado(self):
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute('DELETE FROM combos')
             db.execute("UPDATE providerConnections SET provider='desconhecido'")
         modelos = ['desconhecido/modelo-' + str(i) for i in range(5438)]
@@ -223,7 +223,7 @@ class PreparacaoGateway(unittest.TestCase):
         self.assertEqual(resultado['modelo'], '')
 
     def test_provedor_ativo_sem_credencial_nao_serve_para_recomendar(self):
-        with sqlite3.connect(self.db) as db:
+        with closing(sqlite3.connect(self.db)) as db, db:
             db.execute('DELETE FROM combos')
             db.execute("UPDATE providerConnections SET data='{}'")
         with patch.object(gateway, '_requisicao', side_effect=self.rede_criacao(['gc/gemini-flash'])):
@@ -242,14 +242,14 @@ class PreparacaoGateway(unittest.TestCase):
             with self.assertRaises(gateway._Pendente):gateway._seguro(self.env)
 
     def test_sem_provedor_ativo_nao_acessa_autenticacao_nem_cria_chave(self):
-        with sqlite3.connect(self.db) as db:db.execute('UPDATE providerConnections SET isActive=0')
+        with closing(sqlite3.connect(self.db)) as db, db:db.execute('UPDATE providerConnections SET isActive=0')
         with patch.object(gateway, '_token_cli') as token, patch.object(gateway, '_requisicao') as rede:
             resultado = self.configurar()
         self.assertFalse(resultado['configurado']);token.assert_not_called();rede.assert_not_called()
 
     def test_schema_desconhecido_nao_usa_api_nem_modifica_env(self):
         original = self.env.read_bytes()
-        with sqlite3.connect(self.db) as db:db.execute("UPDATE _meta SET value='3' WHERE key='schemaVersion'")
+        with closing(sqlite3.connect(self.db)) as db, db:db.execute("UPDATE _meta SET value='3' WHERE key='schemaVersion'")
         with patch.object(gateway, '_requisicao') as rede:
             resultado = self.configurar()
         rede.assert_not_called();self.assertIn('esquema', resultado['pendencias'][0])

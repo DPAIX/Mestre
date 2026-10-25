@@ -144,7 +144,7 @@
     "testes/test_configuracao_assistente.py": "5e70fb2409d4fe6b78ab7676357211476d97e42008d9a6732fae1d937cc86a82",
     "testes/test_configuracao_externa.py": "dfda51b096af5380fc6c74f89aef83bbbba0f7c5d55d11c84ca769ab2dc90ceb",
     "testes/test_configuradores_entrada.py": "82bb47a0f10161fac876ae8f1bbce29540bed062f623b8ab24482f2a737c7222",
-    "testes/test_configurar_gateway_automatico.py": "99a539c1131278f5abf52b9ae18123bef0ca42943774792229b31e8728fe5b29",
+    "testes/test_configurar_gateway_automatico.py": "f7e12bb277933fd92b1a722adba9d4e1c7e093ec9ff33e8d16804290b138437c",
     "testes/test_configurar_telegram.py": "5fc29acd601301ece56a4c5ac4885942b029bdbeade63b25897ea7c30cb544df",
     "testes/test_contrato_sdk_gemini.py": "11f2ecbf1328d6e45ba8cb542278cadd6ef6087f56b1bb60d7e948592b5e2232",
     "testes/test_controle_instancia_preparacao.py": "258de4791826bc12bda784b15cabb7b78ddf25dff530501ed144cc26815463aa",
