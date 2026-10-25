@@ -455,7 +455,7 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.10.1 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.10.2 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -475,6 +475,7 @@ def mensagem_ajuda():
             '/modelos perfil cpu ativa Llama local em CPU; /modelos perfil padrao reverte o perfil\n'
             '/chat equipe on usa todos os modelos em cooperação e síntese; /chat equipe paralelo usa consultas simultâneas; /chat equipe off volta ao individual\n'
             '/modelos preparar mistral,llama3.2 | /modelos detalhes NOME | /modelos testar NOME\n'
+            '/modelos padrao NOME corrige o padrão usando um modelo instalado\n'
             '/chat modo on|off /projeto /contexto /contribuir /equipe objetivo /conexoes\n'
             '/atividade Dia | HH:MM | Atividade /lembretes on|off\n'
             '/agenda /furg /notebook /painel /id /macros /ecossistema /evoluir\n'
@@ -517,7 +518,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.10.1'
+    server_version='MeuControlePC/2.10.2'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -613,6 +614,17 @@ class PainelHandler(BaseHTTPRequestHandler):
             except (ValueError,OSError,TypeError,AttributeError):
                 return self._json({'erro':'Dados locais indisponíveis. Verifique os arquivos JSON antes de tentar novamente.'},503)
             self._json(estado)
+        elif caminho=='/api/resultado_acao':
+            if not self.autenticado():return self._json({'erro':'acesso negado'},403)
+            origem=self.headers.get('Origin','')
+            if origem and origem not in {'http://'+h for h in self._hosts_locais()}:
+                return self._json({'erro':'acesso negado'},403)
+            try:
+                ids=parse_qs(urlparse(self.path).query).get('id',[])
+                if len(ids)!=1:raise ValueError('Informe uma única chave de ação.')
+                return self._json(CONTROLE_PAINEL.consultar(ids[0]),ja_redigido=True)
+            except FalhaControle as erro:return self._json(erro.resposta,erro.codigo)
+            except ValueError as erro:return self._json({'erro':str(erro),'versao_estado':CONTROLE_PAINEL.versao()},400)
         elif caminho=='/api/modelo_ollama':
             if not self.autenticado():return self._json({'erro':'acesso negado'},403)
             try:
@@ -1336,7 +1348,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.10.1')
+        print('MeuControlePC v2.10.2')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)

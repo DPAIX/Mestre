@@ -1,4 +1,4 @@
-# Assistente integrado v2.10.1
+# Assistente integrado v2.10.2
 
 Se você já executou a preparação e quer concluir somente as pendências, use [retomar a configuração](GUIA_RETOMAR_CONFIGURACAO.md). Não é necessário reinstalar bibliotecas ou reconfigurar Telegram/Startup.
 
@@ -7,7 +7,7 @@ Esta versão reúne os recursos do MeuControlePC e adiciona Gemini Interactions 
 ## Atualizar no seu computador
 
 1. Encerre o bot e o painel atuais. Guarde uma cópia das fontes v2.9.2 para reversão.
-2. Extraia o pacote completo e copie **o conteúdo da pasta MeuControlePC_v2_10_1** para `C:\Users\Mestre\Documents\GitHub\Mestre`, onde está `assistente_pc.py`. Não crie uma segunda pasta do projeto dentro dessa raiz.
+2. Extraia o pacote completo e copie **o conteúdo da pasta MeuControlePC_v2_10_2** para `C:\Users\Mestre\Documents\GitHub\Mestre`, onde está `assistente_pc.py`. Não crie uma segunda pasta do projeto dentro dessa raiz.
 3. Preserve `F:\MeuControlePC_v2\.env`, `F:\MeuControlePC_v2\dados`, as `.venv` existentes e `F:\Models`. O ZIP não contém configurações pessoais, dados nem pesos. **Não substitua seu .env pelo exemplo.**
 4. Abra `preparar_assistente_completo.bat`. As etapas são independentes: confirme no console as que deseja executar. A etapa de bibliotecas prepara dependências Google/Telegram/voz, verifica o ambiente e baixa somente os pesos de voz escolhidos. Exige Internet e espaço; o bot deve estar encerrado. Ela não inicia o bot.
 5. Configure Telegram, Ollama, Node.js, 9Router, 9Remote e Gemini nas etapas correspondentes. As credenciais são digitadas no console local, com entrada oculta; não cole chaves na conversa ou no GitHub.

@@ -1,4 +1,6 @@
-# MeuControlePC v2.10.1
+# MeuControlePC v2.10.2
+
+**Correção após integração de branches:** restaura recuperação de ações do painel, definição do modelo Ollama padrão e contexto de colaboração. [Revisão e atualização](REVISAO_V2_10_2.md). [Concluir a conexão local 9Router](GUIA_CONCLUIR_9ROUTER.md).
 
 **Retomar a configuração:** se as bibliotecas/Telegram já foram preparados, abra `retomar_configuracao.bat`. A nova ordem inicia o Ollama autorizado antes de escolher modelos e valida os campos Gemini/9Router antes de pedir chaves. [Passos para concluir](GUIA_RETOMAR_CONFIGURACAO.md).
 
