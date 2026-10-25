@@ -1,3 +1,5 @@
+> **v2.11.1:** [Correção da porta Ollama e da retomada](REVISAO_V2_11_1.md). Feche a janela da preparação anterior, extraia o pacote novo em Downloads e abra **`INSTALAR_E_INICIAR.bat`**.
+
 > **v2.11.0:** [Instalação automática em um clique](GUIA_INSTALACAO_AUTONOMA.md). Extraia o pacote em Downloads e abra **`INSTALAR_E_INICIAR.bat`**; ele implanta as fontes com backup, prepara componentes e solicita o início do assistente. O `iniciar_redirecionado.bat` sem argumentos também abre esse fluxo. [Mudanças e reversão](REVISAO_V2_11_0.md).
 
 > **v2.10.2:** [Correção dos fluxos removidos no merge](REVISAO_V2_10_2.md) e [concluir a integração local 9Router](GUIA_CONCLUIR_9ROUTER.md). Atualize as fontes completas; preserve configuração, dados e modelos.

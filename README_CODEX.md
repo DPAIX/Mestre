@@ -1,6 +1,8 @@
-# MeuControlePC v2.11.0 — Projeto para Codex
+# MeuControlePC v2.11.1 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
+
+Correção v2.11.1: [início do Ollama e retomada](REVISAO_V2_11_1.md). Para atualizar uma preparação ainda aberta, feche primeiro o console que mostra **Preparação automática: http://127.0.0.1:...**; depois abra o iniciador do pacote novo.
 
 ## Instalação no Windows em um clique
 

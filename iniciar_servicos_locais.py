@@ -74,15 +74,38 @@ def _responde(url, timeout):
                 and isinstance(dados.get('version'), str) and dados['version'].strip())
 
 
-def _porta_ocupada(url):
-    partes=urlsplit(url)
+def _vinculo_exclusivo_disponivel(partes):
+    """Confirma a disponibilidade local após um connect Windows inconclusivo.
+
+    O socket é temporário e não escuta nem aceita conexões. Exclusividade é
+    obrigatória: sem ela ou se bind falhar, a porta continua indeterminada.
+    A prova é uma amostra; o processo Ollama ainda precisa conseguir iniciar
+    e responder. Nenhum processo existente é encerrado ou reaproveitado aqui.
+    """
+    exclusivo=getattr(socket,'SO_EXCLUSIVEADDRUSE',None)
+    if not _WINDOWS or exclusivo is None:return False
+    familia=socket.AF_INET6 if ':' in partes.hostname else socket.AF_INET
     try:
-        with socket.create_connection((partes.hostname,partes.port or 80),timeout=0.3):return True
+        with socket.socket(familia,socket.SOCK_STREAM,socket.IPPROTO_TCP) as prova:
+            prova.setsockopt(socket.SOL_SOCKET,exclusivo,1)
+            if familia==socket.AF_INET6:
+                prova.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+            prova.bind((partes.hostname,partes.port))
+            return True
+    except OSError:return False
+
+
+def _porta_ocupada(url):
+    partes=urlsplit(validar_url(url))
+    try:
+        with socket.create_connection((partes.hostname,partes.port),timeout=0.3):return True
     except ConnectionRefusedError:return False
     except OSError:
-        # Timeout/permissão não demonstram uma porta livre. Preservar o processo
-        # existente é preferível a tentar outro servidor sobre a mesma porta.
-        return True
+        # Um connect de 0,3 s pode expirar antes da recusa TCP no Windows,
+        # mesmo sem escuta. Só um bind exclusivo bem-sucedido permite tratar
+        # essa amostra como disponível; não inferir isso de um timeout ou de
+        # uma lista de processos vazia.
+        return not _vinculo_exclusivo_disponivel(partes)
 
 
 def _diagnostico_porta(estado, porta, mensagem, acao, processos=None, api_responde=None):
@@ -224,7 +247,7 @@ def garantir_ollama():
             return _resultado(False,False,'O início do servidor Ollama está desativado. Abra-o manualmente quando precisar; os recursos locais do assistente continuam disponíveis.')
         if _porta_ocupada(url):
             detalhe=diagnosticar_porta_ollama(url,sondar_api=False)
-            return _resultado(False,False,'A API Ollama não respondeu. '+detalhe['mensagem']+
+            return _resultado(False,False,'A API Ollama não respondeu e a porta não pôde ser confirmada livre. '+detalhe['mensagem']+
                 ' Nenhum segundo servidor foi iniciado.')
         caminho = _executavel_ollama()
         if caminho is None:

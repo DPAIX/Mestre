@@ -25,13 +25,13 @@ import urllib.request
 import urllib.error
 import webbrowser
 
-VERSAO='2.11.0'
+VERSAO='2.11.1'
 BASE=Path(__file__).resolve().parent
 MAX_CORPO=16384
 MODULOS=('telebot','google.genai','psutil','PIL','pyautogui','faster_whisper','googleapiclient','google_auth_oauthlib')
 CHAVES=frozenset({'GEMINI_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','TELEGRAM_TOKEN','TELEGRAM_ALLOWED_USER_IDS'})
 OPCOES=CHAVES|frozenset({'GOOGLE_API_KEY','OLLAMA_HABILITADO','OLLAMA_INICIAR_SERVICO','OLLAMA_URL','OLLAMA_MODEL',
-    'OLLAMA_PERFIL','OLLAMA_NUVEM_HABILITADA','GEMINI_API_MODO','GEMINI_MODEL','NINE_ROUTER_HABILITADO','NINE_ROUTER_URL',
+    'OLLAMA_PERFIL','OLLAMA_NUVEM_HABILITADA','OLLAMA_NO_CLOUD','OLLAMA_MODELS','GEMINI_API_MODO','GEMINI_MODEL','NINE_ROUTER_HABILITADO','NINE_ROUTER_URL',
     'NINE_ROUTER_MODEL','NINE_ROUTER_API_KEY','VOZ_PROVEDOR','VOZ_MODELO_LOCAL','MEMORIA_HABILITADA','PAINEL_PORTA'})
 
 
@@ -248,12 +248,13 @@ class Preparador:
             self.estado['pendencias']=[p for p in self.estado['pendencias'] if p['id']!=ident]
             self.estado['pendencias'].append({'id':ident,'tipo':tipo,'texto':texto,'servico':servico})
 
-    def iniciar(self,modelo=None):
+    def iniciar(self,modelo=None,*,conferir=False):
+        if type(conferir) is not bool:raise ValueError('A conferência deve ser booleana.')
         with self.lock:
             if self.estado['executando']:return False
             self.estado.update(executando=True,finalizado=False,pendencias=[],modelos_9router=[])
             self._backup_feito=False
-            self.worker=threading.Thread(target=self._executar,args=(modelo,),daemon=True);self.worker.start()
+            self.worker=threading.Thread(target=self._executar,args=(modelo,),kwargs={'conferir':conferir},daemon=True);self.worker.start()
             return True
 
     def _configuracao(self):
@@ -415,7 +416,7 @@ class Preparador:
             'Automação usa os serviços e scripts locais. Macros existentes não auditadas não foram disparadas.')
         return telegram
 
-    def _executar(self,modelo):
+    def _executar(self,modelo,*,conferir=False):
         ctx=self.ctx
         try:
             self.item('inicio','Preparação automática','executando','Conferindo somente esta instalação do assistente.')
@@ -424,7 +425,8 @@ class Preparador:
             try:
                 with instancia_unica(ctx.dados):pass
             except InstanciaAtiva:
-                if (ultima.get('versao')==VERSAO and ultima.get('bot_iniciado') and ultima.get('codigo')==str(ctx.codigo)
+                if (not conferir and modelo is None
+                    and ultima.get('versao')==VERSAO and ultima.get('bot_iniciado') and ultima.get('codigo')==str(ctx.codigo)
                     and ctx.origem==ctx.codigo and ctx.arquivo_env.exists()
                     and ultima.get('config_mtime')==ctx.arquivo_env.stat().st_mtime_ns):
                     with self.lock:self.estado.update(bot_iniciado=True,painel_url=ultima.get('painel_url','http://127.0.0.1:8765'))
@@ -513,7 +515,7 @@ class Interface(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MeuControlePCPreparacao/2.11.0'
+    server_version='MeuControlePCPreparacao/2.11.1'
     def setup(self):
         super().setup();self.connection.settimeout(10)
     def log_message(self,*args):pass
@@ -556,7 +558,7 @@ class Handler(BaseHTTPRequestHandler):
                 if modelo is not None:
                     from roteador_9router import validar_modelo
                     modelo=validar_modelo(modelo)
-                return self._resposta({'ok':self.server.preparador.iniciar(modelo)})
+                return self._resposta({'ok':self.server.preparador.iniciar(modelo,conferir=True)})
             if tipo=='chave' and set(d)=={'tipo','nome','valor'}:
                 return self._resposta(self.server.preparador.salvar_credencial(d['nome'],d['valor']))
             if tipo=='abrir' and set(d)=={'tipo','servico'}:

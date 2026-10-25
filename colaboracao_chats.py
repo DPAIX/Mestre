@@ -28,7 +28,7 @@ MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
     'preparacao_autonoma.py','preparacao_autonoma.html','INSTALAR_E_INICIAR.bat',
     'implantacao_assistente.py','configurar_gateway_automatico.py','controlar_instancia_preparacao.py','ponte_preparacao_windows.py',
-    'GUIA_INSTALACAO_AUTONOMA.md','REVISAO_V2_11_0.md',
+    'GUIA_INSTALACAO_AUTONOMA.md','REVISAO_V2_11_0.md','REVISAO_V2_11_1.md',
     'testes/test_preparacao_autonoma.py','testes/test_servicos_preparacao_autonoma.py',
     'testes/test_preparacao_frontend.js','testes/test_preparacao_js.py',
     'testes/test_implantacao_assistente.py','testes/test_configurar_gateway_automatico.py',

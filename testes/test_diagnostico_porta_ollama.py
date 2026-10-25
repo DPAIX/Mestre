@@ -4,11 +4,12 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import socket
 import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import iniciar_servicos_locais as servicos
@@ -139,6 +140,145 @@ class DiagnosticoPortaOllama(unittest.TestCase):
         with patch.dict(os.environ,{'OLLAMA_INICIAR_SERVICO':'0'}),patch.object(servicos,'_porta_ocupada') as porta:
             d=servicos.garantir_ollama()
         self.assertFalse(d['iniciado']);porta.assert_not_called();self.run.assert_not_called();self.iniciar.assert_not_called()
+
+
+@unittest.skipUnless(os.name=='nt','A opção nativa SO_EXCLUSIVEADDRUSE é específica de Windows.')
+class VinculoExclusivoWindowsNativo(unittest.TestCase):
+    """Somente sockets efêmeros próprios em loopback; nenhum aplicativo real."""
+    def conferir(self,familia,host):
+        try:
+            escuta=socket.socket(familia,socket.SOCK_STREAM,socket.IPPROTO_TCP)
+        except OSError:
+            if familia==socket.AF_INET6:self.skipTest('IPv6 não disponível neste Windows.')
+            raise
+        with escuta:
+            escuta.setsockopt(socket.SOL_SOCKET,socket.SO_EXCLUSIVEADDRUSE,1)
+            if familia==socket.AF_INET6:escuta.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+            escuta.bind((host,0));escuta.listen(1)
+            porta=escuta.getsockname()[1]
+            url='http://'+('['+host+']' if familia==socket.AF_INET6 else host)+':'+str(porta)
+            partes=servicos.urlsplit(servicos.validar_url(url))
+            self.assertFalse(servicos._vinculo_exclusivo_disponivel(partes))
+        self.assertTrue(servicos._vinculo_exclusivo_disponivel(partes))
+
+    def test_ipv4_ocupada_e_disponivel_apos_fechar_o_socket_proprio(self):
+        self.conferir(socket.AF_INET,'127.0.0.1')
+
+    def test_ipv6_ocupada_e_disponivel_apos_fechar_o_socket_proprio(self):
+        self.conferir(socket.AF_INET6,'::1')
+
+
+class SondagemPortaOllamaWindows(unittest.TestCase):
+    """Reproduz TCP inconclusivo sem abrir portas ou iniciar serviços reais."""
+    def setUp(self):
+        self.patches=[]
+        def aplicar(alvo,nome,**kw):
+            p=patch.object(alvo,nome,**kw);self.patches.append(p)
+            return p.start()
+        self.addCleanup(lambda:[p.stop() for p in reversed(self.patches)])
+        aplicar(servicos,'_WINDOWS',new=True)
+        aplicar(servicos.socket,'SO_EXCLUSIVEADDRUSE',new=-5,create=True)
+        self.conectar=aplicar(servicos.socket,'create_connection',side_effect=TimeoutError('fixture_privada'))
+        self.socket=aplicar(servicos.socket,'socket')
+        self.prova=self.socket.return_value.__enter__.return_value
+        self.iniciar=aplicar(servicos.subprocess,'Popen')
+
+    def test_conexao_tcp_confirmada_nao_tenta_bind(self):
+        self.conectar.side_effect=None
+        self.assertTrue(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.conectar.return_value.__exit__.assert_called_once()
+        self.socket.assert_not_called();self.iniciar.assert_not_called()
+
+    def test_recusa_tcp_explicita_preserva_resultado_sem_sonda_extra(self):
+        self.conectar.side_effect=ConnectionRefusedError()
+        self.assertFalse(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.socket.assert_not_called();self.iniciar.assert_not_called()
+
+    def test_timeout_com_bind_exclusivo_livre_nao_e_confundido_com_escuta(self):
+        self.assertFalse(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.socket.assert_called_once_with(servicos.socket.AF_INET,servicos.socket.SOCK_STREAM,servicos.socket.IPPROTO_TCP)
+        self.prova.setsockopt.assert_called_once_with(servicos.socket.SOL_SOCKET,-5,1)
+        self.prova.bind.assert_called_once_with(('127.0.0.1',11434))
+        self.prova.listen.assert_not_called()
+        self.socket.return_value.__exit__.assert_called_once();self.iniciar.assert_not_called()
+
+    def test_permissao_na_conexao_so_libera_inicio_quando_bind_exclusivo_confirma(self):
+        self.conectar.side_effect=PermissionError('fixture_privada')
+        self.assertFalse(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.prova.bind.assert_called_once_with(('127.0.0.1',11434))
+        self.socket.return_value.__exit__.assert_called_once();self.iniciar.assert_not_called()
+
+    def test_bind_ocupado_ou_negado_nao_prova_porta_livre_e_libera_socket(self):
+        for erro in (OSError(10048,'fixture_privada'),PermissionError(10013,'fixture_privada')):
+            with self.subTest(codigo=erro.errno):
+                self.socket.reset_mock();self.prova.bind.side_effect=erro
+                self.assertTrue(servicos._porta_ocupada(servicos.URL_PADRAO))
+                self.socket.return_value.__exit__.assert_called_once()
+                self.prova.listen.assert_not_called()
+        self.iniciar.assert_not_called()
+
+    def test_socket_sem_opcao_exclusiva_nao_pode_confirmar_disponibilidade(self):
+        with patch.object(servicos.socket,'SO_EXCLUSIVEADDRUSE',None):
+            self.assertTrue(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.socket.assert_not_called();self.iniciar.assert_not_called()
+
+    def test_falha_na_opcao_exclusiva_nao_usa_reuseaddr_nem_bind(self):
+        self.prova.setsockopt.side_effect=OSError('fixture_privada')
+        self.assertTrue(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.prova.bind.assert_not_called();self.prova.listen.assert_not_called()
+        self.socket.return_value.__exit__.assert_called_once();self.iniciar.assert_not_called()
+
+    def test_falha_ao_criar_socket_continua_indeterminada(self):
+        self.socket.side_effect=OSError('fixture_privada')
+        self.assertTrue(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.iniciar.assert_not_called()
+
+    def test_ipv6_prova_exclusiva_so_no_endpoint_e_familia_selecionados(self):
+        self.assertFalse(servicos._porta_ocupada('http://[::1]:11435'))
+        self.socket.assert_called_once_with(servicos.socket.AF_INET6,servicos.socket.SOCK_STREAM,servicos.socket.IPPROTO_TCP)
+        self.assertEqual(self.prova.setsockopt.call_count,2)
+        self.prova.setsockopt.assert_any_call(servicos.socket.SOL_SOCKET,-5,1)
+        self.prova.setsockopt.assert_any_call(servicos.socket.IPPROTO_IPV6,servicos.socket.IPV6_V6ONLY,1)
+        self.prova.bind.assert_called_once_with(('::1',11435))
+        self.prova.listen.assert_not_called();self.socket.return_value.__exit__.assert_called_once()
+
+    def test_fora_do_windows_timeout_nao_autoriza_bind_ou_inicio(self):
+        with patch.object(servicos,'_WINDOWS',False):
+            self.assertTrue(servicos._porta_ocupada(servicos.URL_PADRAO))
+        self.socket.assert_not_called();self.iniciar.assert_not_called()
+
+    def test_url_remota_credencial_e_nome_dns_nao_chegam_a_sockets(self):
+        for url in ('http://example.invalid:11434','http://localhost:11434',
+                'http://usuario:fixture_privada@127.0.0.1:11434','http://10.0.0.1:11434'):
+            with self.subTest(url=url),self.assertRaises(ValueError):servicos._porta_ocupada(url)
+        self.conectar.assert_not_called();self.socket.assert_not_called();self.iniciar.assert_not_called()
+
+    def test_bind_e_liberado_antes_de_tentar_um_unico_servidor(self):
+        eventos=[]
+        self.socket.return_value.__exit__.side_effect=lambda *_:eventos.append('liberou_bind')
+        self.iniciar.side_effect=lambda *_args,**_kw:eventos.append('iniciou') or MagicMock()
+        ambiente={'OLLAMA_HABILITADO':'1','OLLAMA_INICIAR_SERVICO':'1','OLLAMA_NO_CLOUD':'1'}
+        with patch.dict(os.environ,ambiente,clear=True), \
+                patch.object(servicos,'_responde',side_effect=[False,True]) as api, \
+                patch.object(servicos,'_executavel_ollama',return_value=Path(sys.executable)), \
+                patch.object(servicos,'diagnosticar_porta_ollama') as diagnostico:
+            resultado=servicos.garantir_ollama()
+        self.assertTrue(resultado['ok']);self.assertTrue(resultado['iniciado'])
+        self.assertEqual(eventos,['liberou_bind','iniciou'])
+        self.iniciar.assert_called_once();diagnostico.assert_not_called();self.assertEqual(api.call_count,2)
+        self.assertEqual(self.iniciar.call_args.args[0],[str(Path(sys.executable)),'serve'])
+        self.assertEqual(self.iniciar.call_args.kwargs['env']['OLLAMA_NO_CLOUD'],'1')
+
+    def test_bind_negado_mantem_instancia_e_nao_repete_api_ou_popen(self):
+        self.prova.bind.side_effect=PermissionError('fixture_privada')
+        with patch.dict(os.environ,{'OLLAMA_HABILITADO':'1'},clear=True), \
+                patch.object(servicos,'_responde',return_value=False) as api, \
+                patch.object(servicos,'diagnosticar_porta_ollama',return_value={'mensagem':'Nenhuma escuta identificada.'}) as diagnostico:
+            resultado=servicos.garantir_ollama()
+        self.assertFalse(resultado['ok']);self.assertFalse(resultado['iniciado'])
+        self.assertIn('porta não pôde ser confirmada livre',resultado['mensagem'])
+        self.assertNotIn('fixture_privada',repr(resultado))
+        api.assert_called_once();diagnostico.assert_called_once();self.iniciar.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

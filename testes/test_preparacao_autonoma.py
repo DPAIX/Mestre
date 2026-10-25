@@ -62,7 +62,7 @@ class ConfiguracaoAutomatica(BasePreparacao):
     def test_reutiliza_contas_porta_e_opcoes_sem_expor_segredos(self):
         texto=('# preservar\nTELEGRAM_TOKEN='+TOKEN+'\nTELEGRAM_ALLOWED_USER_IDS=12345\n'
             'GEMINI_API_KEY='+CHAVE+'\nGOOGLE_API_KEY=alias_ficticio\nNINE_ROUTER_API_KEY=router_ficticio\n'
-            'PAINEL_PORTA=8769\nOLLAMA_NUVEM_HABILITADA=0\nDESCONHECIDA=preservada\n')
+            'PAINEL_PORTA=8769\nOLLAMA_NUVEM_HABILITADA=0\nOLLAMA_NO_CLOUD=1\nOLLAMA_MODELS=pesos_ficticios\nDESCONHECIDA=preservada\n')
         self.escrever_env(texto)
         valores=self.motor._configuracao();self.motor._configuracao()
         self.assertEqual(valores['TELEGRAM_TOKEN'],TOKEN)
@@ -70,6 +70,8 @@ class ConfiguracaoAutomatica(BasePreparacao):
         self.assertEqual(valores['NINE_ROUTER_API_KEY'],'router_ficticio')
         self.assertNotIn('DESCONHECIDA',valores)
         self.assertEqual(os.environ['OLLAMA_NUVEM_HABILITADA'],'0')
+        self.assertEqual(os.environ['OLLAMA_NO_CLOUD'],'1')
+        self.assertEqual(os.environ['OLLAMA_MODELS'],'pesos_ficticios')
         self.assertEqual(self.motor.snapshot()['painel_url'],'http://127.0.0.1:8769')
         self.assertEqual(self.env.read_text(encoding='utf-8'),texto)
         backups=list((self.ctx.backups/'configuracao').glob('*.bak'))
@@ -220,7 +222,7 @@ class OrquestracaoAutomatica(BasePreparacao):
 
     def test_inicio_simultaneo_nao_cria_segundo_worker(self):
         entrada=threading.Event();sair=threading.Event()
-        def executar(_):
+        def executar(_,*,conferir=False):
             entrada.set();sair.wait(3)
             with self.motor.lock:self.motor.estado['executando']=False
         with patch.object(self.motor,'_executar',side_effect=executar):
@@ -236,6 +238,21 @@ class OrquestracaoAutomatica(BasePreparacao):
         with patch.object(instancia,'instancia_unica',side_effect=trava),patch.object(controle,'parar_assistente') as parar,patch.object(preparo.subprocess,'Popen') as iniciar:
             self.motor._executar(None)
         parar.assert_not_called();iniciar.assert_not_called();self.assertTrue(self.motor.snapshot()['bot_iniciado'])
+
+    def test_retomar_ou_escolher_modelo_nao_ignora_pendencias_com_bot_ativo(self):
+        self.escrever_env('PAINEL_PORTA=8765\n')
+        self.motor.ctx=preparo.Caminhos(self.codigo,self.codigo,self.env,self.dados,self.ctx.preparacao,self.ctx.backups,self.ctx.manifesto)
+        preparo._json_gravar(self.ctx.preparacao/'ultima.json',{'versao':preparo.VERSAO,'bot_iniciado':True,
+            'codigo':str(self.codigo),'config_mtime':self.env.stat().st_mtime_ns})
+        @contextmanager
+        def trava(_):raise instancia.InstanciaAtiva('ocupada');yield
+        for modelo,conferir in ((None,True),('provedor/modelo-mini',False)):
+            with self.subTest(modelo=modelo,conferir=conferir),patch.object(instancia,'instancia_unica',side_effect=trava),\
+                    patch.object(controle,'parar_assistente',return_value={'livre':False,'mensagem':'Aguarde a instância identificada.'}) as parar,\
+                    patch.object(preparo.subprocess,'Popen') as iniciar:
+                self.motor._executar(modelo,conferir=conferir)
+            parar.assert_called_once();iniciar.assert_not_called()
+            self.assertTrue(any(p['id']=='parada' for p in self.motor.snapshot()['pendencias']))
 
 
 class InterfaceLocal(BasePreparacao):
@@ -310,9 +327,14 @@ class InterfaceLocal(BasePreparacao):
     def test_retomar_valida_modelo_e_nao_aceita_credencial_como_modelo(self):
         with patch.object(self.motor,'iniciar',return_value=True) as iniciar:
             self.assertEqual(self.pedido(corpo={'tipo':'retomar','modelo':'provedor/modelo-mini'})[0],200)
-            iniciar.assert_called_once_with('provedor/modelo-mini')
+            iniciar.assert_called_once_with('provedor/modelo-mini',conferir=True)
             self.assertEqual(self.pedido(corpo={'tipo':'retomar','modelo':'sk-'+'A'*35})[0],400)
         self.assertEqual(iniciar.call_count,1)
+
+    def test_retomar_sem_modelo_pede_nova_conferencia(self):
+        with patch.object(self.motor,'iniciar',return_value=True) as iniciar:
+            self.assertEqual(self.pedido(corpo={'tipo':'retomar'})[0],200)
+            iniciar.assert_called_once_with(None,conferir=True)
 
     def test_excecao_nao_expoe_chave_em_resposta(self):
         with patch.object(self.motor,'salvar_credencial',side_effect=RuntimeError(CHAVE)):

@@ -1,6 +1,8 @@
-# Instalação automática — MeuControlePC v2.11.0
+# Instalação automática — MeuControlePC v2.11.1
 
 Extraia o pacote completo em uma pasta de Downloads, fora do diretório de fontes em C:, e abra **`INSTALAR_E_INICIAR.bat`**. Não é necessário copiar as fontes manualmente para a instalação em C:. O `iniciar_redirecionado.bat`, sem argumentos, também abre este fluxo. Depois da implantação, é possível abrir o iniciador na própria pasta instalada; o pacote de atualização não deve ser extraído em uma subpasta dela.
+
+Para atualizar uma preparação anterior ainda aberta, feche antes o console que mostra **Preparação automática: http://127.0.0.1:...**. A trava desse processo impede executar dois preparadores. Consulte a [correção v2.11.1](REVISAO_V2_11_1.md).
 
 A janela local mostra o progresso e as pendências de conta. A preparação começa ao abrir o arquivo; **Retomar** repete a conferência depois que você concluir uma pendência. Não abra vários instaladores ao mesmo tempo.
 
