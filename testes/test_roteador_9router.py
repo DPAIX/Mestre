@@ -150,6 +150,16 @@ class Cliente9Router(unittest.TestCase):
                 self.erro('resposta_invalida',nove.listar_modelos)
                 self.cliente.open.assert_called_once()
 
+    def test_catalogo_5438_modelos_do_gateway_cabe_sem_gerar_conversa(self):
+        itens=[{'id':'gc/modelo-'+str(i),'metadata':'x'*220} for i in range(5438)]
+        self.assertGreater(len(json.dumps({'data':itens})),1_000_000)
+        self.retornar({'data':itens})
+        resultado=nove.listar_modelos()
+        self.assertEqual(len(resultado['modelos']),5438)
+        self.assertFalse(resultado['geracao_testada'])
+        self.assertEqual(self.cliente.open.call_args.args[0].method,'GET')
+        self.cliente.open.assert_called_once()
+
     def test_json_estrito_recusa_nan_inf_duplicates_e_tamanho(self):
         for bruto in (b'{"data":NaN}',b'{"data":[],"extra":1e309}',b'{"data":[],"data":[]}',
                       b'[]',b'{',b'\xff',b' '*(nove.LIMITE_JSON+1)):

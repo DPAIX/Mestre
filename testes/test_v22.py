@@ -85,7 +85,7 @@ class TesteV22(unittest.TestCase):
         self.assertIn('não',r['texto'].lower())
     def test_documento_painel_sem_opcao_desligar(self):
         html=(nucleo.BASE/'painel_rotina.html').read_text(encoding='utf8')
-        self.assertIn('v2.10.2',html)
+        self.assertIn('v2.11.0',html)
         self.assertNotIn('Desligar computador',html)
         self.assertNotIn('shutdown /s',html)
         self.assertIn('🔎 Verificar configuração',html)

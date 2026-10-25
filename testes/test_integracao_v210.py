@@ -165,7 +165,7 @@ class IntegracaoV210(unittest.TestCase):
 
     def test_porta_ollama_ocupada_nao_abre_segundo_servidor(self):
         import iniciar_servicos_locais as inicio
-        with patch.object(inicio,'consultar',return_value={'ok':False}),patch.object(inicio,'_porta_ocupada',return_value=True),patch.object(inicio.subprocess,'Popen') as criar:
+        with patch.object(inicio,'consultar',return_value={'ok':False}),patch.object(inicio,'_porta_ocupada',return_value=True),patch.object(inicio,'diagnosticar_porta_ollama',return_value={'mensagem':'Porta ocupada.'}),patch.object(inicio.subprocess,'Popen') as criar:
             resultado=inicio.garantir_ollama()
         self.assertFalse(resultado['iniciado']);criar.assert_not_called()
 

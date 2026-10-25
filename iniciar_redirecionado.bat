@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
+if "%~1"=="" if exist "%~dp0INSTALAR_E_INICIAR.bat" goto preparar_automatico
 set "MEUCONTROLEPC_CODIGO=C:\Users\Mestre\Documents\GitHub\Mestre"
 set "MEUCONTROLEPC_CONFIGURACAO=F:\MeuControlePC_v2"
 if not exist "%MEUCONTROLEPC_CODIGO%\redirecionar_assistente.py" goto codigo_ausente
@@ -40,3 +41,7 @@ exit /b 2
 
 :finalizar
 exit /b %MEUCONTROLEPC_RESULTADO%
+
+:preparar_automatico
+call "%~dp0INSTALAR_E_INICIAR.bat"
+exit /b %ERRORLEVEL%
