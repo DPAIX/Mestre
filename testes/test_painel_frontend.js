@@ -276,13 +276,13 @@ test('equipe envia duas tags Ollama após confirmar os modelos e o uso cloud',as
  assert.equal(p.obter('equipe-resposta').textContent,'Duas propostas salvas');
 });
 
-test('equipe recusa mais de quatro participantes antes de consultar',async()=>{
+test('equipe recusa mais de oito participantes antes de consultar',async()=>{
  const p=await painel();let chamadas=0;
  const seletorAnterior=p.contexto.document.querySelectorAll;
- p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-modelos-ollama input:checked'?[{value:'qwen3.5:4b'},{value:'gemma4:31b-cloud'}]:seletor==='#equipe-provedores input:checked'?[{value:'Gemini'},{value:'OpenAI'},{value:'Claude'}]:seletorAnterior(seletor);
+ p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-modelos-ollama input:checked'?['qwen3.5:4b','gemma4:31b-cloud','llama3.2:latest','mistral:latest'].map(value=>({value})):seletor==='#equipe-provedores input:checked'?['Gemini','OpenAI','Claude','9Router','excesso'].map(value=>({value})):seletorAnterior(seletor);
  p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
  p.obter('equipe-objetivo').value='Propor melhorias';await p.obter('consultar-equipe').eventos.click();
- assert.equal(chamadas,0);assert.match(p.obter('aviso').textContent,/no máximo quatro participantes/);
+ assert.equal(chamadas,0);assert.match(p.obter('aviso').textContent,/no máximo oito participantes/);
 });
 
 test('catálogo mostra famílias e usos sugeridos só para as tags retornadas',async()=>{
@@ -359,4 +359,867 @@ test('teste de resposta aguarda confirmação e envia uma consulta sem históric
  assert.equal(posts.length,1);
  assert.deepEqual(JSON.parse(posts[0].opt.body),{acao:'modelo_testar',modelo:'qwen3.8:27b',confirmacao:'TESTAR MODELO'});
  assert.match(p.obter('teste-modelo-ollama').textContent,/não mede saldo nem garante disponibilidade futura/);
+});
+
+test('definir padrão usa o modelo listado e atualiza estado e catálogo sem repetir escrita',async()=>{
+ const p=await painel(),chamadas=[];let liberar;
+ p.executar("catalogoOllama={padrao:'ausente:3b',habilitado:true,modelos:[{nome:'mistral:latest',nuvem:false}]}");
+ p.obter('chat-modelo-ollama').value='mistral:latest';
+ p.contexto.centro={chats:[{id:'chat_a',titulo:'Conversa',provedor:'Ollama',modelo_ollama:''}],chat_ativo:{id:'chat_a',titulo:'Conversa',provedor:'Ollama',modelo_ollama:'',mensagens:[]},tarefas:[],contribuicoes:[]};
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  if(opt.method==='POST')return new Promise(resolve=>{liberar=resolve});
+  if(url==='/api/modelos_ollama')return resposta({padrao:'mistral:latest',habilitado:true,modelos:[{nome:'mistral:latest',nuvem:false}]});
+  return resposta({...estado,colaboracao:p.contexto.centro});
+ };
+ const primeira=p.obter('chat-modelo-padrao').eventos.click();
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(chamadas.length,1);
+ liberar(resposta({ok:true,mensagem:'Padrão alterado sem gerar resposta'}));await primeira;
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/acao','/api/estado','/api/modelos_ollama']);
+ const pedido=chamadas[0];
+ assert.deepEqual(JSON.parse(pedido.opt.body),{acao:'modelo_padrao',modelo:'mistral:latest'});
+ assert.equal(pedido.opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(chamadas[2].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.match(p.obter('chat-modelo-ollama').children[0].textContent,/Padrão do \.env: mistral:latest/);
+ assert.match(p.obter('aviso').textContent,/Padrão alterado sem gerar resposta/);
+});
+
+test('padrão exige catálogo e tag presente, inclusive ao usar a opção padrão',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(url,opt)=>{if(opt.method==='POST')posts.push(JSON.parse(opt.body));return resposta(url==='/api/modelos_ollama'?{padrao:'mistral:latest',habilitado:true,modelos:[{nome:'mistral:latest',nuvem:false}]}:opt.method==='POST'?{mensagem:'Padrão salvo'}:estado)};
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(posts.length,0);assert.match(p.obter('aviso').textContent,/Atualize a lista.*presente no catálogo/);
+ p.executar("catalogoOllama={padrao:'ausente:3b',modelos:[{nome:'mistral:latest',nuvem:false}]}");
+ p.obter('chat-modelo-ollama').value='salvo-mas-ausente:7b';
+ await p.obter('chat-modelo-padrao').eventos.click();
+ p.obter('chat-modelo-ollama').value='';
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(posts.length,0);
+ p.executar("catalogoOllama.padrao='mistral:latest'");
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.equal(posts.length,1);assert.equal(posts[0].modelo,'mistral:latest');
+});
+
+test('falha ao salvar padrão mantém aviso e não recarrega catálogo como se tivesse sucesso',async()=>{
+ const p=await painel(),chamadas=[];
+ p.executar("catalogoOllama={padrao:'antigo:3b',modelos:[{nome:'mistral:latest',nuvem:false}]}");
+ p.obter('chat-modelo-ollama').value='mistral:latest';
+ p.contexto.fetch=async(url,opt)=>{chamadas.push(url);return resposta({erro:'O modelo saiu do catálogo; atualize a lista.'},400)};
+ await p.obter('chat-modelo-padrao').eventos.click();
+ assert.deepEqual(chamadas,['/api/acao']);
+ assert.match(p.obter('aviso').textContent,/modelo saiu do catálogo/);
+ assert.equal(p.executar('catalogoOllama.padrao'),'antigo:3b');
+});
+
+test('falha Ollama 404 orienta definir um modelo listado no relatório e nos provedores',async()=>{
+ const p=await painel();
+ p.contexto.comFalha={...estado,provedores:{Ollama:'modelo não acessível (HTTP 404)'},autoanalise:{estado_local:'sem falhas locais',avisos_externos:[{provedor:'Ollama',codigo:404,orientacao:'Confira a conta e use reativar.'}]}};
+ p.executar('render(comFalha)');
+ const orientacao=p.obter('provedores').children[1].textContent;
+ assert.match(orientacao,/Atualize|atualize/);assert.match(orientacao,/tag presente.*Definir como padrão do Ollama/);
+ const relatorio=p.obter('resumo-analise').textContent;
+ assert.match(relatorio,/Ollama retornou HTTP 404/);assert.match(relatorio,/Testar resposta deste modelo/);
+ assert.doesNotMatch(relatorio,/Confira a conta e use reativar/);
+});
+
+test('mensagem natural mostra proposta como texto e só envia nonce após confirmar',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const corpo=JSON.parse(opt.body);posts.push({corpo,opt});
+  return resposta(corpo.acao==='pergunta'?{ok:true,mensagem:'Entendi seu pedido.',pedido:{id:'pedido_opaco',descricao:'Abrir <img onerror=x> VS Code',acao:'ignorada',campos:{comando:'ignorado'}}}:{ok:true,mensagem:'Abertura do VS Code solicitada.'});
+ };
+ p.contexto.confirm=()=>{throw Error('A proposta já oferece os botões de confirmação')};
+ p.obter('chat-texto').value='Abra o VS Code';await p.obter('chat-enviar').eventos.click();
+ assert.equal(posts.length,1);assert.equal(posts[0].corpo.acao,'pergunta');
+ assert.equal(p.obter('chat-resposta').textContent,'Entendi seu pedido.');
+ const cartao=p.obter('chat-pedido').children[0];
+ assert.equal(cartao.children[1].textContent,'Abrir <img onerror=x> VS Code');
+ await cartao.children[3].children[0].eventos.click();
+ assert.equal(posts.length,2);
+ assert.deepEqual(posts[1].corpo,{acao:'pedido_confirmar',id:'pedido_opaco'});
+ assert.equal(posts[1].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(p.obter('chat-pedido').children.length,0);
+ assert.equal(p.obter('chat-resposta').textContent,'Abertura do VS Code solicitada.');
+});
+
+test('cancelamento de proposta envia só o identificador e remove o cartão',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const corpo=JSON.parse(opt.body);posts.push(corpo);
+  return resposta(corpo.acao==='pergunta'?{mensagem:'Revise a movimentação.',pedido:{id:'financeiro_1',descricao:'Registrar saída de R$15,00 com almoço'}}:{mensagem:'Pedido cancelado.'});
+ };
+ p.obter('pergunta').value='Registre um gasto de 15 reais com almoço';await p.obter('consultar').eventos.click();
+ const cancelar=p.obter('pedido-resposta').children[0].children[3].children[1];
+ await cancelar.eventos.click();
+ assert.deepEqual(posts,[{acao:'pergunta',texto:'Registre um gasto de 15 reais com almoço'},{acao:'pedido_cancelar',id:'financeiro_1'}]);
+ assert.equal(p.obter('pedido-resposta').children.length,0);
+ assert.equal(p.obter('resposta').textContent,'Pedido cancelado.');
+});
+
+test('confirmação não repete o nonce em duplo clique ou após falha expirada',async()=>{
+ const p=await painel(),posts=[];let liberar;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const corpo=JSON.parse(opt.body);posts.push(corpo);
+  if(corpo.acao==='pergunta')return resposta({mensagem:'Confira a ação.',pedido:{id:'expirado',descricao:'Abrir calculadora'}});
+  return new Promise(resolve=>{liberar=resolve});
+ };
+ p.obter('chat-texto').value='Abra a calculadora';await p.obter('chat-enviar').eventos.click();
+ const botao=p.obter('chat-pedido').children[0].children[3].children[0];
+ const primeira=botao.eventos.click();await botao.eventos.click();
+ assert.equal(posts.length,2);
+ liberar(resposta({erro:'Pedido expirado ou já utilizado.'},400));await primeira;
+ await botao.eventos.click();assert.equal(posts.length,2);
+ assert.equal(p.obter('chat-pedido').children.length,0);
+ assert.match(p.obter('aviso').textContent,/expirado ou já utilizado/);
+ assert.match(p.obter('chat-resposta').textContent,/Confira o aviso e o estado/);
+});
+
+test('resposta comum e proposta inválida não criam botões de execução',async()=>{
+ const p=await painel();let pedido;
+ p.contexto.fetch=async(_url,opt)=>resposta(opt.method==='POST'?{mensagem:'Posso ajudar a planejar seu dia.',pedido}:estado);
+ p.obter('pergunta').value='Olá, pode me ajudar?';await p.obter('consultar').eventos.click();
+ assert.equal(p.obter('resposta').textContent,'Posso ajudar a planejar seu dia.');
+ assert.equal(p.obter('pedido-resposta').children.length,0);
+ pedido={id:'qualquer',descricao:42,acao:'pc'};
+ await p.obter('consultar').eventos.click();
+ assert.equal(p.obter('pedido-resposta').children.length,1);
+ assert.match(p.obter('pedido-resposta').children[0].textContent,/solicitação inválida/);
+ assert.equal(p.obter('pedido-resposta').children[0].children.length,0);
+});
+
+test('trocar de conversa remove propostas visíveis da conversa anterior',async()=>{
+ const p=await painel();
+ p.contexto.centro={chats:[],chat_ativo:{id:'chat_a',titulo:'A',modo_conversa:true},tarefas:[],contribuicoes:[]};
+ p.executar('renderColaboracao(centro)');
+ p.executar("exibirPedidoConversa('chat-resposta',{id:'anterior',descricao:'Abrir VS Code'})");
+ p.executar("exibirPedidoConversa('agentes-resposta',{id:'agente-anterior',descricao:'Abrir Hermes'})");
+ assert.equal(p.obter('chat-pedido').children.length,1);
+ assert.equal(p.obter('agentes-pedido').children.length,1);
+ p.contexto.centro.chat_ativo={id:'chat_b',titulo:'B',modo_conversa:false};p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-pedido').children.length,0);
+ assert.equal(p.obter('agentes-pedido').children.length,0);
+ assert.equal(p.obter('chat-modo-conversa').checked,false);
+ assert.match(p.obter('chat-modo-status').textContent,/desativada nesta sessão/);
+});
+
+test('modo conversa usa a sessão ativa e o serviço existente de configuração',async()=>{
+ const p=await painel(),posts=[];
+ const centro={chats:[],chat_ativo:{id:'chat_a',titulo:'A',modo_conversa:true},tarefas:[],contribuicoes:[]};
+ p.contexto.centro=centro;p.executar('renderColaboracao(centro)');
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){const corpo=JSON.parse(opt.body);posts.push(corpo);centro.chat_ativo.modo_conversa=corpo.ativo;return resposta({mensagem:'Modo atualizado.'})}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-modo-conversa').checked=false;await p.obter('chat-modo-conversa').eventos.change();
+ assert.deepEqual(posts,[{acao:'chat_modo',id:'chat_a',ativo:false}]);
+ assert.equal(p.obter('chat-modo-conversa').checked,false);
+});
+
+test('captura confirmada aparece como imagem e não como HTML',async()=>{
+ const p=await painel(),imagem='data:image/png;base64,AAAA';
+ p.contexto.fetch=async(_url,opt)=>resposta(opt.method==='POST'?{mensagem:'Captura obtida.',imagem}:estado);
+ p.executar("exibirPedidoConversa('chat-resposta',{id:'captura',descricao:'Capturar tela'})");
+ await p.obter('chat-pedido').children[0].children[3].children[0].eventos.click();
+ assert.equal(p.obter('chat-resposta').children.at(-1).src,imagem);
+ assert.equal(p.obter('chat-resposta').children.at(-1).alt,'Captura de tela solicitada');
+});
+
+test('escritas enviam chave única por intenção e a versão do último estado',async()=>{
+ const p=await painel(),posts=[];let versao=7;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push({url,opt});versao++;return resposta({ok:true,mensagem:'Registrado',versao_estado:versao})}
+  assert.equal(url,'/api/estado');return resposta({...estado,versao_estado:versao});
+ };
+ await p.executar('atualizar()');
+ await p.executar("enviarAcao('agua')");await p.executar("enviarAcao('agua')");
+ assert.equal(posts.length,2);
+ assert.match(posts[0].opt.headers['X-Idempotency-Key'],/^[a-z0-9-]{36}$/i);
+ assert.notEqual(posts[0].opt.headers['X-Idempotency-Key'],posts[1].opt.headers['X-Idempotency-Key']);
+ assert.equal(posts[0].opt.headers['X-Estado-Versao'],'7');assert.equal(posts[1].opt.headers['X-Estado-Versao'],'8');
+ assert.equal(posts[0].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+});
+
+test('resposta HTTP perdida recupera pergunta e proposta sem repetir chamada à IA',async()=>{
+ const p=await painel(),posts=[],consultas=[];let chave;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));chave=opt.headers['X-Idempotency-Key'];throw new TypeError('Conexão perdida depois de executar')}
+  if(url.startsWith('/api/resultado_acao')){consultas.push({url,opt});return resposta({estado:'concluido',codigo_http:200,versao_estado:2,resposta:{ok:true,mensagem:'Entendi: abrir VS Code.',pedido:{id:'acao_aprovavel',descricao:'Abrir VS Code'}}})}
+  return resposta({...estado,versao_estado:2});
+ };
+ p.obter('chat-texto').value='Abra o VS Code';await p.obter('chat-enviar').eventos.click();
+ assert.deepEqual(posts,[{acao:'pergunta',texto:'Abra o VS Code'}]);
+ assert.equal(consultas.length,1);assert.equal(consultas[0].url,'/api/resultado_acao?id='+chave);
+ assert.equal(consultas[0].opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(consultas[0].opt.method,undefined);
+ assert.equal(p.obter('chat-resposta').textContent,'Entendi: abrir VS Code.');
+ assert.equal(p.obter('chat-pedido').children[0].children[1].textContent,'Abrir VS Code');
+ assert.equal(p.obter('chat-texto').value,'');
+});
+
+test('HTTP202 consulta resultado até concluir e não reenvia o POST',async()=>{
+ const p=await painel(),posts=[],consultas=[];let chave;
+ p.executar('aguardarRecuperacao=async()=>{}');
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));chave=opt.headers['X-Idempotency-Key'];return resposta({estado:'em_andamento',id:chave,versao_estado:1},202)}
+  if(url.startsWith('/api/resultado_acao')){
+   consultas.push(url);
+   return resposta(consultas.length===1?{estado:'em_andamento',id:chave,versao_estado:1}:{estado:'concluido',codigo_http:200,versao_estado:2,resposta:{mensagem:'Contribuição salva.'}});
+  }
+  return resposta({...estado,versao_estado:2});
+ };
+ const resultado=await p.executar("agir('pergunta',{texto:'Planeje meu dia'})");
+ assert.equal(posts.length,1);assert.equal(consultas.length,2);
+ assert.equal(consultas[0],'/api/resultado_acao?id='+chave);assert.equal(consultas[1],consultas[0]);
+ assert.equal(resultado.mensagem,'Contribuição salva.');
+ assert.equal(p.obter('aviso').textContent,'Contribuição salva.');
+});
+
+test('estado obsoleto409 atualiza painel sem consultar resultado ou repetir a escrita',async()=>{
+ const p=await painel(),chamadas=[];let versao=5;
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  if(opt.method==='POST'){versao=6;return resposta({erro:'Estado mudou.',versao_estado:6},409)}
+  assert.equal(url,'/api/estado');return resposta({...estado,versao_estado:versao});
+ };
+ await p.executar('atualizar()');chamadas.length=0;
+ assert.equal(await p.executar("agir('agua')"),null);
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/acao','/api/estado']);
+ assert.equal(chamadas[0].opt.headers['X-Estado-Versao'],'5');
+ assert.equal(p.executar('versaoServidor'),6);
+ assert.match(p.obter('aviso').textContent,/estado mudou.*ação não foi repetida/);
+ assert.equal(p.obter('consultar').disabled,false);
+});
+
+test('resultado desconhecido mantém chave e novo clique igual só consulta o resultado',async()=>{
+ const p=await painel(),posts=[],consultas=[];let recuperavel=false;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(opt.headers['X-Idempotency-Key']);const erro=Error('tempo esgotado');erro.name='AbortError';throw erro}
+  if(url.startsWith('/api/resultado_acao')){consultas.push(url);return resposta(recuperavel?{estado:'concluido',codigo_http:200,versao_estado:2,resposta:{mensagem:'Um copo registrado.'}}:{erro:'Resultado desconhecido.',versao_estado:1},recuperavel?200:404)}
+  return resposta({...estado,versao_estado:recuperavel?2:1});
+ };
+ assert.equal(await p.executar("agir('agua')"),null);
+ assert.match(p.obter('aviso').textContent,/consultarão o resultado sem repetir a ação/);
+ recuperavel=true;
+ const d=await p.executar("agir('agua')");
+ assert.equal(posts.length,1);assert.equal(consultas.length,2);assert.equal(consultas[0],consultas[1]);
+ assert.equal(consultas[0],'/api/resultado_acao?id='+posts[0]);
+ assert.equal(d.mensagem,'Um copo registrado.');
+});
+
+test('recuperação em andamento para após limite curto e preserva a intenção',async()=>{
+ const p=await painel();let posts=0,consultas=0;
+ p.executar('aguardarRecuperacao=async()=>{}');
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts++;return resposta({estado:'em_andamento'},202)}
+  if(url.startsWith('/api/resultado_acao')){consultas++;return resposta({estado:'em_andamento',versao_estado:1})}
+  return resposta({...estado,versao_estado:1});
+ };
+ assert.equal(await p.executar("agir('pergunta',{texto:'Objetivo longo'})"),null);
+ assert.equal(posts,1);assert.equal(consultas,6);
+ assert.equal(p.executar('resultadosPendentes.size'),1);
+ assert.match(p.obter('aviso').textContent,/sem repetir a ação/);
+ assert.equal(p.obter('consultar').disabled,false);
+});
+
+test('erro final recuperado conserva a mensagem do servidor e atualiza estado',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push(url);
+  if(opt.method==='POST')throw new TypeError('Resposta perdida');
+  if(url.startsWith('/api/resultado_acao'))return resposta({estado:'concluido',codigo_http:400,versao_estado:3,resposta:{erro:'A atividade informada é inválida.'}});
+  return resposta({...estado,versao_estado:3});
+ };
+ assert.equal(await p.executar("agir('pergunta',{texto:'Cadastre atividade'})"),null);
+ assert.equal(chamadas.filter(c=>c==='/api/acao').length,1);
+ assert.equal(chamadas.at(-1),'/api/estado');
+ assert.match(p.obter('aviso').textContent,/atividade informada é inválida/);
+ assert.equal(p.executar('resultadosPendentes.size'),0);
+});
+
+test('corpo perdido apósHTTP200 também usa a consulta idempotente sem novoPOST',async()=>{
+ const p=await painel();let posts=0,leituras=0;
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts++;return {ok:true,status:200,json:async()=>{throw SyntaxError('corpo incompleto')}}}
+  if(url.startsWith('/api/resultado_acao')){leituras++;return resposta({estado:'concluido',codigo_http:200,versao_estado:4,resposta:{mensagem:'Movimentação registrada uma vez.'}})}
+  return resposta({...estado,versao_estado:4});
+ };
+ const d=await p.executar("agir('financeiro',{tipo:'saida',valor:'15',descricao:'Almoço'})");
+ assert.equal(posts,1);assert.equal(leituras,1);assert.equal(d.mensagem,'Movimentação registrada uma vez.');
+});
+
+test('snapshot mais antigo não reduz versão usada para autorizar a próxima escrita',async()=>{
+ const p=await painel();let versao=10,header;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){header=opt.headers['X-Estado-Versao'];return resposta({mensagem:'Atualizado'})}
+  return resposta({...estado,versao_estado:versao});
+ };
+ await p.executar('atualizar()');versao=9;await p.executar('atualizar()');
+ assert.equal(p.executar('versaoServidor'),10);
+ await p.executar("enviarAcao('agua')");assert.equal(header,'10');
+});
+
+test('primeira mutação aguarda um snapshot válido e envia os dois headers juntos',async()=>{
+ const p=await painel(),chamadas=[];
+ p.executar('estadoRecebido=false;versaoServidor=null;protocoloIdempotencia=null');
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  return resposta(opt.method==='POST'?{mensagem:'Registrado'}:{...estado,versao_estado:12});
+ };
+ await p.executar("enviarAcao('agua')");
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/estado','/api/acao','/api/estado']);
+ assert.equal(chamadas[1].opt.headers['X-Estado-Versao'],'12');
+ assert.match(chamadas[1].opt.headers['X-Idempotency-Key'],/^[a-z0-9-]{36}$/i);
+});
+
+test('versão ausente ou inválida depois de observar protocolo novo impede nova escrita',async()=>{
+ for(const versao of [undefined,-1,1.5,'8',false,Number.MAX_SAFE_INTEGER+1]){
+  const p=await painel(),invalido={...estado};let posts=0;
+  if(versao===undefined)delete invalido.versao_estado;else invalido.versao_estado=versao;
+  p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts++;return resposta(invalido)};
+  await p.executar('atualizar()');
+  assert.equal(await p.executar("agir('agua')"),null);
+  assert.equal(posts,0,'Versão inválida não deve autorizar POST: '+String(versao));
+  assert.equal(p.executar('versaoServidor'),0);
+  assert.match(p.obter('aviso').textContent,/Nenhuma ação foi enviada/);
+ }
+});
+
+test('snapshot legado é aceito sem enviar uma chave de idempotência isolada',async()=>{
+ const legado={...estado};delete legado.versao_estado;
+ const p=await painel({estadoInicial:legado});let headers;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){headers=opt.headers;return resposta({mensagem:'Registrado pelo servidor legado'})}
+  return resposta(legado);
+ };
+ const d=await p.executar("enviarAcao('agua')");
+ assert.equal(d.mensagem,'Registrado pelo servidor legado');
+ assert.equal(headers['X-Idempotency-Key'],undefined);assert.equal(headers['X-Estado-Versao'],undefined);
+ assert.equal(headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+});
+
+test('equipe da conversa renderiza tags como texto sem iniciar consultas',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',modelo_ollama:'individual:latest',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['qwen3.5:4b','<img onerror=x>','gemma4:31b-cloud']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let chamadas=0;
+ p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
+ p.contexto.centro=centro;p.executar('renderColaboracao(centro)');
+ assert.equal(chamadas,0);assert.equal(p.obter('chat-equipe-paralela').checked,true);
+ assert.equal(p.obter('chat-equipe-paralela').disabled,false);assert.equal(p.obter('chat-atualizar-equipe').disabled,false);
+ assert.match(p.obter('chat-equipe-status').textContent,/3 modelo\(s\): qwen3\.5:4b, <img onerror=x>, gemma4:31b-cloud/);
+ assert.match(p.obter('chat-provedor').textContent,/equipe paralela \(3 modelo\(s\)\)/);
+ assert.doesNotMatch(p.obter('chat-provedor').textContent,/individual:latest/);
+ assert.match(p.obter('ia-chat-ativo').textContent,/equipe paralela/);
+ assert.match(html,/Usar todos os modelos nesta conversa/);
+ assert.match(html,/Ollama pode enfileirar conforme a memória disponível/);
+});
+
+test('equipe cooperativa mostra modo e síntese sem confundir chats legados',async()=>{
+ const chat={id:'chat_cooperativa',titulo:'Cooperar',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest','mistral:latest']};
+ const centro={chats:[chat],chat_ativo:chat,tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});
+ assert.match(p.obter('chat-equipe-status').textContent,/Equipe cooperativa ativa · 2 modelo\(s\)/);
+ assert.match(p.obter('chat-provedor').textContent,/equipe cooperativa \(2 modelo\(s\)\)/);
+ assert.match(p.obter('ia-chat-ativo').textContent,/equipe cooperativa/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/equipe cooperativa/);
+ assert.match(html,/um modelo por vez.*síntese final/);
+ assert.match(html,/Falhas parciais.*sem repetir consultas/);
+ assert.match(html,/ações exigem concordância de todos e sua confirmação/);
+ const legado={...chat};delete legado.equipe_modo;
+ p.contexto.centro={...centro,chats:[legado],chat_ativo:legado};p.executar('renderColaboracao(centro)');
+ assert.match(p.obter('chat-provedor').textContent,/equipe paralela/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/equipe paralela/);
+});
+
+test('conversa automática já aparece ativa antes da primeira consulta ao catálogo',async()=>{
+ const chat={id:'chat_auto',titulo:'Padrão',provedor:'auto',equipe_paralela:false,equipe_modelos:[]};
+ const p=await painel();p.contexto.centro={chats:[chat],chat_ativo:chat,tarefas:[],contribuicoes:[]};
+ p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);
+ assert.match(p.obter('chat-equipe-status').textContent,/Equipe automática: catálogo consultado na próxima pergunta/);
+ assert.doesNotMatch(p.obter('chat-equipe-status').textContent,/Atualize a equipe|precisa ser ativada/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/equipe automática cooperativa/);
+ const prazos=[];p.contexto.setTimeout=(_fn,ms)=>{prazos.push(ms);return 1};p.contexto.clearTimeout=()=>{};
+ p.contexto.fetch=async()=>resposta({mensagem:'fixture'});
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Objetivo'})");
+ assert.deepEqual(prazos,[240000]);
+});
+
+test('conversa com equipe tem prazo de quatro minutos incluindo a margem do orçamento do servidor',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modo:'cooperativa',equipe_modelos:['llama3.2:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),prazos=[],posts=[];
+ p.contexto.setTimeout=(_fn,prazo)=>{prazos.push(prazo);return 0};
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts.push(JSON.parse(opt.body));return resposta({ok:true})};
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Compare as propostas'})");
+ await p.executar("api('/api/acao',{acao:'agua'})");
+ await p.executar("api('/api/acao',{acao:'conexoes_ia'})");
+ await p.executar("api('/api/acao',{acao:'equipe_ia'})");
+ await p.executar("api('/api/estado')");
+ p.contexto.centro={...centro,chat_ativo:{...centro.chat_ativo,equipe_politica:'manual',equipe_paralela:false}};
+ p.executar('renderColaboracao(centro)');
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Individual'})");
+ await p.executar("api('/api/acao',{acao:'pergunta',texto:'Prazo explícito'},{timeout:1234})");
+ assert.deepEqual(prazos,[240000,180000,240000,540000,10000,180000,1234]);
+ assert.equal(posts.filter(pedido=>pedido.texto==='Compare as propostas').length,1);
+});
+
+test('ativar e desativar equipe envia só configuração da conversa com idempotência',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,versao_estado:12,colaboracao:centro}}),chamadas=[];
+ p.contexto.confirm=()=>{throw Error('Ativar configuração não deve pedir uma inferência ou confirmação extra')};
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,opt});
+  if(opt.method==='POST'){
+   const corpo=JSON.parse(opt.body);centro.chat_ativo.equipe_paralela=corpo.ativo;centro.chat_ativo.equipe_modo=corpo.modo||'paralela';
+   centro.chat_ativo.equipe_modelos=corpo.ativo?['mistral:latest','llama3.2:latest']:[];
+   return resposta({mensagem:corpo.ativo?'Equipe ativada.':'Equipe desativada.'});
+  }
+  return resposta({...estado,versao_estado:13,colaboracao:centro});
+ };
+ p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
+ const ativacao=chamadas[0];assert.equal(ativacao.url,'/api/acao');
+ assert.deepEqual(JSON.parse(ativacao.opt.body),{acao:'chat_equipe',ativo:true,id:'chat_equipe',modo:'cooperativa'});
+ assert.match(ativacao.opt.headers['X-Idempotency-Key'],/^[a-f0-9-]{36}$/);
+ assert.equal(ativacao.opt.headers['X-Estado-Versao'],'12');assert.equal(ativacao.opt.headers['X-Painel-Token'],'__PAINEL_TOKEN__');
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);assert.match(p.obter('chat-equipe-status').textContent,/mistral:latest, llama3\.2:latest/);
+ p.obter('chat-equipe-paralela').checked=false;await p.obter('chat-equipe-paralela').eventos.change();
+ const posts=chamadas.filter(c=>c.opt.method==='POST');assert.equal(posts.length,2);
+ assert.deepEqual(JSON.parse(posts[1].opt.body),{acao:'chat_equipe',ativo:false,id:'chat_equipe'});
+ assert.notEqual(posts[1].opt.headers['X-Idempotency-Key'],ativacao.opt.headers['X-Idempotency-Key']);
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.equal(p.obter('chat-atualizar-equipe').disabled,true);
+ assert.match(p.obter('chat-equipe-status').textContent,/Equipe desativada/);
+ assert.deepEqual(chamadas.map(c=>c.url),['/api/acao','/api/estado','/api/acao','/api/estado']);
+});
+
+test('atualizar equipe relê catálogo no servidor e renderiza a lista persistida',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));centro.chat_ativo.equipe_modelos=['mistral:latest','llama3.2:latest','qwen3.5:4b'];return resposta({mensagem:'Catálogo atualizado.'})}
+  assert.equal(url,'/api/estado');return resposta({...estado,colaboracao:centro});
+ };
+ await p.obter('chat-atualizar-equipe').eventos.click();
+ assert.deepEqual(posts,[{acao:'chat_equipe',ativo:true,id:'chat_equipe',modo:'cooperativa'}]);
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);assert.match(p.obter('chat-equipe-status').textContent,/3 modelo\(s\).*qwen3\.5:4b/);
+});
+
+test('mensagem em equipe continua um único pedido e preserva confirmação da ação proposta',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['mistral:latest','llama3.2:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
+ p.contexto.fetch=async(url,opt)=>{
+  if(opt.method==='POST'){posts.push(JSON.parse(opt.body));return resposta({mensagem:'Os modelos sugerem abrir o editor.',pedido:{id:'nonce_equipe',descricao:'Abrir VS Code'}})}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-texto').value='Abra o VS Code';await p.obter('chat-enviar').eventos.click();
+ assert.deepEqual(posts,[{acao:'pergunta',texto:'Abra o VS Code'}]);
+ assert.equal(p.obter('chat-resposta').textContent,'Os modelos sugerem abrir o editor.');
+ assert.equal(p.obter('chat-pedido').children[0].children[1].textContent,'Abrir VS Code');
+ assert.equal(p.obter('chat-equipe-paralela').checked,true);
+});
+
+test('equipe aguarda a primeira configuração sem repetir escrita em duplo clique',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let liberar,posts=0;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){posts++;return new Promise(resolve=>{liberar=resolve})}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-equipe-paralela').checked=true;const ativar=p.obter('chat-equipe-paralela').eventos.change();
+ assert.equal(p.obter('chat-equipe-paralela').disabled,true);assert.equal(p.obter('chat-atualizar-equipe').disabled,true);
+ await p.obter('chat-atualizar-equipe').eventos.click();assert.equal(posts,1);
+ centro.chat_ativo.equipe_paralela=true;centro.chat_ativo.equipe_modelos=['mistral:latest'];
+ liberar(resposta({mensagem:'Equipe ativada.'}));await ativar;
+ assert.equal(p.obter('chat-equipe-paralela').disabled,false);assert.equal(p.obter('chat-equipe-paralela').checked,true);
+ assert.equal(p.obter('chat-atualizar-equipe').disabled,false);
+});
+
+test('falha na ativação restaura a configuração salva e mantém a mensagem do servidor',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}});let posts=0;
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){posts++;return resposta({erro:'O catálogo precisa ter entre um e oito modelos para ativar todos.'},400)}
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
+ assert.equal(posts,1);assert.equal(p.obter('chat-equipe-paralela').checked,false);
+ assert.equal(p.obter('chat-atualizar-equipe').disabled,true);assert.match(p.obter('chat-equipe-status').textContent,/desativada/);
+ assert.match(p.obter('aviso').textContent,/entre um e oito modelos/);
+});
+
+test('trocar de conversa ou salvar modelo individual acompanha a equipe do snapshot',async()=>{
+ const centro={chats:[],chat_ativo:{id:'chat_equipe',titulo:'Equipe',provedor:'Ollama',equipe_politica:'manual',equipe_paralela:true,equipe_modelos:['mistral:latest']},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method==='POST'){
+   posts.push(JSON.parse(opt.body));centro.chat_ativo={...centro.chat_ativo,modelo_ollama:'llama3.2:latest',equipe_politica:'manual',equipe_paralela:false,equipe_modelos:[]};
+   return resposta({mensagem:'Modelo individual salvo.'});
+  }
+  return resposta({...estado,colaboracao:centro});
+ };
+ p.obter('chat-modelo-ollama').value='llama3.2:latest';await p.obter('chat-salvar-modelo').eventos.click();
+ assert.deepEqual(posts,[{acao:'chat_modelo',id:'chat_equipe',modelo:'llama3.2:latest'}]);
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.match(p.obter('chat-provedor').textContent,/llama3\.2:latest/);
+ p.contexto.centro={...centro,chat_ativo:{id:'chat_outra',titulo:'Outra',provedor:'Gemini',equipe_politica:'manual'}};p.executar('renderColaboracao(centro)');
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);assert.doesNotMatch(p.obter('chat-equipe-status').textContent,/mistral/);
+});
+
+test('equipe sem conversa fica desabilitada e não escreve mesmo se evento for disparado',async()=>{
+ const p=await painel();let chamadas=0;
+ p.contexto.fetch=async()=>{chamadas++;return resposta(estado)};
+ assert.equal(p.obter('chat-equipe-paralela').disabled,true);assert.equal(p.obter('chat-atualizar-equipe').disabled,true);
+ p.obter('chat-equipe-paralela').checked=true;await p.obter('chat-equipe-paralela').eventos.change();
+ assert.equal(chamadas,0);assert.equal(p.obter('chat-equipe-paralela').checked,false);
+ assert.match(p.obter('aviso').textContent,/Crie ou selecione uma conversa/);
+});
+
+test('agentes só são listados por pedido explícito, sem instalar ou abrir aplicativos',async()=>{
+ const p=await painel(),chamadas=[];
+ assert.equal(p.obter('agente-selecionado').children.length,0);
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,method:opt.method,token:opt.headers['X-Painel-Token']});
+  return resposta({agentes:[{agente:'claude',nome:'<img onerror=x>',estado:'comando_no_path',lancador_no_path:true}]});
+ };
+ await p.obter('atualizar-agentes').eventos.click();
+ assert.equal(chamadas.length,1);assert.equal(chamadas[0].url,'/api/agentes');
+ assert.equal(chamadas[0].method,undefined);assert.equal(chamadas[0].token,'__PAINEL_TOKEN__');
+ assert.equal(p.obter('agente-selecionado').children[1].textContent,'<img onerror=x> · comando encontrado no PATH');
+ assert.match(p.obter('agentes-status').textContent,/não instala aplicativos nem testa contas/);
+ assert.doesNotMatch(p.obter('agentes-status').textContent,/instalado|funcionando/);
+});
+
+test('catálogo de agentes inválido preserva a seleção sem criar opções ou executar ações',async()=>{
+ const p=await painel();p.obter('agente-selecionado').value='claude';
+ p.obter('agente-selecionado').children.push({textContent:'Seleção preservada'});
+ for(const agentes of [null,[{agente:'claude;calc',nome:'Inválido'}],[{agente:'claude',nome:'A'},{agente:'claude',nome:'Duplicado'}]]){
+  p.contexto.fetch=async()=>resposta({agentes});
+  await p.obter('atualizar-agentes').eventos.click();
+  assert.equal(p.obter('agente-selecionado').value,'claude');
+  assert.equal(p.obter('agente-selecionado').children.length,1);
+  assert.match(p.obter('agentes-status').textContent,/inválid/);
+ }
+});
+
+test('abertura de agente prepara plano e só confirma o nonce uma vez',async()=>{
+ const p=await painel(),posts=[];let confirmacoesNativas=0;
+ p.contexto.confirm=()=>{confirmacoesNativas++;return true};
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='agente_preparar'?{mensagem:'Revise o pedido.',pedido:{id:'nonce-agente',descricao:'Abrir Claude Code com modelo local?'}}:{mensagem:'Abertura solicitada.'});
+ };
+ p.obter('agente-selecionado').value='claude';p.obter('agente-modelo').value=' llama3.2:latest ';
+ await p.obter('agente-abrir').eventos.click();
+ assert.deepEqual(posts,[{acao:'agente_preparar',agente:'claude',modelo:'llama3.2:latest',configurar:false}]);
+ assert.equal(confirmacoesNativas,0);
+ const cartao=p.obter('agentes-pedido').children[0],confirmar=cartao.children[3].children[0];
+ p.obter('agente-selecionado').value='qwen';p.obter('agente-modelo').value='outro:latest';
+ const primeira=confirmar.eventos.click();await confirmar.eventos.click();await primeira;
+ assert.deepEqual(posts[1],{acao:'pedido_confirmar',id:'nonce-agente'});
+ assert.equal(posts.length,2);assert.equal(p.obter('agentes-pedido').children.length,0);
+ assert.equal(p.obter('agentes-resposta').textContent,'Abertura solicitada.');
+});
+
+test('configurar agente mantém modelo opcional e cancelar envia somente o nonce',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='agente_preparar'?{mensagem:'Configuração pendente.',pedido:{id:'config-nonce',descricao:'Configurar Hermes pelo lançador?'}}:{mensagem:'Cancelado.'});
+ };
+ p.obter('agente-selecionado').value='hermes';
+ await p.obter('agente-configurar').eventos.click();
+ assert.deepEqual(posts,[{acao:'agente_preparar',agente:'hermes',modelo:'',configurar:true}]);
+ const cancelar=p.obter('agentes-pedido').children[0].children[3].children[1];
+ await cancelar.eventos.click();
+ assert.deepEqual(posts[1],{acao:'pedido_cancelar',id:'config-nonce'});
+ assert.equal(p.obter('agentes-resposta').textContent,'Cancelado.');
+});
+
+test('agente sem seleção ou modelo longo não envia pedido, e duplo clique não repete preparação',async()=>{
+ const p=await painel();let posts=0,liberar;
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method!=='POST')return resposta(estado);posts++;return new Promise(resolve=>{liberar=resolve})};
+ await p.obter('agente-abrir').eventos.click();assert.equal(posts,0);
+ p.obter('agente-selecionado').value='cline';p.obter('agente-modelo').value='x'.repeat(201);
+ await p.obter('agente-abrir').eventos.click();assert.equal(posts,0);
+ p.obter('agente-modelo').value='gemma4:31b-cloud';
+ const primeira=p.obter('agente-abrir').eventos.click();
+ await p.obter('agente-configurar').eventos.click();assert.equal(posts,1);
+ liberar(resposta({mensagem:'Pedido preparado.'}));await primeira;
+});
+
+test('falha de sessão na listagem de agentes não mostra conteúdo arbitrário nem dispara POST',async()=>{
+ const p=await painel();let posts=0;
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts++;return resposta({erro:'NÃO_EXIBIR'},403)};
+ await p.obter('atualizar-agentes').eventos.click();
+ assert.match(p.obter('agentes-status').textContent,/Recarregue o painel/);
+ assert.doesNotMatch(p.obter('agentes-status').textContent,/NÃO_EXIBIR/);assert.equal(posts,0);
+});
+
+test('nuvem do perfil CPU aparece restrita por padrão e só permite depois de confirmar o compartilhamento',async()=>{
+ const p=await painel(),posts=[],perguntas=[];let autorizado=false,aceitar=false;
+ assert.match(p.obter('modelos-nuvem-status').textContent,/Perfil CPU restrito/);
+ p.contexto.confirm=texto=>{perguntas.push(texto);return aceitar};
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta({...estado,ollama_nuvem:autorizado});
+  const body=JSON.parse(opt.body);posts.push(body);autorizado=body.ativo;
+  return resposta({mensagem:'Autorização atualizada.'});
+ };
+ await p.obter('autorizar-nuvem').eventos.click();assert.equal(posts.length,0);
+ assert.match(perguntas[0],/mensagens e o histórico/);assert.match(perguntas[0],/consumir cota/);
+ aceitar=true;await p.obter('autorizar-nuvem').eventos.click();
+ assert.deepEqual(posts,[{acao:'ollama_nuvem',ativo:true,confirmacao:'AUTORIZAR NUVEM'}]);
+ assert.match(p.obter('modelos-nuvem-status').textContent,/Nuvem permitida no perfil CPU/);
+ assert.match(p.obter('modelos-nuvem-status').textContent,/não foi testada/);
+});
+
+test('restringir nuvem do perfil CPU exige escolha explícita e não afirma cancelar chamadas já enviadas',async()=>{
+ const p=await painel({estadoInicial:{...estado,ollama_nuvem:true}}),posts=[],perguntas=[];
+ p.contexto.confirm=texto=>{perguntas.push(texto);return true};
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta({...estado,ollama_nuvem:false});
+  posts.push(JSON.parse(opt.body));return resposta({mensagem:'Nuvem desativada.'});
+ };
+ await p.obter('desativar-nuvem').eventos.click();
+ assert.deepEqual(posts,[{acao:'ollama_nuvem',ativo:false,confirmacao:'DESATIVAR NUVEM'}]);
+ assert.match(perguntas[0],/não cancela consultas que já tenham sido enviadas/);
+ assert.match(p.obter('modelos-nuvem-status').textContent,/Perfil CPU restrito/);
+ assert.equal(posts.filter(pedido=>pedido.acao==='pergunta').length,0);
+});
+
+test('9Stack só consulta metadados por clique e distingue instalação de resposta real',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,method:opt.method,token:opt.headers['X-Painel-Token']});
+  return resposta({servicos:[{servico:'9router',nome:'<b>9Router</b>',versao_fixada:'0.5.109',instalado_gerenciado:true,node_no_path:true},{servico:'9remote',nome:'9Remote',versao_fixada:'3.0.43',instalado_gerenciado:false,node_no_path:true}],roteador:{habilitado:true,url:'http://127.0.0.1:20128/v1',modelo:'combo diário',chave_definida:true,estado:'configurado; não testado',orientacao:'Configure os provedores no dashboard.'}});
+ };
+ await p.obter('atualizar-9stack').eventos.click();
+ assert.deepEqual(chamadas,[{url:'/api/9stack',method:undefined,token:'__PAINEL_TOKEN__'}]);
+ assert.match(p.obter('9stack-status').textContent,/<b>9Router<\/b>/);
+ assert.match(p.obter('9stack-status').textContent,/instalação localizada, ainda não testada/);
+ assert.match(p.obter('9router-status').textContent,/valor oculto/);
+ assert.equal(p.obter('9router-modelo').value,'combo diário');assert.equal(p.obter('9router-ativo').checked,true);
+ assert.doesNotMatch(p.obter('9router-status').textContent,/online|funcionando/);
+ assert.doesNotMatch(html,/id="9router-(?:chave|api-key|token)"/);
+});
+
+test('9Remote remoto prepara ação revisável e confirma somente o nonce uma vez',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='9stack_preparar'?{mensagem:'Revise o acesso remoto.',pedido:{id:'nonce-remoto',descricao:'Iniciar 9Remote com acesso remoto ao terminal e arquivos; pareie seu dispositivo na interface oficial.'}}:{mensagem:'Início solicitado; acompanhe o terminal local.'});
+ };
+ p.obter('9stack-servico').value='9remote';await p.obter('9stack-iniciar').eventos.click();
+ assert.deepEqual(posts,[{acao:'9stack_preparar',servico:'9remote',operacao:'iniciar'}]);
+ const cartao=p.obter('9stack-pedido').children[0];assert.match(cartao.children[1].textContent,/acesso remoto/);
+ p.obter('9stack-servico').value='9router';const confirmar=cartao.children[3].children[0];
+ const primeira=confirmar.eventos.click();await confirmar.eventos.click();await primeira;
+ assert.deepEqual(posts[1],{acao:'pedido_confirmar',id:'nonce-remoto'});assert.equal(posts.length,2);
+ assert.match(p.obter('9stack-resposta').textContent,/Início solicitado/);
+});
+
+test('instalação 9Stack pode ser cancelada sem chamar início e alvos inválidos não são enviados',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='9stack_preparar'?{pedido:{id:'nonce-instalar',descricao:'Instalar 9Router na pasta gerenciada.'}}:{mensagem:'Cancelado.'});
+ };
+ p.obter('9stack-servico').value='9router;calc';await p.obter('9stack-instalar').eventos.click();assert.equal(posts.length,0);
+ p.obter('9stack-servico').value='9router';await p.obter('9stack-instalar').eventos.click();
+ await p.obter('9stack-pedido').children[0].children[3].children[1].eventos.click();
+ assert.deepEqual(posts,[{acao:'9stack_preparar',servico:'9router',operacao:'instalar'},{acao:'pedido_cancelar',id:'nonce-instalar'}]);
+});
+
+test('catálogo 9Router aceita nomes de combo como texto e não gera conversa',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,method:opt.method,token:opt.headers['X-Painel-Token']});return resposta({modelos:[{id:'combo diário',nome:'<img src=x onerror=x>'},{id:'openai/modelo',nome:'Modelo'}]})};
+ await p.obter('atualizar-modelos-9router').eventos.click();
+ assert.deepEqual(chamadas,[{url:'/api/modelos_9router',method:undefined,token:'__PAINEL_TOKEN__'}]);
+ assert.equal(p.obter('9router-modelos').children[0].value,'combo diário');
+ assert.equal(p.obter('9router-modelos').children[0].textContent,'<img src=x onerror=x>');
+ assert.match(p.obter('9router-modelos-status').textContent,/não comprova geração/);
+});
+
+test('9Router não substitui catálogo válido por identificadores inválidos ou duplicados',async()=>{
+ const p=await painel();p.obter('9router-modelos').children.push({value:'preservado'});
+ for(const modelos of [null,[{id:'bad\nmodel'}],[{id:'combo'},{id:'combo'}]]){
+  p.contexto.fetch=async()=>resposta({modelos});await p.obter('atualizar-modelos-9router').eventos.click();
+  assert.equal(p.obter('9router-modelos').children[0].value,'preservado');
+  assert.match(p.obter('9router-modelos-status').textContent,/inválid/);
+ }
+});
+
+test('habilitar 9Router exige revisão do envio de histórico sem aceitar chave pelo formulário',async()=>{
+ const p=await painel(),posts=[],perguntas=[];let aceitar=false;
+ p.obter('9router-ativo').checked=true;p.obter('9router-url').value='http://127.0.0.1:20128/v1';p.obter('9router-modelo').value=' combo diário ';
+ p.contexto.confirm=texto=>{perguntas.push(texto);return aceitar};
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method!=='POST')return resposta(estado);posts.push(JSON.parse(opt.body));return resposta({mensagem:'Configuração salva.'})};
+ await p.obter('form-9router').eventos.submit({preventDefault(){}});assert.equal(posts.length,0);
+ assert.match(perguntas[0],/Mensagens e o histórico/);assert.match(perguntas[0],/consumir cota/);
+ aceitar=true;await p.obter('form-9router').eventos.submit({preventDefault(){}});
+ assert.deepEqual(posts,[{acao:'9router_configurar',ativo:true,modelo:'combo diário',url:'http://127.0.0.1:20128/v1',confirmacao:'CONFIGURAR 9ROUTER'}]);
+ assert.match(p.obter('9router-status').textContent,/ainda não foram verificadas/);
+});
+
+test('9Router não habilita sem modelo e desabilitar não promete cancelar consultas',async()=>{
+ const p=await painel(),posts=[],perguntas=[];
+ p.contexto.confirm=texto=>{perguntas.push(texto);return true};p.obter('9router-ativo').checked=true;p.obter('9router-url').value='http://127.0.0.1:20128/v1';
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method!=='POST')return resposta(estado);posts.push(JSON.parse(opt.body));return resposta({mensagem:'Desabilitado.'})};
+ await p.obter('form-9router').eventos.submit({preventDefault(){}});assert.equal(posts.length,0);
+ p.obter('9router-ativo').checked=false;await p.obter('form-9router').eventos.submit({preventDefault(){}});
+ assert.equal(posts.length,1);assert.equal(posts[0].ativo,false);assert.match(perguntas[0],/não serão canceladas/);
+});
+
+test('memória só é lida por clique com token e notas contendo HTML continuam texto',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,method:opt.method,token:opt.headers['X-Painel-Token']});return resposta({notas:[{id:'nota',titulo:'<b>Preferência</b>',texto:'<img onerror=x>',atualizado_em:'2026-10-23'}]})};
+ await p.obter('atualizar-memoria').eventos.click();
+ assert.deepEqual(chamadas,[{url:'/api/memoria',method:undefined,token:'__PAINEL_TOKEN__'}]);
+ const nota=p.obter('lista-memoria').children[0];assert.equal(nota.children[0].textContent,'<b>Preferência</b>');assert.equal(nota.children[1].textContent,'<img onerror=x>');
+ assert.match(p.obter('memoria-status').textContent,/Nenhuma nota foi enviada a um modelo/);
+});
+
+test('nota de memória só salva após confirmar o nonce, sem reenviar texto alterado',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='memoria_preparar'?{mensagem:'Nota pendente.',pedido:{id:'nonce-memoria',descricao:'Salvar a nota de preferência para este contexto.'}}:{mensagem:'Nota salva.'});
+ };
+ p.obter('memoria-titulo').value=' Preferência ';p.obter('memoria-texto').value='Respostas curtas.';
+ await p.obter('form-memoria').eventos.submit({preventDefault(){}});
+ assert.deepEqual(posts,[{acao:'memoria_preparar',titulo:'Preferência',texto:'Respostas curtas.'}]);
+ p.obter('memoria-texto').value='Conteúdo adulterado';
+ await p.obter('memoria-pedido').children[0].children[3].children[0].eventos.click();
+ assert.deepEqual(posts[1],{acao:'pedido_confirmar',id:'nonce-memoria'});assert.equal(p.obter('memoria-resposta').textContent,'Nota salva.');
+});
+
+test('notas vazias ou grandes e falha de sessão não criam escrita ou modelo',async()=>{
+ const p=await painel();let posts=0;
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')posts++;return resposta({erro:'CONTEÚDO_NÃO_EXIBIR'},403)};
+ for(const [titulo,texto] of [['','Uma nota'],['x'.repeat(81),'Uma nota'],['Válido','x'.repeat(801)]]){
+  p.obter('memoria-titulo').value=titulo;p.obter('memoria-texto').value=texto;
+  await p.obter('form-memoria').eventos.submit({preventDefault(){}});
+ }
+ assert.equal(posts,0);await p.obter('atualizar-memoria').eventos.click();
+ assert.match(p.obter('memoria-status').textContent,/Recarregue o painel/);assert.doesNotMatch(p.obter('memoria-status').textContent,/CONTEÚDO_NÃO_EXIBIR/);
+});
+
+test('equipe aceita cinco provedores incluindo 9Router com quatro modelos Ollama como oito participantes',async()=>{
+ const p=await painel();let enviado;
+ const seletorAnterior=p.contexto.document.querySelectorAll;
+ p.contexto.document.querySelectorAll=seletor=>seletor==='#equipe-provedores input:checked'?['Gemini','OpenAI','Claude','9Router'].map(value=>({value})):seletor==='#equipe-modelos-ollama input:checked'?['llama3.2:latest','mistral:latest','qwen3.5:4b','gemma4:31b-cloud'].map(value=>({value})):seletorAnterior(seletor);
+ p.contexto.fetch=async(_url,opt)=>{if(opt.method==='POST')enviado=JSON.parse(opt.body);return resposta(opt.method==='POST'?{mensagem:'Equipe solicitada.'}:estado)};
+ p.obter('equipe-objetivo').value='Revisar projeto';await p.obter('consultar-equipe').eventos.click();
+ assert.deepEqual(enviado.provedores,['Gemini','OpenAI','Claude','9Router','Ollama']);assert.equal(enviado.modelos_ollama.length,4);
+});
+
+test('integrações, configuração e memórias pendentes somem ao trocar conversa e não são consultadas pelo polling',async()=>{
+ const centro={chats:[],chat_ativo:{id:'primeiro',titulo:'Um',provedor:'Ollama',equipe_politica:'manual'},tarefas:[],contribuicoes:[]};
+ const p=await painel({estadoInicial:{...estado,colaboracao:centro}}),urls=[];
+ p.contexto.fetch=async(url)=>{urls.push(url);return resposta({...estado,colaboracao:{...centro,chat_ativo:{id:'segundo',titulo:'Dois',provedor:'Ollama',equipe_politica:'manual'}}})};
+ p.executar("exibirPedidoConversa('9stack-resposta',{id:'n1',descricao:'Iniciar remoto.'});exibirPedidoConversa('memoria-resposta',{id:'n2',descricao:'Salvar nota.'});exibirPedidoConversa('configuracao-resposta',{id:'n3',descricao:'Abrir configuração local.'})");
+ assert.equal(p.obter('9stack-pedido').children.length,1);assert.equal(p.obter('memoria-pedido').children.length,1);assert.equal(p.obter('configuracao-pedido').children.length,1);
+ await p.executar('atualizar()');
+ assert.deepEqual(urls,['/api/estado']);assert.equal(p.obter('9stack-pedido').children.length,0);assert.equal(p.obter('memoria-pedido').children.length,0);assert.equal(p.obter('configuracao-pedido').children.length,0);
+});
+
+test('9Router automático não aparece como equipe Ollama nem reativa antigas tags locais',async()=>{
+ const chat={id:'roteada',titulo:'Automática',provedor:'9Router',equipe_politica:'automatica',equipe_paralela:false,equipe_modelos:['local-antigo:4b']};
+ const p=await painel({estadoInicial:{...estado,colaboracao:{chats:[chat],chat_ativo:chat,tarefas:[],contribuicoes:[]}}});
+ assert.equal(p.obter('chat-equipe-paralela').checked,false);
+ assert.match(p.obter('chat-equipe-status').textContent,/9Router automático/);
+ assert.doesNotMatch(p.obter('chat-equipe-status').textContent,/local-antigo/);
+ assert.match(p.obter('chat-provedor').textContent,/roteador automático/);
+ assert.doesNotMatch(p.obter('chat-provedor').textContent,/equipe automática cooperativa/);
+ assert.match(p.obter('lista-chats').children[0].textContent,/roteador automático/);
+ assert.equal(p.obter('chat-ativo-provedor').value,'9Router');
+});
+
+test('configuração local verifica metadados só por clique com token, sem POST ou modelo',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{
+  chamadas.push({url,method:opt.method,token:opt.headers['X-Painel-Token']});
+  return resposta({mensagem:'Node localizado; <b>conta pendente</b>. Nenhum modelo consultado.'});
+ };
+ await p.obter('verificar-configuracao').eventos.click();
+ assert.deepEqual(chamadas,[{url:'/api/configuracao',method:undefined,token:'__PAINEL_TOKEN__'}]);
+ assert.match(p.obter('configuracao-resposta').textContent,/<b>conta pendente<\/b>/);
+ assert.equal(p.obter('configuracao-pedido').children.length,0);
+ p.contexto.fetch=async()=>resposta({erro:'NÃO_EXIBIR'},403);
+ await p.obter('verificar-configuracao').eventos.click();
+ assert.match(p.obter('configuracao-resposta').textContent,/Recarregue o painel/);
+ assert.doesNotMatch(p.obter('configuracao-resposta').textContent,/NÃO_EXIBIR/);
+});
+
+test('configurar assistente prepara sem IA e só confirma o nonce uma vez',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='configuracao_preparar'?{mensagem:'Configuração local pendente.',pedido:{id:'nonce-config-local',descricao:'Abrir etapas guiadas no PC, sem iniciar acesso remoto.'}}:{mensagem:'Configurador solicitado na janela do PC.'});
+ };
+ await p.obter('configurar-assistente').eventos.click();
+ assert.deepEqual(posts,[{acao:'configuracao_preparar'}]);
+ const confirmar=p.obter('configuracao-pedido').children[0].children[3].children[0];
+ const primeira=confirmar.eventos.click();await confirmar.eventos.click();await primeira;
+ assert.deepEqual(posts,[{acao:'configuracao_preparar'},{acao:'pedido_confirmar',id:'nonce-config-local'}]);
+ assert.equal(p.obter('configuracao-resposta').textContent,'Configurador solicitado na janela do PC.');
+ assert.equal(posts.filter(body=>body.acao==='pergunta').length,0);
+});
+
+test('cancelar configuração local não envia comandos de instalação, modelos ou acesso remoto',async()=>{
+ const p=await painel(),posts=[];
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta(estado);
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta(body.acao==='configuracao_preparar'?{pedido:{id:'nonce-config-cancelar',descricao:'Abrir configuração local.'}}:{mensagem:'Pedido cancelado.'});
+ };
+ await p.obter('configurar-assistente').eventos.click();
+ await p.obter('configuracao-pedido').children[0].children[3].children[1].eventos.click();
+ assert.deepEqual(posts,[{acao:'configuracao_preparar'},{acao:'pedido_cancelar',id:'nonce-config-cancelar'}]);
+ assert.equal(p.obter('configuracao-resposta').textContent,'Pedido cancelado.');
+});
+
+test('abrir painel não consulta Gemini remoto nem catálogos de IA',async()=>{
+ const p=await painel(),chamadas=[];
+ p.contexto.fetch=async(url,opt)=>{chamadas.push([url,opt.method]);return resposta(estado)};
+ await p.executar('atualizar()');
+ assert.deepEqual(chamadas.map(c=>c[0]),['/api/estado']);
+});
+
+test('tarefa Gemini é apenas preparada e exige nonce de confirmação',async()=>{
+ const p=await painel(),posts=[];p.executar("chatAtivoId='chat-fixture'");
+ p.contexto.fetch=async(_url,opt)=>{
+  if(opt.method!=='POST')return resposta({...estado,colaboracao:{chat_ativo:{id:'chat-fixture'},chats:[],tarefas:[],contribuicoes:[]}});
+  const body=JSON.parse(opt.body);posts.push(body);
+  return resposta({ok:true,mensagem:'Confira',pedido:{id:'nonce-fixture',descricao:'Enviar à nuvem para análise.'}});
+ };
+ await p.executar("prepararGemini({operacao:'tarefa',texto:'Analise',agente:'antigravity-preview-09-2026'})");
+ assert.equal(posts.length,1);assert.equal(posts[0].acao,'gemini_preparar');assert.equal(posts[0].chat_id,'chat-fixture');
+ assert.equal(p.obter('gemini-pedido').children.length,1);
+});
+
+test('resposta de confirmação antiga não aparece na nova conversa',async()=>{
+ const p=await painel();let liberar;p.executar("chatAtivoId='chat-antigo'");
+ p.executar("exibirPedidoConversa('gemini-resposta',{id:'nonce-fixture',descricao:'Enviar tarefa.'})");
+ const confirmar=p.obter('gemini-pedido').children[0].children[3].children[0];
+ p.contexto.fetch=(_url,opt)=>opt.method==='POST'?new Promise(resolve=>liberar=resolve):Promise.resolve(resposta(estado));
+ const pendente=confirmar.eventos.click();await new Promise(setImmediate);
+ p.executar("chatAtivoId='chat-novo'");p.obter('gemini-resposta').textContent='Conversa nova';
+ liberar(resposta({ok:true,mensagem:'Resultado da antiga'}));await pendente;
+ assert.equal(p.obter('gemini-resposta').textContent,'Conversa nova');
+});
+
+test('tarefas remotas são renderizadas como texto e não como HTML',async()=>{
+ const p=await painel();p.executar("chatAtivoId='chat-fixture'");
+ const tarefa={id:'g1234567890abcdef',estado:'completed',agente:'antigravity-preview-09-2026',titulo:'<img src=x onerror=alert(1)>',texto:'<script>acao()</script>'};
+ p.contexto.fetch=async()=>resposta({chat_id:'chat-fixture',configuracao:{},tarefas:[tarefa],perfis:[]});
+ await p.executar('atualizarGemini()');
+ const cartao=p.obter('gemini-tarefas').children[0];
+ assert.ok(cartao.children.some(e=>e.textContent===tarefa.texto));
+ assert.equal(p.obter('gemini-pedido').children.length,0);
 });

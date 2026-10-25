@@ -1,4 +1,34 @@
-> **v2.3.2:** [Guia de Mistral, Llama e Qwen](GUIA_MULTIPLOS_CHATS.md) · [Mudanças, testes e reversão](REVISAO_V2_3_2.md).
+> **v2.10.2:** [Correção dos fluxos removidos no merge](REVISAO_V2_10_2.md) e [concluir a integração local 9Router](GUIA_CONCLUIR_9ROUTER.md). Atualize as fontes completas; preserve configuração, dados e modelos.
+
+> **v2.10.1:** [Corrigir e retomar as etapas pendentes](GUIA_RETOMAR_CONFIGURACAO.md). Use `retomar_configuracao.bat` para Ollama, 9Router e Gemini sem repetir bibliotecas, Telegram ou Startup.
+
+> **v2.10.0:** [Preparar todos os recursos e Gemini Interactions/Managed Agents](GUIA_ASSISTENTE_INTEGRADO.md). Use `preparar_assistente_completo.bat` com o bot encerrado, sem substituir seu .env. [Mudanças, testes e reversão](REVISAO_V2_10_0.md).
+
+> **v2.9.2:** [Diagnóstico de rede no Windows e preservação do bloqueio de nuvem](REVISAO_V2_9_2.md). Abra `diagnosticar_rede.bat` antes de reproduzir a falha; não há reparo de rede automático nem causa confirmada.
+
+> **v2.9.1:** [Configuração local guiada, correção da frase e reversão](REVISAO_V2_9_1.md). “Faça as configurações necessárias” não consulta modelos; confirme e acompanhe as etapas na janela do PC.
+
+> **v2.9.0:** [Modelos, agentes, 9Router, 9Remote e memória explícita](GUIA_INTEGRACOES_V2_9.md) · [Revisão técnica](REVISAO_V2_9_0.md). A frase da captura responde localmente; a equipe apresenta contribuição provisória e controla o orçamento de novos envios.
+
+> **v2.8.2:** [Recuperação de fontes após patch externo](GUIA_RECUPERACAO_PATCH.md) · [Auditoria, correções e testes](REVISAO_V2_8_2.md). A resposta sobre capacidades é local; alterações mantêm confirmação e os registros atuais são preservados.
+
+> **v2.8.0:** [Manutenção e dependências por duplo clique](GUIA_MANUTENCAO.md) · [Otimizações e reversão](REVISAO_V2_8_0.md). Após atualizar as fontes em C:, feche o bot e abra `atualizar_assistente.bat`; o início automático existente é preservado.
+
+> **v2.7.1:** [Correção da equipe CPU e conversa sem ação](REVISAO_V2_7_1.md). Atualize as fontes em C: e reinicie o assistente; configuração, dados, voz preparada e Startup de F: são preservados.
+
+> **v2.7.0:** [Voz local, equipe padrão e início automático](GUIA_AUTOMATICO.md) · [Mudanças e reversão](REVISAO_V2_7_0.md). Abra `ativar_assistente_automatico.bat` uma vez; depois basta enviar texto/áudio. Os próximos logons iniciam o assistente.
+
+> **v2.6.0:** [Todos os modelos em cooperação](GUIA_EQUIPE_COOPERATIVA.md) · [Mudanças e reversão](REVISAO_V2_6_0.md). `/chat equipe on` ativa consulta sequencial e síntese; o modo CPU que funcionou é preservado.
+
+> **v2.5.2:** [Perfil CPU para o Llama](GUIA_PERFIL_CPU.md) · [Mudanças e reversão](REVISAO_V2_5_2.md). Ative pelo Telegram com `/modelos perfil cpu` e confirme; configuração e dados continuam em F:.
+
+> **v2.5.1:** [Correção dos hábitos legados e dos testes de instalação](REVISAO_V2_5_1.md). Atualize as fontes; preserve `gestao_vida.json`, `.env` e demais dados existentes. Inicie por `iniciar_redirecionado.bat`.
+
+> **v2.5.0:** [Equipe paralela de modelos Ollama](GUIA_EQUIPE_PARALELA.md) · [Auditoria e correções](AUDITORIA_ASSISTENTE_V2_5_0.md) · [Mudanças, testes e reversão](REVISAO_V2_5_0.md). Para executar o código do GitHub em C: usando `.env` e dados de F:, inicie por `iniciar_redirecionado.bat`: [guia](GUIA_REDIRECIONAMENTO.md).
+
+> **v2.4.0:** [Conversa e controle por linguagem natural](GUIA_CONVERSA.md) · [Google Agenda](GOOGLE_AGENDA.md) · [Mudanças, testes e reversão](REVISAO_V2_4_0.md).
+
+> **v2.3.2:** [Relatório de Mistral, Llama e Qwen](REVISAO_V2_3_2.md).
 
 > **v2.3.1:** [Relatório dos modelos por conversa e colaboração com Manus](REVISAO_V2_3_1.md).
 

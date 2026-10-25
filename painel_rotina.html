@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.3.2 · Centro de comando</title>
+<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.10.2 · Centro de comando</title>
 <style>
 :root{color-scheme:dark;--bg:#090f1c;--panel:#151f31;--inner:#0e1727;--border:#29384c;--text:#eaf1fa;--muted:#95a9c1;--accent:#5caafc;--success:#6dd8b3;--warn:#e0ba69}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,'Segoe UI',sans-serif}
@@ -13,23 +13,33 @@ input[type=checkbox]{min-width:0;width:auto;margin:0 5px 0 0}fieldset{border:1px
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-size:12px}td button{padding:5px 9px}.scroll{overflow:auto}.status{border-left:3px solid var(--accent);background:var(--inner);border-radius:8px;padding:10px;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere} .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.flex{flex:1;min-width:160px}.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kcol{min-width:0;background:var(--inner);border:1px solid var(--border);border-radius:12px;padding:14px}.item{background:#1d2b40;padding:9px;margin-bottom:8px;border-radius:8px;overflow-wrap:anywhere}.pill{font-size:11px;padding:4px 7px;background:#264564;border-radius:20px;white-space:nowrap}#aviso{white-space:pre-wrap;position:sticky;bottom:12px;background:#11304e;border:1px solid #4f83b7;border-radius:9px;padding:12px;max-width:700px;display:none;margin:10px auto}
 @media(max-width:800px){main{padding:12px}header{padding:15px}.duo{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}table{min-width:700px}} 
 </style></head>
-<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.3.2</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
+<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.10.2</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
 <main>
 <div class="grid"><div class="tile">Rotina concluída<strong id="progresso">—</strong></div><div class="tile">Saldo registrado<strong id="saldo">—</strong></div><div class="tile">Ações aprendidas<strong id="aprendizado">—</strong></div><div class="tile">Disco livre<strong id="disco">—</strong></div></div>
-<nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="colaboracao">💬 Chats e projeto</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
+<nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="colaboracao">💬 Chats e projeto</button><button data-tab="integracoes">🧩 Integrações & memória</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
 <section class="section active" id="rotina"><div class="panel"><h2>Atividades e compromissos</h2><p class="muted">Marque tarefas concluídas. Os dados são atualizados em gestao_vida.json.</p><div class="scroll"><table><thead><tr><th>Feito</th><th>Dia</th><th>Horário</th><th>Atividade</th><th>Local</th><th>Prioridade</th></tr></thead><tbody id="tabela-rotina"></tbody></table></div></div></section>
 <section class="section" id="kanban"><div class="panel"><h2>Kanban · projetos acadêmicos e automações</h2><div class="kanban" id="colunas"></div></div></section>
 <section class="section" id="saude"><div class="duo"><div class="panel"><h2>Hábitos</h2><div id="habitos"></div><button data-acao="agua">💧 Registrar 1 copo</button></div><div class="panel"><h2>Financeiro / Restaurante Universitário</h2><p id="saldo-texto"></p><div class="row"><label for="qtd">Refeições RU</label><input id="qtd" type="number" min="0" max="300" step="1" required value="5"></div><button id="simular">Simular (não debita saldo)</button><p class="muted">Movimentações financeiras ficam restritas aos comandos do proprietário no Telegram.</p></div></div></section>
 <section class="section" id="robotask"><div class="duo"><div class="panel"><h2>Ferramentas do PC</h2><p class="muted">Essas ações afetam apenas a sessão atual do Windows e solicitam confirmação.</p><div class="row"><button data-pc="f8">⚡ NesTask · F8</button><button data-pc="f9">🔑 RoboTask · F9</button><button data-pc="f10">📱 Celular · F10</button><button data-pc="desktop">🖥️ Mostrar desktop</button><button data-pc="taskmgr">📊 Gerenciador de Tarefas</button></div><button data-acao="diagnostico">🛠️ Diagnóstico seguro</button><button data-acao="notebook">📓 Exportar CSV / Notebook</button></div><div class="panel"><h2>Catálogo RoboTask</h2><div id="tarefas-robotask" class="scroll"></div></div></div></section>
-<section class="section" id="colaboracao">
-<div class="panel" style="margin-bottom:18px"><h2>Chats e projeto do assistente</h2><p id="resumo-projeto" class="muted">Carregando projeto...</p><p>Converse com as IAs configuradas, organize tarefas e reúna propostas de outros chats. Para colaborar com ChatGPT, Gemini, Claude ou Manus, baixe o contexto, anexe o ZIP no serviço escolhido e cole a resposta em «Importar contribuição». O pacote também inclui prompts para Claude Code, OpenCode e Cline. Você compartilha o material; o painel não acessa suas sessões nesses serviços nem inicia agentes de código.</p><button id="exportar-contexto">📦 Baixar contexto do projeto (ZIP)</button><small> O pacote reúne fontes e tarefas para compartilhar. Revise os arquivos antes de enviar a outro serviço.</small></div>
-<div class="duo" style="margin-bottom:18px"><div class="panel"><h2 id="chat-titulo">Conversa ativa</h2><p id="chat-provedor" class="muted"></p><div class="row"><label for="chat-ativo-provedor">Provedor desta conversa</label><select id="chat-ativo-provedor"><option value="auto">Automático</option><option>Gemini</option><option>OpenAI</option><option>Claude</option><option>Ollama</option></select><button id="chat-trocar-provedor">Salvar provedor</button></div><div class="row"><label for="chat-modelo-ollama">Modelo Ollama desta conversa</label><select id="chat-modelo-ollama"><option value="">Padrão do .env</option></select><button id="chat-salvar-modelo">Usar modelo nesta conversa</button><button id="atualizar-modelos-ollama">Atualizar modelos do Ollama</button><button id="chat-detalhes-modelo">Ver detalhes do modelo</button><button id="chat-testar-modelo">Testar resposta deste modelo</button></div><p id="modelos-ollama-status" class="muted" role="status">Atualize a lista para consultar os modelos disponíveis no serviço Ollama do seu PC. Essa leitura não gera respostas nem baixa modelos.</p><p id="chat-modelo-aviso" class="muted"></p><div id="detalhes-modelo-ollama" class="status" role="status">Selecione um modelo e consulte seus detalhes quando precisar. A leitura não gera respostas.</div><div id="teste-modelo-ollama" class="status" role="status">O teste de resposta só começa quando você solicitar e confirmar.</div><div id="historico-chat" class="chat-historico" aria-label="Histórico da conversa"></div><label for="chat-texto">Mensagem para o chat ativo</label><textarea id="chat-texto" maxlength="1000" placeholder="Escreva sua pergunta ou peça uma proposta para o assistente..."></textarea><div class="row"><button id="chat-enviar">Enviar mensagem</button><small>Ctrl + Enter para enviar. A consulta ao provedor selecionado pode consumir créditos.</small></div><div id="chat-resposta" role="status" class="status">Escolha ou crie uma conversa.</div></div>
-<div class="panel"><h2>Conversas</h2><div id="lista-chats" class="chat-lista"></div><h3>Nova conversa</h3><form id="form-chat" class="form-grade"><label for="chat-novo-titulo">Título</label><input id="chat-novo-titulo" maxlength="100" required placeholder="Ex.: Planejar melhorias"><label for="chat-novo-provedor">Provedor</label><select id="chat-novo-provedor"><option value="auto">Automático</option><option>Gemini</option><option>OpenAI</option><option>Claude</option><option>Ollama</option></select><button type="submit">Criar conversa</button></form></div></div>
-<div class="panel" style="margin-bottom:18px"><h2>Equipe de IAs</h2><p class="muted">Peça propostas para o mesmo objetivo a vários provedores configurados. Cada resposta entra como contribuição em rascunho para sua revisão.</p><label for="equipe-objetivo">Objetivo comum</label><textarea id="equipe-objetivo" maxlength="1000" placeholder="Ex.: Proponha melhorias no painel com critérios de teste."></textarea><fieldset id="equipe-provedores"><legend>Provedores (sem seleção: todos os configurados)</legend><div class="row"><label><input type="checkbox" value="Gemini"> Gemini</label><label><input type="checkbox" value="OpenAI"> OpenAI</label><label><input type="checkbox" value="Claude"> Claude</label><label><input type="checkbox" value="Ollama"> Ollama (modelo padrão)</label></div></fieldset><fieldset><legend>Modelos Ollama para a equipe (opcional)</legend><div id="equipe-modelos-ollama"><p class="muted">Atualize os modelos do Ollama para escolher mais de um. Sem seleção, vale o modelo padrão do provedor Ollama.</p></div><small>Modelos selecionados substituem o Ollama padrão; a equipe aceita até quatro participantes. Consultas ao Ollama são feitas em sequência para poupar memória. Modelos em nuvem dependem de conta, internet e cota.</small><div class="row"><button id="criar-chats-modelos">Criar conversas para modelos marcados</button><small>Cria ou reutiliza uma conversa separada por modelo marcado, até quatro por vez. Não consulta as IAs nem baixa modelos.</small></div></fieldset><div class="row"><button id="consultar-equipe">Consultar equipe</button><small>Uma consulta por participante selecionado. Pode consumir cota; nenhum código é aplicado automaticamente.</small></div><div id="equipe-resposta" class="status" role="status">Nenhuma consulta de equipe iniciada.</div></div>
+<section class="section" id="colaboracao"><div class="panel"><h2>Modelo 9Router desta conversa</h2><label for="chat-modelo-9router">Modelo ou combo (vazio usa o padrão global)</label><input id="chat-modelo-9router" maxlength="200" list="9router-modelos"><div class="row"><button id="chat-9router-salvar" type="button">Usar 9Router nesta conversa</button><button id="chat-9router-catalogo" type="button">Consultar modelos e combos</button><button id="chat-9router-testar" type="button">Testar resposta do modelo</button></div><p id="chat-9router-status" class="status" role="status">A escolha é isolada por conversa. O teste envia somente OK e pode consumir cota.</p></div>
+<div class="panel" style="margin-bottom:18px"><h2>Chats e projeto do assistente</h2><p id="resumo-projeto" class="muted">Carregando projeto...</p><p>Converse com as IAs configuradas, organize tarefas e reúna propostas de outros chats. Para colaborar com ChatGPT, Gemini, Claude ou Manus, baixe o contexto, anexe o ZIP no serviço escolhido e cole a resposta em «Importar contribuição». O pacote também inclui prompts para Claude Code, OpenCode e Cline. O painel pode solicitar a abertura de agentes pelo lançador oficial do Ollama após sua confirmação; não acessa suas sessões nem compartilha o histórico automaticamente.</p><button id="exportar-contexto">📦 Baixar contexto do projeto (ZIP)</button><small> O pacote reúne fontes e tarefas para compartilhar. Revise os arquivos antes de enviar a outro serviço.</small></div>
+<div class="panel" style="margin-bottom:18px"><h2>Agentes pelo Ollama</h2><p>Claude Code, Hermes, Cline e os demais itens do lançador são aplicativos de agentes. Os modelos usados por eles são escolhidos separadamente. A presença nesta lista não comprova instalação, login ou geração de respostas.</p><div class="row"><button id="atualizar-agentes" type="button">Listar integrações de agentes</button><label for="agente-selecionado">Agente</label><select id="agente-selecionado"><option value="">Carregue a lista e escolha um agente</option></select></div><label for="agente-modelo">Modelo opcional para o agente</label><input id="agente-modelo" maxlength="200" placeholder="Vazio: escolha no lançador; ex.: llama3.2:latest"><p class="muted">Nomes terminados em -cloud usam internet, conta e cota do Ollama. O lançador pode solicitar instalação, download ou login no terminal local; revise o que ele apresentar. Nenhum histórico desta conversa é enviado ao abrir o agente.</p><p id="agentes-status" class="muted" role="status">A listagem é local e só será consultada quando você solicitar.</p><div class="row"><button id="agente-abrir" type="button">Preparar abertura</button><button id="agente-configurar" type="button">Preparar configuração</button></div><div id="agentes-resposta" class="status" role="status">Escolha um agente para preparar o pedido. O terminal só será aberto após confirmar.</div><div id="agentes-pedido" aria-live="polite"></div></div>
+<div class="duo" style="margin-bottom:18px"><div class="panel"><h2 id="chat-titulo">Conversa ativa</h2><p id="chat-provedor" class="muted"></p><div class="row"><label for="chat-ativo-provedor">Provedor desta conversa</label><select id="chat-ativo-provedor"><option value="auto">Automático</option><option>Gemini</option><option>OpenAI</option><option>Claude</option><option>Ollama</option><option>9Router</option></select><button id="chat-trocar-provedor">Salvar provedor</button></div><div class="row"><label for="chat-modelo-ollama">Modelo Ollama desta conversa</label><select id="chat-modelo-ollama"><option value="">Padrão do .env</option></select><button id="chat-salvar-modelo">Usar modelo nesta conversa</button><button id="chat-modelo-padrao">Definir como padrão do Ollama</button><button id="atualizar-modelos-ollama">Atualizar modelos do Ollama</button><button id="chat-detalhes-modelo">Ver detalhes do modelo</button><button id="chat-testar-modelo">Testar resposta deste modelo</button></div><p id="modelos-ollama-status" class="muted" role="status">Atualize a lista para consultar os modelos disponíveis no serviço Ollama do seu PC. Essa leitura não gera respostas nem baixa modelos.</p><p id="chat-modelo-aviso" class="muted"></p><p class="muted">Definir como padrão salva o modelo no assistente deste PC e usa Ollama na conversa ativa, mantendo seu histórico. Não gera uma resposta nem baixa modelos. Use uma conversa nova para separar o contexto.</p><div id="detalhes-modelo-ollama" class="status" role="status">Selecione um modelo e consulte seus detalhes quando precisar. A leitura não gera respostas.</div><div id="teste-modelo-ollama" class="status" role="status">O teste de resposta só começa quando você solicitar e confirmar.</div><div class="row"><label for="chat-equipe-paralela"><input id="chat-equipe-paralela" type="checkbox" aria-describedby="chat-equipe-status chat-equipe-ajuda"> Usar todos os modelos nesta conversa</label><button id="chat-atualizar-equipe" type="button">Atualizar equipe pelo catálogo</button></div><p id="chat-equipe-status" class="status" role="status">Selecione uma conversa para configurar sua equipe.</p><p id="chat-equipe-ajuda" class="muted">Basta escrever: nas conversas automáticas, o 9Router habilitado tem preferência; sem ele, a equipe Ollama consulta o catálogo na próxima pergunta que precise de IA, sem comando de ativação. A equipe cooperativa consulta um modelo por vez e reúne as contribuições em uma síntese final. Falhas parciais são informadas sem repetir consultas; ações exigem concordância de todos e sua confirmação. Tags cloud usam conta, internet e cota Ollama. O Ollama pode enfileirar conforme a memória disponível. Desmarcar a equipe ou salvar um provedor, modelo individual ou padrão passa esta conversa para escolha manual. Atualizar equipe consulta o catálogo e salva a seleção manual, sem gerar respostas ou baixar modelos.</p><div class="row"><label for="chat-modo-conversa"><input id="chat-modo-conversa" type="checkbox"> Conversa contínua nesta sessão</label></div><p id="chat-modo-status" class="muted"></p><div id="historico-chat" class="chat-historico" aria-label="Histórico da conversa"></div><label for="chat-texto">Mensagem para o chat ativo</label><textarea id="chat-texto" maxlength="1000" placeholder="Ex.: Mostre minha rotina; abra o VS Code; registre um gasto de 15 reais com almoço"></textarea><div class="row"><button id="chat-enviar">Enviar mensagem</button><small>Escreva normalmente, sem /ia. Ctrl + Enter envia. Consultas à IA podem consumir cota; ações propostas aguardam sua confirmação.</small></div><div id="chat-resposta" role="status" class="status">Escolha ou crie uma conversa.</div><div id="chat-pedido" aria-live="polite"></div></div>
+<div class="panel"><h2>Conversas</h2><div id="lista-chats" class="chat-lista"></div><h3>Nova conversa</h3><form id="form-chat" class="form-grade"><label for="chat-novo-titulo">Título</label><input id="chat-novo-titulo" maxlength="100" required placeholder="Ex.: Planejar melhorias"><label for="chat-novo-provedor">Provedor</label><select id="chat-novo-provedor"><option value="auto">Automático</option><option>Gemini</option><option>OpenAI</option><option>Claude</option><option>Ollama</option><option>9Router</option></select><button type="submit">Criar conversa</button></form></div></div>
+<div class="panel" style="margin-bottom:18px"><h2>Equipe de IAs</h2><p class="muted">Peça propostas para o mesmo objetivo a vários provedores configurados. Cada resposta entra como contribuição em rascunho para sua revisão.</p><label for="equipe-objetivo">Objetivo comum</label><textarea id="equipe-objetivo" maxlength="1000" placeholder="Ex.: Proponha melhorias no painel com critérios de teste."></textarea><fieldset id="equipe-provedores"><legend>Provedores (sem seleção: todos os configurados)</legend><div class="row"><label><input type="checkbox" value="Gemini"> Gemini</label><label><input type="checkbox" value="OpenAI"> OpenAI</label><label><input type="checkbox" value="Claude"> Claude</label><label><input type="checkbox" value="Ollama"> Ollama (modelo padrão)</label><label><input type="checkbox" value="9Router"> 9Router</label></div></fieldset><fieldset><legend>Modelos Ollama para a equipe (opcional)</legend><div id="equipe-modelos-ollama"><p class="muted">Atualize os modelos do Ollama para escolher mais de um. Sem seleção, vale o modelo padrão do provedor Ollama.</p></div><small>Modelos selecionados substituem o Ollama padrão; a equipe aceita até oito participantes. Consultas ao Ollama são feitas em sequência para poupar memória. Modelos em nuvem dependem de conta, internet e cota.</small><div class="row"><button id="criar-chats-modelos">Criar conversas para modelos marcados</button><small>Cria ou reutiliza uma conversa separada por modelo marcado, até quatro por vez. Não consulta as IAs nem baixa modelos.</small></div></fieldset><fieldset><legend>Modelos/combos 9Router para a equipe (opcional)</legend><div id="equipe-modelos-9router"><p class="muted">Atualize o catálogo 9Router para escolher até quatro modelos/combos. Substituem o 9Router padrão na equipe.</p></div></fieldset><div class="row"><button id="consultar-equipe">Consultar equipe</button><small>Uma consulta por participante selecionado. Pode consumir cota; nenhum código é aplicado automaticamente.</small></div><div id="equipe-resposta" class="status" role="status">Nenhuma consulta de equipe iniciada.</div></div>
 <div class="duo"><div class="panel"><h2>Tarefas do projeto</h2><form id="form-tarefa" class="form-grade"><label for="projeto-titulo">Título da tarefa</label><input id="projeto-titulo" maxlength="150" required><label for="projeto-descricao">Objetivo e critérios de conclusão</label><textarea id="projeto-descricao" maxlength="4000" required></textarea><label for="projeto-papel">Responsável ou papel</label><input id="projeto-papel" maxlength="60" placeholder="Ex.: revisão, implementação, testes"><button type="submit">Criar tarefa</button></form><div id="lista-tarefas-projeto"></div></div>
 <div class="panel"><h2>Importar contribuição</h2><p class="muted">Cole uma proposta obtida em outro chat. Revise antes de aceitar: a aprovação registra uma proposta para o projeto, sem aplicar código automaticamente.</p><form id="form-contribuicao" class="form-grade"><label for="contribuicao-origem">Origem</label><input id="contribuicao-origem" maxlength="80" required placeholder="Ex.: ChatGPT · revisão do painel"><label for="contribuicao-titulo">Título</label><input id="contribuicao-titulo" maxlength="150" required><label for="contribuicao-tarefa">Tarefa relacionada (opcional)</label><select id="contribuicao-tarefa"><option value="">Sem tarefa relacionada</option></select><label for="contribuicao-texto">Texto ou proposta</label><textarea id="contribuicao-texto" maxlength="30000" required></textarea><button type="submit">Importar para revisão</button></form><div id="lista-contribuicoes"></div></div></div>
 </section>
-<section class="section" id="ias"><div class="duo"><div class="panel"><h2>Conversar e pedir ajuda</h2><p class="muted">Escreva como falaria com seu assistente: peça ajuda, consulte a rotina ou descreva uma ação. A conversa ativa fica em «Chats e projeto». Pedidos que precisam de confirmação aparecem abaixo; revise a descrição antes de confirmar.</p><p id="ia-chat-ativo" class="muted"></p><div class="row"><input class="flex" type="text" id="pergunta" maxlength="1000" aria-label="Mensagem ou pedido" placeholder="Ex.: Mostre minha rotina ou abra a calculadora"><button id="consultar">Perguntar</button></div><div id="resposta" class="status" role="status">Aguardando mensagem.</div><div id="pedido-resposta" aria-live="polite"></div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. O teste de conexões faz uma consulta explícita aos provedores configurados e pode consumir créditos.</p><div class="row"><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="testar-conexoes">🔌 Testar conexões configuradas</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div><p class="muted">Para usar seus modelos Ollama, execute <code>configurar_ia_local.bat</code> e crie uma conversa com o provedor Ollama. Em «Chats e projeto», clique em «Atualizar modelos do Ollama» e escolha o modelo de cada conversa. Modelos como <code>qwen3.5:4b</code> podem executar no PC; nomes com <code>-cloud</code> indicam uso da nuvem Ollama, sujeito a conta, internet e cota.</p></div></div></section>
+<section class="section" id="integracoes">
+<div class="panel"><h2>Estado das integrações</h2><p>Confira cada recurso e a próxima etapa. Presença de pacote não comprova geração, conta ou pareamento.</p><div class="row"><button id="prontidao-local" type="button">Conferir preparação local</button><button id="prontidao-sondar" type="button">Consultar APIs locais</button></div><p class="muted">A consulta explícita verifica Ollama e catálogo 9Router. O gateway pode contatar provedores; não há geração de respostas.</p><div id="prontidao-status" class="status" role="status"></div><div id="prontidao-itens"></div></div>
+<div class="panel"><h2>Gemini Interactions e agentes gerenciados</h2><p>Crie tarefas remotas, acompanhe e traga resultados para revisão no projeto. Usa chave e cota da Gemini API, separadas da assinatura Colab. Tarefas em segundo plano mantêm registro na Google conforme a política da API. Só o pedido escrito e a continuação escolhida serão enviados; arquivos, notas e histórico locais não são anexados automaticamente.</p><button id="gemini-atualizar" type="button">Ler tarefas e configuração desta conversa</button><p id="gemini-status" class="status" role="status"></p><form id="gemini-form" class="form-grade"><label for="gemini-agente">ID do agente</label><input id="gemini-agente" value="antigravity-preview-09-2026" maxlength="200" list="gemini-agentes"><datalist id="gemini-agentes"><option value="antigravity-preview-09-2026"><option value="deep-research-preview-04-2026"><option value="deep-research-max-preview-04-2026"></datalist><label for="gemini-anterior">Continuar tarefa concluída do mesmo agente</label><select id="gemini-anterior"><option value="">Nova tarefa</option></select><label for="gemini-texto">Tarefa para o agente</label><textarea id="gemini-texto" maxlength="6000" required></textarea><label><input id="gemini-rede" type="checkbox"> Permitir rede externa no sandbox Antigravity</label><button type="submit">Preparar tarefa para confirmação</button></form><form id="gemini-perfil-form" class="form-grade"><h3>Perfil gerenciado próprio</h3><label for="gemini-perfil-titulo">Nome do perfil</label><input id="gemini-perfil-titulo" maxlength="80" required><label for="gemini-perfil-instrucoes">Instruções do perfil</label><textarea id="gemini-perfil-instrucoes" maxlength="6000" required></textarea><button type="submit">Preparar criação do perfil</button></form><div id="gemini-resposta" class="status" role="status"></div><div id="gemini-pedido" aria-live="polite"></div><div id="gemini-perfis"></div><div id="gemini-tarefas"></div></div>
+
+<div class="panel" style="margin-bottom:18px"><h2>Configuração local do assistente</h2><p>Verifique o que está pronto ou abra as etapas guiadas de configuração no PC. Este fluxo funciona sem consultar modelos de IA. Você revisa as etapas na janela local e conclui o login das contas quando necessário; o acesso remoto do 9Remote e o uso de modelos em nuvem continuam separados.</p><div class="row"><button id="verificar-configuracao" type="button">Verificar configuração local</button><button id="configurar-assistente" type="button">Configurar assistente</button></div><div id="configuracao-resposta" class="status" role="status">A verificação consulta somente metadados locais; abrir o configurador exige sua confirmação.</div><div id="configuracao-pedido" aria-live="polite"></div></div>
+<div class="duo" style="margin-bottom:18px"><div class="panel"><h2>9Router e 9Remote</h2><p>O 9Router encaminha consultas de IA aos provedores configurados no seu dashboard. O 9Remote permite acesso remoto ao PC e tem seu próprio pareamento e suas próprias permissões. São serviços separados dos modelos Ollama e do painel MeuControlePC.</p><div class="row"><button id="atualizar-9stack" type="button">Conferir instalações e configuração</button><label for="9stack-servico">Serviço</label><select id="9stack-servico"><option value="9router">9Router</option><option value="9remote">9Remote</option></select></div><p id="9stack-status" class="muted" role="status">Nenhum serviço foi iniciado ou instalado por esta página.</p><div class="row"><button id="9stack-instalar" type="button">Preparar instalação</button><button id="9stack-abrir" type="button">Preparar abertura</button><button id="9stack-iniciar" type="button">Preparar início</button></div><p class="muted">Revise o pedido antes de confirmar. A instalação usa a versão indicada pelo assistente em uma pasta separada. Abrir o 9Remote mostra sua interface; iniciar o 9Remote é uma ação de acesso remoto. Faça login, pareie dispositivos e gerencie a parada ou revogação na interface oficial. Chaves, QR codes e códigos de acesso não são enviados para esta página. A configuração de rede desses aplicativos é própria; o painel MeuControlePC continua no endereço local.</p><div id="9stack-resposta" class="status" role="status">Escolha o serviço e a operação para revisar o pedido.</div><div id="9stack-pedido" aria-live="polite"></div></div>
+<div class="panel"><h2>Usar 9Router nas conversas</h2><p>Depois de instalar e iniciar o serviço, configure suas contas e seus modelos ou combos no dashboard do 9Router. O assistente usa a API compatível com OpenAI; um endpoint local pode encaminhar o histórico para provedores externos e consumir cota.</p><p id="9router-status" class="status" role="status">Configuração ainda não conferida. Uma configuração salva não comprova conectividade.</p><form id="form-9router" class="form-grade"><label for="9router-ativo"><input id="9router-ativo" type="checkbox"> Preferir 9Router nas conversas automáticas</label><label for="9router-url">Base da API local</label><input id="9router-url" maxlength="250" value="http://127.0.0.1:20128/v1" required><label for="9router-modelo">Modelo ou combo do 9Router</label><input id="9router-modelo" maxlength="200" list="9router-modelos" placeholder="Identificador definido no dashboard"><datalist id="9router-modelos"></datalist><button id="atualizar-modelos-9router" type="button">Consultar modelos e combos</button><p id="9router-modelos-status" class="muted" role="status">A consulta ao catálogo pode contatar os provedores conectados ao 9Router; não testa geração de respostas.</p><button type="submit">Revisar e salvar configuração</button></form><p class="muted">A habilitação passa a preferir 9Router nas conversas automáticas. Escolhas manuais de provedor ou modelo são preservadas. Se o serviço exigir uma chave, configure-a pelo console local, sem enviar chaves no chat ou neste formulário. Instalar o serviço não cria contas nem compra créditos.</p></div></div>
+<div class="panel"><h2>Memória explícita do assistente</h2><p>Guarde preferências e informações que você quer reutilizar neste contexto. As notas só são gravadas depois de confirmar; a IA não cria memórias automaticamente. Notas relevantes podem acompanhar as próximas mensagens enviadas ao modelo escolhido. Não salve senhas ou chaves.</p><button id="exportar-memoria" type="button">Exportar notas em Markdown</button><div id="memoria-exportacao"></div><button id="atualizar-memoria" type="button">Ler notas deste contexto</button><p id="memoria-status" class="muted" role="status">Nenhuma nota foi carregada nesta página.</p><div id="lista-memoria"></div><form id="form-memoria" class="form-grade"><label for="memoria-titulo">Título da nota</label><input id="memoria-titulo" maxlength="80" required><label for="memoria-texto">Informação a lembrar</label><textarea id="memoria-texto" maxlength="800" required></textarea><button type="submit">Preparar nota para confirmação</button></form><div id="memoria-resposta" class="status" role="status">Revise o conteúdo antes de salvar uma nota.</div><div id="memoria-pedido" aria-live="polite"></div></div>
+</section>
+<section class="section" id="ias"><div class="duo"><div class="panel"><h2>Conversar e pedir ajuda</h2><p class="muted">Escreva como falaria com seu assistente: peça ajuda, consulte a rotina ou descreva uma ação. A conversa ativa fica em «Chats e projeto». Pedidos que precisam de confirmação aparecem abaixo; revise a descrição antes de confirmar.</p><p id="ia-chat-ativo" class="muted"></p><div class="row"><input class="flex" type="text" id="pergunta" maxlength="1000" aria-label="Mensagem ou pedido" placeholder="Ex.: Mostre minha rotina ou abra a calculadora"><button id="consultar">Perguntar</button></div><div id="resposta" class="status" role="status">Aguardando mensagem.</div><div id="pedido-resposta" aria-live="polite"></div></div><div class="panel"><h2>Provedores configurados</h2><div id="provedores"></div><p class="muted">«Não testado» não significa online. O teste de conexões faz uma consulta explícita aos provedores configurados e pode consumir créditos.</p><div class="row"><button data-acao="verificar">🔎 Verificar configuração local (sem cobrança)</button><button id="testar-conexoes">🔌 Testar conexões configuradas</button><button id="reativar-ias">🔄 Limpar pausas locais das IAs</button></div><p class="muted">Para usar seus modelos Ollama, execute <code>configurar_ia_local.bat</code> e crie uma conversa com o provedor Ollama. Em «Chats e projeto», clique em «Atualizar modelos do Ollama» e escolha o modelo de cada conversa. Modelos como <code>qwen3.5:4b</code> podem executar no PC; nomes com <code>-cloud</code> indicam uso da nuvem Ollama, sujeito a conta, internet e cota.</p></div></div><div class="panel"><h2>Nuvem no perfil CPU do Ollama</h2><p>Esta opção permite que as consultas do perfil CPU usem modelos em nuvem selecionados. Ao permitir, mensagens e o histórico usados na consulta podem ser enviados à sua conta Ollama e consumir cota. Conta, internet e acesso ao modelo continuam necessários.</p><p id="modelos-nuvem-status" class="status" role="status">Permissão de nuvem do perfil CPU ainda não consultada.</p><div class="row"><button id="autorizar-nuvem" type="button">Permitir nuvem no perfil CPU</button><button id="desativar-nuvem" type="button">Restringir perfil CPU a modelos locais</button></div><p class="muted">Esta escolha afeta somente o perfil CPU do MeuControlePC. Não altera o perfil padrão do serviço nem aplicativos externos, que têm configurações próprias. Permitir não instala modelos, não faz login nem inicia uma consulta.</p></div></section>
 <section class="section" id="evolucao"><div class="duo">
 <div class="panel"><h2>🧠 Auditoria local e serviços externos</h2>
 <p class="muted">Análise periódica local (padrão: 360 minutos). Inspeciona código, JSON, disco e logs. O resultado local e os avisos de serviços externos aparecem separados. Os logs registram consultas anteriores; esta análise não consulta as APIs nem confirma a disponibilidade atual dos provedores.</p>
@@ -64,7 +74,8 @@ let chatAtivoId='';
 let chatModeloAtual='';
 let chatEquipeAtiva=false;
 let catalogoOllama=null;
-function equipeAutomatica(chat){return !!chat?.id&&chat.equipe_politica!=='manual'}
+function roteadorAutomatico(chat){return !!chat?.id&&chat.equipe_politica!=='manual'&&chat.provedor==='9Router'}
+function equipeAutomatica(chat){return !!chat?.id&&chat.equipe_politica!=='manual'&&!roteadorAutomatico(chat)}
 function atualizarBotoes(){
  document.querySelectorAll('button:not([data-tab])').forEach(b=>{b.disabled=b.id==='cancelar-windows'?pedidosAtivos.has('cancelar'):pedidosAtivos.size>0});
  $('chat-equipe-paralela').disabled=pedidosAtivos.size>0||!chatAtivoId;
@@ -80,7 +91,7 @@ async function api(caminho,body,opcoes={}){
  const controle=new AbortController();
  const opt={headers:{'X-Painel-Token':token,...opcoes.headers},signal:controle.signal};
  if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
- const espera=opcoes.timeout??(body?(body.acao==='equipe_ia'?540000:body.acao==='conexoes_ia'?240000:body.acao==='pergunta'&&chatEquipeAtiva?1200000:180000):10000);
+ const espera=opcoes.timeout??(body?(body.acao==='equipe_ia'?540000:body.acao==='conexoes_ia'?240000:body.acao==='pergunta'&&chatEquipeAtiva?240000:180000):10000);
  const prazo=setTimeout(()=>controle.abort(),espera);
  try{
   const r=await fetch(caminho,opt);
@@ -149,6 +160,7 @@ function tipoModelo(nome){
 }
 function rotuloModelo(nome){return `${nome} · ${{nuvem:'nuvem (conta, internet e cota)',local:'local',desconhecido:'tipo a verificar'}[tipoModelo(nome)]}`}
 function perfilModelo(nome){const item=catalogoOllama?.modelos?.find(m=>m.nome===nome);return item?.familia?` · ${item.familia}`:''}
+const orientacaoOllama404='Ollama retornou HTTP 404. Em «Chats e projeto», atualize os modelos, escolha uma tag presente na lista e clique «Definir como padrão do Ollama». Depois solicite «Testar resposta deste modelo». Se o modelo continuar listado e retornar 404, confira o serviço/rota do Ollama. Backup e arquivos locais não corrigem essa resposta.';
 function avisoModeloOllama(){
  const nome=$('chat-modelo-ollama').value||catalogoOllama?.padrao||'';
  text($('chat-modelo-aviso'),!nome?'Sem escolha específica: esta conversa usará o modelo Ollama definido no .env.':tipoModelo(nome)==='nuvem'?'Modelo em nuvem: ao salvar esta escolha, as mensagens usarão a conta Ollama e dependerão de internet e cota.':tipoModelo(nome)==='local'?'Modelo local: ao salvar esta escolha, a execução dependerá da memória e do serviço Ollama no PC.':'Atualize a lista do Ollama para verificar o tipo do modelo salvo. Um alias também pode apontar para um modelo em nuvem.');
@@ -180,6 +192,158 @@ async function atualizarModelosOllama(){
   text($('modelos-ollama-status'),`${modelos.length} modelo(s) listado(s). A listagem não testa geração nem acesso à nuvem.`+(dados.habilitado===false?' Habilite Ollama com configurar_ia_local.bat antes de conversar.':''));
  }catch(e){text($('modelos-ollama-status'),'⚠️ '+e.message)}
  finally{pedidosAtivos.delete('modelos');atualizarBotoes()}
+}
+async function atualizarAgentes(){
+ if(pedidosAtivos.size)return;pedidosAtivos.add('agentes');atualizarBotoes();
+ text($('agentes-status'),'Conferindo as integrações locais do lançador Ollama...');
+ try{
+  const dados=await api('/api/agentes');
+  if(!Array.isArray(dados.agentes)||dados.agentes.length>30)throw Error('O servidor retornou uma lista de agentes inválida.');
+  const nomes=new Set(),itens=[];
+  for(const item of dados.agentes){
+   if(!item||typeof item.agente!=='string'||!/^[-a-z0-9]{1,60}$/.test(item.agente)||typeof item.nome!=='string'||!item.nome.trim()||item.nome.length>100||nomes.has(item.agente))throw Error('O servidor retornou uma integração de agente inválida.');
+   nomes.add(item.agente);itens.push(item);
+  }
+  const seletorAgente=$('agente-selecionado'),escolhido=seletorAgente.value;
+  seletorAgente.replaceChildren();
+  const vazio=el('option','Escolha um agente');vazio.value='';seletorAgente.append(vazio);
+  const estados={comando_no_path:'comando encontrado no PATH',verificar_no_lancador:'verificar no lançador',nao_localizado_no_path:'comando não localizado no PATH'};
+  for(const item of itens){const estado=typeof item.estado==='string'&&Object.hasOwn(estados,item.estado)?estados[item.estado]:'estado a verificar';const opcao=el('option',item.nome+' · '+estado);opcao.value=item.agente;seletorAgente.append(opcao)}
+  seletorAgente.value=nomes.has(escolhido)?escolhido:'';
+  text($('agentes-status'),itens.length+' integração(ões) listada(s). '+(itens.some(item=>item.lancador_no_path===true)?'Lançador Ollama localizado no PATH; compatibilidade será conferida ao abrir.':'O lançador Ollama não foi localizado no PATH; confira a instalação antes de abrir um agente.')+' A listagem não instala aplicativos nem testa contas.');
+ }catch(erro){text($('agentes-status'),'⚠️ '+erro.message)}
+ finally{pedidosAtivos.delete('agentes');atualizarBotoes()}
+}
+async function prepararAgente(configurar=false){
+ if(pedidosAtivos.size)return;
+ const agente=$('agente-selecionado').value,modelo=$('agente-modelo').value.trim();
+ if(!agente)return aviso('Liste as integrações e escolha um agente primeiro.');
+ if(!/^[-a-z0-9]{1,60}$/.test(agente)||modelo.length>200||modelo.includes('\x00'))return aviso('Confira o agente e o nome do modelo; nenhum pedido foi enviado.');
+ exibirPedidoConversa('agentes-resposta',null);
+ text($('agentes-resposta'),'Preparando a descrição para sua confirmação...');
+ try{
+  const dados=await enviarAcao('agente_preparar',{agente,modelo,configurar});
+  if(dados){text($('agentes-resposta'),dados.mensagem||'Pedido preparado.');exibirPedidoConversa('agentes-resposta',dados.pedido)}
+ }catch(erro){text($('agentes-resposta'),'⚠️ '+erro.message)}
+}
+async function verificarConfiguracaoLocal(){
+ if(pedidosAtivos.size)return;pedidosAtivos.add('configuracao-local');atualizarBotoes();
+ text($('configuracao-resposta'),'Verificando os metadados locais, sem consultar modelos...');
+ try{
+  const dados=await api('/api/configuracao');
+  if(!dados||typeof dados.mensagem!=='string'||!dados.mensagem.trim()||dados.mensagem.length>6000)throw Error('O servidor retornou uma verificação de configuração inválida.');
+  text($('configuracao-resposta'),dados.mensagem);
+ }catch(erro){text($('configuracao-resposta'),'⚠️ '+erro.message)}
+ finally{pedidosAtivos.delete('configuracao-local');atualizarBotoes()}
+}
+async function prepararConfiguracaoLocal(){
+ if(pedidosAtivos.size)return;
+ exibirPedidoConversa('configuracao-resposta',null);
+ text($('configuracao-resposta'),'Preparando a configuração local para revisão; nenhum modelo será consultado...');
+ try{
+  const dados=await enviarAcao('configuracao_preparar');
+  if(dados){text($('configuracao-resposta'),dados.mensagem||'Pedido preparado.');exibirPedidoConversa('configuracao-resposta',dados.pedido)}
+ }catch(erro){text($('configuracao-resposta'),'⚠️ '+erro.message)}
+}
+function mostrarConfiguracao9Router(meta){
+ if(!meta||typeof meta!=='object'||Array.isArray(meta))throw Error('O servidor retornou uma configuração 9Router inválida.');
+ if(typeof meta.url==='string'&&meta.url.length<=250)$('9router-url').value=meta.url;
+ if(typeof meta.modelo==='string'&&meta.modelo.length<=200)$('9router-modelo').value=meta.modelo;
+ $('9router-ativo').checked=meta.habilitado===true;
+ const linhas=[typeof meta.estado==='string'?meta.estado.slice(0,500):'Configuração local disponível; conexão não verificada.',
+  'Credencial local: '+(meta.chave_definida===true?'definida; valor oculto.':'não informada nesta configuração.'),
+  'Configuração não é teste de resposta nem confirmação de cota.'];
+ if(typeof meta.orientacao==='string')linhas.push(meta.orientacao.slice(0,1000));
+ text($('9router-status'),linhas.join('\n'));
+}
+async function atualizar9Stack(){
+ if(pedidosAtivos.size)return;pedidosAtivos.add('9stack');atualizarBotoes();
+ text($('9stack-status'),'Conferindo os serviços gerenciados e a configuração local...');
+ try{
+  const dados=await api('/api/9stack');
+  if(!Array.isArray(dados.servicos)||dados.servicos.length!==2)throw Error('O servidor retornou uma lista de serviços inválida.');
+  const nomes=new Set(),linhas=[];
+  for(const item of dados.servicos){
+   if(!item||!['9router','9remote'].includes(item.servico)||nomes.has(item.servico)||typeof item.nome!=='string'||item.nome.length>100)throw Error('O servidor retornou um serviço inválido.');
+   nomes.add(item.servico);
+   const versao=typeof item.versao_fixada==='string'?item.versao_fixada.slice(0,40):'não informada';
+   linhas.push(item.nome+' · versão gerenciada '+versao+' · '+(item.instalado_gerenciado===true?'instalação localizada, ainda não testada.':'instalação gerenciada não localizada.'));
+   if(item.node_no_path!==true)linhas.push('Node.js não localizado para '+item.nome+'; confira os requisitos antes de instalar.');
+  }
+  mostrarConfiguracao9Router(dados.roteador);
+  text($('9stack-status'),linhas.join('\n'));
+ }catch(erro){text($('9stack-status'),'⚠️ '+erro.message)}
+ finally{pedidosAtivos.delete('9stack');atualizarBotoes()}
+}
+async function preparar9Stack(operacao){
+ if(pedidosAtivos.size)return;
+ const servico=$('9stack-servico').value;
+ if(!['9router','9remote'].includes(servico)||!['instalar','abrir','iniciar'].includes(operacao))return aviso('Escolha um serviço e uma operação permitida.');
+ exibirPedidoConversa('9stack-resposta',null);
+ text($('9stack-resposta'),'Preparando a operação para revisão; nenhum serviço será iniciado antes de confirmar...');
+ try{
+  const dados=await enviarAcao('9stack_preparar',{servico,operacao});
+  if(dados){text($('9stack-resposta'),dados.mensagem||'Pedido preparado.');exibirPedidoConversa('9stack-resposta',dados.pedido)}
+ }catch(erro){text($('9stack-resposta'),'⚠️ '+erro.message)}
+}
+async function atualizarModelos9Router(){
+ if(pedidosAtivos.size)return;pedidosAtivos.add('modelos-9router');atualizarBotoes();
+ text($('9router-modelos-status'),'Consultando o catálogo do 9Router; o serviço pode contatar provedores conectados...');
+ try{
+  const dados=await api('/api/modelos_9router');
+  if(!Array.isArray(dados.modelos)||dados.modelos.length>2000)throw Error('O 9Router retornou um catálogo inválido.');
+  const nomes=new Set(),itens=[];
+  for(const item of dados.modelos){
+   if(!item||typeof item.id!=='string'||!item.id.trim()||item.id.length>200||/[\x00-\x1f\x7f]/.test(item.id)||nomes.has(item.id))throw Error('O 9Router retornou um identificador de modelo inválido.');
+   nomes.add(item.id);itens.push(item);
+  }
+  const lista=$('9router-modelos');lista.replaceChildren();
+  const equipe=$('equipe-modelos-9router');equipe.replaceChildren();
+  for(const item of itens){const linha=el('label'),caixa=el('input');caixa.type='checkbox';caixa.value=item.id;linha.append(caixa,el('span',item.id));equipe.append(linha)}
+  for(const item of itens){const opcao=el('option',typeof item.nome==='string'?item.nome.slice(0,250):item.id);opcao.value=item.id;lista.append(opcao)}
+  text($('9router-modelos-status'),itens.length+' modelo(s)/combo(s) listado(s). A listagem não comprova geração nem disponibilidade na conta. Escolha ou digite o identificador definido no dashboard.');
+ }catch(erro){text($('9router-modelos-status'),'⚠️ '+erro.message)}
+ finally{pedidosAtivos.delete('modelos-9router');atualizarBotoes()}
+}
+async function salvar9Router(evento){
+ evento.preventDefault();if(pedidosAtivos.size||!$('form-9router').reportValidity())return;
+ const ativo=$('9router-ativo').checked===true,modelo=$('9router-modelo').value.trim(),url=$('9router-url').value.trim();
+ if((ativo&&!modelo)||modelo.length>200||!url||url.length>250||/[\x00-\x1f\x7f]/.test(modelo+url))return aviso('Informe a base local válida e um modelo ou combo ao habilitar o 9Router.');
+ const pergunta=ativo?'Habilitar 9Router e preferi-lo nas conversas automáticas? Mensagens e o histórico usado na resposta poderão ser encaminhados aos provedores configurados e consumir cota. Escolhas manuais serão preservadas. Nenhuma consulta será iniciada agora.':'Desabilitar a preferência por 9Router nas conversas automáticas e salvar esta configuração? Consultas já enviadas não serão canceladas; configurações dos aplicativos externos permanecem próprias.';
+ if(!confirm(pergunta))return;
+ const dados=await agir('9router_configurar',{ativo,modelo,url,confirmacao:'CONFIGURAR 9ROUTER'});
+ if(dados)text($('9router-status'),'Configuração salva a pedido do usuário. A conexão e a geração de respostas ainda não foram verificadas.');
+}
+async function atualizarMemoria(){
+ if(pedidosAtivos.size)return;pedidosAtivos.add('memoria');atualizarBotoes();
+ text($('memoria-status'),'Lendo somente as notas deste contexto...');
+ try{
+  const origem=chatAtivoId;
+  const dados=await api('/api/memoria'+(origem?'?chat_id='+encodeURIComponent(origem):''));
+  if(origem!==chatAtivoId)return;
+  if(!Array.isArray(dados.notas)||dados.notas.length>50)throw Error('O servidor retornou uma lista de notas inválida.');
+  const notas=[];
+  for(const nota of dados.notas){
+   if(!nota||typeof nota.titulo!=='string'||!nota.titulo.trim()||nota.titulo.length>80||typeof nota.texto!=='string'||nota.texto.length>800)throw Error('O servidor retornou uma nota inválida.');
+   notas.push(nota);
+  }
+  const lista=$('lista-memoria');lista.replaceChildren();
+  for(const nota of notas){const item=el('div',undefined,'projeto-item');item.append(el('h3',nota.titulo),el('p',nota.texto));if(typeof nota.atualizado_em==='string')item.append(el('small',nota.atualizado_em.slice(0,50)));if(typeof nota.id==='string'&&/^m[a-f0-9]{16}$/.test(nota.id)){item.append(el('small','ID: '+nota.id));const remover=el('button','Remover nota');remover.type='button';remover.addEventListener('click',()=>removerMemoria(nota.id,origem));item.append(remover)}lista.append(item)}
+  text($('memoria-status'),notas.length+' nota(s) neste contexto. Nenhuma nota foi enviada a um modelo nesta leitura.');
+ }catch(erro){text($('memoria-status'),'⚠️ '+erro.message)}
+ finally{pedidosAtivos.delete('memoria');atualizarBotoes()}
+}
+async function prepararMemoria(evento){
+ evento.preventDefault();if(pedidosAtivos.size||!$('form-memoria').reportValidity())return;
+ const titulo=$('memoria-titulo').value.trim(),texto=$('memoria-texto').value.trim();
+ if(!titulo||titulo.length>80||!texto||texto.length>800||(titulo+texto).includes('\x00'))return aviso('Informe um título de até 80 caracteres e uma nota de até 800 caracteres.');
+ exibirPedidoConversa('memoria-resposta',null);text($('memoria-resposta'),'Preparando a nota para sua confirmação...');
+ try{
+  const origem=chatAtivoId;
+  const dados=await enviarAcao('memoria_preparar',{titulo,texto,...(origem?{chat_id:origem}:{})});
+  if(origem!==chatAtivoId)return;
+  if(dados){text($('memoria-resposta'),dados.mensagem||'Nota preparada.');exibirPedidoConversa('memoria-resposta',dados.pedido)}
+ }catch(erro){text($('memoria-resposta'),'⚠️ '+erro.message)}
 }
 async function verDetalhesModeloOllama(){
  if(pedidosAtivos.size)return;
@@ -217,33 +381,41 @@ async function testarModeloOllama(){
  const d=await agir('modelo_testar',{modelo,confirmacao:'TESTAR MODELO'});
  text($('teste-modelo-ollama'),d?.mensagem||'Não foi possível concluir o teste. Confira o aviso.');
 }
+async function definirPadraoModeloOllama(){
+ if(pedidosAtivos.size)return;
+ const modelo=$('chat-modelo-ollama').value||catalogoOllama?.padrao;
+ if(!modelo||!catalogoOllama?.modelos?.some(item=>item.nome===modelo))return aviso('Atualize a lista do Ollama e escolha um modelo presente no catálogo para definir como padrão.');
+ const d=await agir('modelo_padrao',{modelo});
+ if(d)await atualizarModelosOllama();
+}
 function renderColaboracao(dados){
  const c=dados&&typeof dados==='object'?dados:null;
  const chats=Array.isArray(c?.chats)?c.chats:[],tarefas=Array.isArray(c?.tarefas)?c.tarefas:[],propostas=Array.isArray(c?.contribuicoes)?c.contribuicoes:[];
  text($('resumo-projeto'),c?`${chats.length} conversa(s) · ${tarefas.length} tarefa(s) · ${propostas.length} contribuição(ões).`:'Central de chats indisponível nesta versão do servidor. Atualize o assistente para usar esta aba.');
  const ativo=c?.chat_ativo;
  const proximoChat=ativo?.id||'';
- if(chatAtivoId!==proximoChat){$('chat-pedido').replaceChildren();$('pedido-resposta').replaceChildren()}
+ if(chatAtivoId!==proximoChat){$('chat-pedido').replaceChildren();$('pedido-resposta').replaceChildren();$('agentes-pedido').replaceChildren();$('9stack-pedido').replaceChildren();$('memoria-pedido').replaceChildren();$('configuracao-pedido').replaceChildren();$('gemini-pedido').replaceChildren();$('gemini-tarefas').replaceChildren();$('gemini-perfis').replaceChildren();$('gemini-anterior').replaceChildren();$('gemini-anterior').value='';$('memoria-exportacao').replaceChildren();$('lista-memoria').replaceChildren()}
  chatAtivoId=proximoChat;
+ $('chat-modelo-9router').value=typeof ativo?.modelo_9router==='string'?ativo.modelo_9router:'';
  const modo=$('chat-modo-conversa');
  modo.checked=ativo?.modo_conversa!==false;
  modo.disabled=pedidosAtivos.size>0||!chatAtivoId;
  text($('chat-modo-status'),modo.checked?'Conversa contínua ativa. Basta escrever sua mensagem; os pedidos de alteração continuam sujeitos a confirmação.':'Conversa contínua desativada nesta sessão. As mensagens enviadas pelos botões do painel continuam sendo solicitações explícitas.');
- const automatica=equipeAutomatica(ativo);
+ const automatica=equipeAutomatica(ativo),via9Router=roteadorAutomatico(ativo);
  chatEquipeAtiva=!!chatAtivoId&&(automatica||ativo?.equipe_paralela===true);
  const modoEquipe=automatica||ativo?.equipe_modo==='cooperativa'?'cooperativa':'paralela';
  const modelosEquipe=Array.isArray(ativo?.equipe_modelos)?ativo.equipe_modelos.filter(nome=>typeof nome==='string'&&nome.trim()):[];
  const controleEquipe=$('chat-equipe-paralela');controleEquipe.checked=chatEquipeAtiva;controleEquipe.disabled=pedidosAtivos.size>0||!chatAtivoId;
  $('chat-atualizar-equipe').disabled=pedidosAtivos.size>0||!chatAtivoId||!chatEquipeAtiva;
- text($('chat-equipe-status'),!chatAtivoId?'Selecione uma conversa para começar.':automatica?(modelosEquipe.length?`Equipe automática cooperativa · ${modelosEquipe.length} modelo(s) registrados: ${modelosEquipe.join(', ')}. O catálogo será atualizado na próxima pergunta que precise de IA.`:'Equipe automática: catálogo consultado na próxima pergunta que precise de IA. Basta escrever; os modelos ainda não foram listados nesta conversa.'):chatEquipeAtiva?(modelosEquipe.length?`Equipe ${modoEquipe} ativa · ${modelosEquipe.length} modelo(s): ${modelosEquipe.join(', ')}. Seleção manual salva nesta conversa; Atualizar equipe relê o catálogo.`:'Equipe manual ativa, mas a lista de modelos não foi informada. Atualize a equipe pelo catálogo antes de conversar.'):'Equipe desativada por escolha manual nesta conversa. O modelo individual será utilizado.');
+ text($('chat-equipe-status'),!chatAtivoId?'Selecione uma conversa para começar.':via9Router?'9Router automático: a próxima pergunta que precisar de IA usará o modelo ou combo configurado no roteador. A equipe Ollama não está ativa nesta conversa; marque a opção para escolher Ollama manualmente.':automatica?(modelosEquipe.length?`Equipe automática cooperativa · ${modelosEquipe.length} modelo(s) registrados: ${modelosEquipe.join(', ')}. O catálogo será atualizado na próxima pergunta que precise de IA.`:'Equipe automática: catálogo consultado na próxima pergunta que precise de IA. Basta escrever; os modelos ainda não foram listados nesta conversa.'):chatEquipeAtiva?(modelosEquipe.length?`Equipe ${modoEquipe} ativa · ${modelosEquipe.length} modelo(s): ${modelosEquipe.join(', ')}. Seleção manual salva nesta conversa; Atualizar equipe relê o catálogo.`:'Equipe manual ativa, mas a lista de modelos não foi informada. Atualize a equipe pelo catálogo antes de conversar.'):'Equipe desativada por escolha manual nesta conversa. O modelo individual será utilizado.');
  chatModeloAtual=ativo?.modelo_ollama||'';renderModelosOllama();
- const escolhaOllama=automatica?` · equipe automática cooperativa${modelosEquipe.length?' ('+modelosEquipe.length+' modelo(s))':' · catálogo na próxima pergunta'}`:chatEquipeAtiva?` · equipe ${modoEquipe} (${modelosEquipe.length} modelo(s))`:ativo?.provedor==='Ollama'?` · ${ativo.modelo_ollama||'modelo padrão do .env'}`:'';
+ const escolhaOllama=via9Router?' · roteador automático (modelo/combo configurado)':ativo?.provedor==='9Router'?` · ${ativo.modelo_9router||'modelo/combo padrão do gateway'}`:automatica?` · equipe automática cooperativa${modelosEquipe.length?' ('+modelosEquipe.length+' modelo(s))':' · catálogo na próxima pergunta'}`:chatEquipeAtiva?` · equipe ${modoEquipe} (${modelosEquipe.length} modelo(s))`:ativo?.provedor==='Ollama'?` · ${ativo.modelo_ollama||'modelo padrão do .env'}`:'';
  const provedorAtivo=$('chat-ativo-provedor');if(provedorAtivo.dataset.chat!==chatAtivoId||provedorAtivo.dataset.provedor!==ativo?.provedor){provedorAtivo.value=ativo?.provedor||'auto';provedorAtivo.dataset.chat=chatAtivoId;provedorAtivo.dataset.provedor=ativo?.provedor||'auto'}
  text($('chat-titulo'),ativo?.titulo||'Conversa ativa');
  text($('chat-provedor'),ativo?`Provedor: ${ativo.provedor||'auto'}${escolhaOllama}. As respostas ficam nesta conversa.`:'Crie ou selecione uma conversa para manter o histórico separado.');
  text($('ia-chat-ativo'),ativo?`Conversa ativa: ${ativo.titulo||'Sem título'} · ${ativo.provedor||'auto'}${escolhaOllama}`:'Conversa padrão do assistente. Organize novas conversas em «Chats e projeto».');
  const lista=$('lista-chats');lista.replaceChildren();
- for(const chat of chats){const b=botaoAcao(`${chat.id===ativo?.id?'✓ ':''}${chat.titulo||'Sem título'} · ${chat.provedor||'auto'}${equipeAutomatica(chat)?' · equipe automática cooperativa':chat.equipe_paralela===true?' · equipe '+(chat.equipe_modo==='cooperativa'?'cooperativa':'paralela'):chat.provedor==='Ollama'?' · '+(chat.modelo_ollama||'modelo padrão'):''}`,'chat_selecionar',{id:chat.id});b.classList.toggle('active',chat.id===ativo?.id);b.setAttribute('aria-pressed',String(chat.id===ativo?.id));lista.append(b)}
+ for(const chat of chats){const b=botaoAcao(`${chat.id===ativo?.id?'✓ ':''}${chat.titulo||'Sem título'} · ${chat.provedor||'auto'}${roteadorAutomatico(chat)?' · roteador automático':equipeAutomatica(chat)?' · equipe automática cooperativa':chat.equipe_paralela===true?' · equipe '+(chat.equipe_modo==='cooperativa'?'cooperativa':'paralela'):chat.provedor==='Ollama'?' · '+(chat.modelo_ollama||'modelo padrão'):''}`,'chat_selecionar',{id:chat.id});b.classList.toggle('active',chat.id===ativo?.id);b.setAttribute('aria-pressed',String(chat.id===ativo?.id));lista.append(b)}
  if(!chats.length)lista.append(el('p','Nenhuma conversa criada.'));
  const historico=$('historico-chat'),proximoDoFim=historico.scrollHeight-historico.scrollTop-historico.clientHeight<60,mudouChat=historico.dataset.chat!==(ativo?.id||'');
  historico.dataset.chat=ativo?.id||'';historico.replaceChildren();
@@ -267,7 +439,8 @@ async function configurarEquipeConversa(ativo){
  return d;
 }
 function exibirPedidoConversa(saida,pedido){
- const destino=$(saida==='chat-resposta'?'chat-pedido':'pedido-resposta');destino.replaceChildren();
+ const origem=chatAtivoId;
+ const destino=$(({ 'chat-resposta':'chat-pedido','agentes-resposta':'agentes-pedido','9stack-resposta':'9stack-pedido','memoria-resposta':'memoria-pedido','configuracao-resposta':'configuracao-pedido','gemini-resposta':'gemini-pedido' })[saida]||'pedido-resposta');destino.replaceChildren();
  if(pedido===undefined||pedido===null)return;
  if(typeof pedido!=='object'||Array.isArray(pedido)||typeof pedido.id!=='string'||!pedido.id||pedido.id.length>200||typeof pedido.descricao!=='string'||!pedido.descricao.trim()||pedido.descricao.length>2000){
   destino.append(el('p','A resposta trouxe uma solicitação inválida para confirmação. Descreva novamente o que deseja fazer.','muted'));return;
@@ -278,8 +451,9 @@ function exibirPedidoConversa(saida,pedido){
  confirmar.type='button';cancelar.type='button';
  let encerrado=false;
  const responder=async acao=>{
-  if(encerrado||pedidosAtivos.size)return;encerrado=true;confirmar.disabled=true;cancelar.disabled=true;
+  if(encerrado||pedidosAtivos.size||origem!==chatAtivoId)return;encerrado=true;confirmar.disabled=true;cancelar.disabled=true;
   const d=await agir(acao,{id:pedido.id});
+  if(origem!==chatAtivoId)return;
   destino.replaceChildren();
   text($(saida),d?.mensagem||(acao==='pedido_confirmar'?'Não foi possível confirmar o resultado. Confira o aviso e o estado antes de formular outro pedido.':'Não foi possível concluir o cancelamento. Confira o aviso; o pedido não será repetido automaticamente.'));
   if(typeof d?.imagem==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(d.imagem)&&d.imagem.length<11000000){const img=el('img');img.src=d.imagem;img.alt='Captura de tela solicitada';img.style.maxWidth='100%';$(saida).append(img)}
@@ -333,6 +507,7 @@ function textoAutoanalise(a){
 }
 function render(s){const {vida:v,resumo:r,provedores:p,logs,robotask,autoanalise}=s;
  renderColaboracao(s.colaboracao);
+ text($('modelos-nuvem-status'),s.ollama_nuvem===true?'Nuvem permitida no perfil CPU. Disponibilidade da conta e dos modelos não foi testada.':'Perfil CPU restrito a modelos locais, conforme os recursos do PC. O perfil padrão do serviço mantém suas próprias opções.');
  const a=$('resumo-analise');if(a)text(a,textoAutoanalise(autoanalise));
  text($('rede'),'Painel local • dados sincronizados com Telegram (quando disponível)');text($('progresso'),`${r.concluidas}/${r.total_tarefas}`);text($('saldo'),money(r.saldo));text($('aprendizado'),r.comandos);text($('disco'),r.disco_livre_mb+' MiB');
  const t=$('tabela-rotina');t.replaceChildren();for(const item of v.rotina||[]){const tr=el('tr');const td=el('td');const b=el('button',item.status==='Concluído'?'✅':'⬜');b.setAttribute('aria-label',(item.status==='Concluído'?'Reabrir: ':'Concluir: ')+(item.atividade||item.id));b.disabled=pedidosAtivos.size>0;b.addEventListener('click',()=>agir('concluir',{id:item.id}));td.append(b);tr.append(td);for(const val of [item.dia,(item.horario||'')+' – '+(item.fim||''),item.atividade,item.local,item.prioridade])tr.append(el('td',val));t.append(tr)}
@@ -371,8 +546,22 @@ $('chat-modo-conversa').addEventListener('change',async()=>{
 $('chat-equipe-paralela').addEventListener('change',()=>configurarEquipeConversa($('chat-equipe-paralela').checked));
 $('chat-atualizar-equipe').addEventListener('click',()=>configurarEquipeConversa(true));
 $('atualizar-modelos-ollama').addEventListener('click',atualizarModelosOllama);
+$('atualizar-agentes').addEventListener('click',atualizarAgentes);
+$('agente-abrir').addEventListener('click',()=>prepararAgente(false));
+$('agente-configurar').addEventListener('click',()=>prepararAgente(true));
+$('atualizar-9stack').addEventListener('click',atualizar9Stack);
+$('verificar-configuracao').addEventListener('click',verificarConfiguracaoLocal);
+$('configurar-assistente').addEventListener('click',prepararConfiguracaoLocal);
+$('9stack-instalar').addEventListener('click',()=>preparar9Stack('instalar'));
+$('9stack-abrir').addEventListener('click',()=>preparar9Stack('abrir'));
+$('9stack-iniciar').addEventListener('click',()=>preparar9Stack('iniciar'));
+$('atualizar-modelos-9router').addEventListener('click',atualizarModelos9Router);
+$('form-9router').addEventListener('submit',salvar9Router);
+$('atualizar-memoria').addEventListener('click',atualizarMemoria);
+$('form-memoria').addEventListener('submit',prepararMemoria);
 $('chat-detalhes-modelo').addEventListener('click',verDetalhesModeloOllama);
 $('chat-testar-modelo').addEventListener('click',testarModeloOllama);
+$('chat-modelo-padrao').addEventListener('click',definirPadraoModeloOllama);
 $('criar-chats-modelos').addEventListener('click',criarChatsModelosOllama);
 $('chat-modelo-ollama').addEventListener('change',avisoModeloOllama);
 $('chat-salvar-modelo').addEventListener('click',()=>{if(!chatAtivoId)return aviso('Crie ou selecione uma conversa primeiro.');return agir('chat_modelo',{id:chatAtivoId,modelo:$('chat-modelo-ollama').value})});
@@ -384,15 +573,26 @@ $('exportar-contexto').addEventListener('click',baixarContexto);
 $('testar-conexoes').addEventListener('click',()=>{if(confirm('Testar as conexões agora? Será feita uma consulta a cada provedor configurado. As APIs externas podem consumir créditos.')){aviso('Testando conexões configuradas. Aguarde o resultado de cada provedor.');agir('conexoes_ia',{confirmacao:'TESTAR CONEXOES'})}});
 $('consultar-equipe').addEventListener('click',async()=>{
  const objetivo=$('equipe-objetivo').value.trim();if(!objetivo||pedidosAtivos.size)return aviso('Descreva o objetivo da equipe e aguarde a consulta em andamento.');
- const provedores=Array.from(document.querySelectorAll('#equipe-provedores input:checked'),x=>x.value),modelos=Array.from(document.querySelectorAll('#equipe-modelos-ollama input:checked'),x=>x.value);
+ const provedores=Array.from(document.querySelectorAll('#equipe-provedores input:checked'),x=>x.value),modelos=Array.from(document.querySelectorAll('#equipe-modelos-ollama input:checked'),x=>x.value),gateway=Array.from(document.querySelectorAll('#equipe-modelos-9router input:checked'),x=>x.value);
+ if(gateway.length>4)return aviso('Selecione no máximo quatro modelos/combos 9Router.');
+ if(modelos.length>4)return aviso('Selecione no máximo quatro modelos Ollama para a equipe de propostas.');
  if(modelos.length&&!provedores.includes('Ollama'))provedores.push('Ollama');
- const participantes=[...provedores.filter(n=>n!=='Ollama'||!modelos.length),...modelos.map(rotuloModelo)];
- if(participantes.length>4)return aviso('Selecione no máximo quatro participantes entre provedores e modelos Ollama.');
+ if(gateway.length&&!provedores.includes('9Router'))provedores.push('9Router');
+ const participantes=[...provedores.filter(n=>(n!=='Ollama'||!modelos.length)&&(n!=='9Router'||!gateway.length)),...modelos.map(rotuloModelo),...gateway.map(m=>'9Router / '+m)];
+ if(participantes.length>8)return aviso('Selecione no máximo oito participantes entre provedores e modelos Ollama.');
  if(!confirm('Consultar '+(participantes.length?participantes.join(', '):'todos os provedores configurados')+'? Será feita uma consulta por participante, que pode consumir cota. Modelos em nuvem dependem de conta e internet. As respostas serão propostas para revisão.'))return;
- const campos={texto:objetivo,confirmacao:'CONSULTAR EQUIPE'};if(provedores.length)campos.provedores=provedores;if(modelos.length)campos.modelos_ollama=modelos;
+ const campos={texto:objetivo,confirmacao:'CONSULTAR EQUIPE'};if(provedores.length)campos.provedores=provedores;if(modelos.length)campos.modelos_ollama=modelos;if(gateway.length)campos.modelos_9router=gateway;
  text($('equipe-resposta'),'Consultando a equipe. As propostas aparecerão nas contribuições.');const d=await agir('equipe_ia',campos);text($('equipe-resposta'),d?.mensagem||'Não foi possível concluir a consulta. Confira o aviso e as contribuições já registradas.');
 });
 $('reativar-ias').addEventListener('click',()=>{if(confirm('Limpar as pausas locais? Não há recarga de créditos; a próxima consulta paga poderá consumir saldo.'))agir('reativar_ias',{confirmacao:'REVER BLOQUEIOS'})});
+$('autorizar-nuvem').addEventListener('click',()=>{
+ if(pedidosAtivos.size)return;
+ if(confirm('Permitir modelos Ollama em nuvem no perfil CPU? As próximas consultas desse perfil poderão enviar mensagens e o histórico usado na resposta à sua conta Ollama, pela internet, e consumir cota. Nenhuma consulta será iniciada agora.'))return agir('ollama_nuvem',{ativo:true,confirmacao:'AUTORIZAR NUVEM'});
+});
+$('desativar-nuvem').addEventListener('click',()=>{
+ if(pedidosAtivos.size)return;
+ if(confirm('Restringir o perfil CPU a modelos locais? Esta escolha não cancela consultas que já tenham sido enviadas nem altera o perfil padrão do serviço ou aplicativos externos.'))return agir('ollama_nuvem',{ativo:false,confirmacao:'DESATIVAR NUVEM'});
+});
 $('melhorar-seguro').addEventListener('click',()=>{
   if(confirm('Atualizar backup dos dados, CSV/Notebook e catálogo RoboTask? Essas operações locais não corrigem erros das APIs. Nenhum código será editado.'))
     agir('melhorias',{confirmacao:'APLICAR MELHORIAS'});
@@ -414,4 +614,74 @@ $('simular').addEventListener('click',()=>{if($('qtd').reportValidity())agir('ru
 $('consultar').addEventListener('click',()=>consultarChat('pergunta','resposta'));
 $('pergunta').addEventListener('keydown',e=>{if(e.key==='Enter')$('consultar').click()});
 atualizar();setInterval(atualizar,30000);
+
+function renderProntidao(dados){
+ const itens=dados?.relatorio?.itens;if(!Array.isArray(itens)||itens.length>40)throw Error('Estado das integrações inválido.');
+ const lista=$('prontidao-itens');lista.replaceChildren();
+ for(const item of itens){
+  if(!item||!['pronto','presente','pendente','indisponivel','nao_verificado'].includes(item.estado)||typeof item.nome!=='string'||typeof item.detalhe!=='string')throw Error('Recurso inválido.');
+  const caixa=el('div',undefined,'projeto-item');caixa.append(el('h3',item.nome.slice(0,100)+' · '+item.estado),el('p',item.detalhe.slice(0,1500)));
+  if(typeof item.proximo_passo==='string'&&item.proximo_passo)caixa.append(el('small',item.proximo_passo.slice(0,500)));lista.append(caixa);
+ }
+ text($('prontidao-status'),'Estado conferido. Geração e pareamento continuam dependendo dos testes e interfaces específicos.');
+}
+async function conferirProntidao(sondar=false){
+ if(pedidosAtivos.size)return;
+ try{
+  if(sondar){const dados=await agir('prontidao_sondar');if(dados)renderProntidao(dados)}
+  else{pedidosAtivos.add('prontidao');atualizarBotoes();renderProntidao(await api('/api/prontidao'))}
+ }catch(e){text($('prontidao-status'),'⚠️ '+e.message)}
+ finally{pedidosAtivos.delete('prontidao');atualizarBotoes()}
+}
+async function modelo9RouterConversa(testar=false){
+ if(pedidosAtivos.size||!chatAtivoId)return;
+ const origem=chatAtivoId,modelo=$('chat-modelo-9router').value.trim();
+ if(modelo.length>200||/[\x00-\x1f\x7f]/.test(modelo)||testar&&!modelo)return aviso('Escolha um modelo/combo válido.');
+ if(!confirm(testar?'Enviar uma consulta OK ao modelo 9Router escolhido, sem histórico? Pode consumir cota.':'Selecionar 9Router e este modelo/combo nesta conversa? As próximas mensagens usarão os provedores configurados no gateway.'))return;
+ const dados=await agir(testar?'modelo_testar_9router':'chat_modelo_9router',{chat_id:origem,modelo,confirmacao:testar?'TESTAR MODELO 9ROUTER':'ALTERAR MODELO 9ROUTER'});
+ if(dados&&origem===chatAtivoId)text($('chat-9router-status'),dados.mensagem);
+}
+async function removerMemoria(nota_id,origem){
+ if(pedidosAtivos.size||origem!==chatAtivoId)return;
+ try{const d=await enviarAcao('memoria_remover_preparar',{nota_id,...(origem?{chat_id:origem}:{})});if(d&&origem===chatAtivoId){text($('memoria-resposta'),d.mensagem);exibirPedidoConversa('memoria-resposta',d.pedido)}}
+ catch(e){text($('memoria-resposta'),'⚠️ '+e.message)}
+}
+async function exportarMemoria(){
+ if(pedidosAtivos.size)return;const origem=chatAtivoId;pedidosAtivos.add('memoria-exportar');atualizarBotoes();
+ try{const d=await api('/api/memoria_exportar'+(origem?'?chat_id='+encodeURIComponent(origem):''));if(origem!==chatAtivoId)return;if(typeof d.texto!=='string'||d.texto.length>70000)throw Error('Exportação inválida.');const area=$('memoria-exportacao');area.replaceChildren();const link=el('a','Baixar memória.md');link.href='data:text/markdown;charset=utf-8,'+encodeURIComponent(d.texto);link.download='memoria.md';area.append(link,el('pre',d.texto))}
+ catch(e){text($('memoria-status'),'⚠️ '+e.message)}finally{pedidosAtivos.delete('memoria-exportar');atualizarBotoes()}
+}
+async function prepararGemini(dados,origem=chatAtivoId){
+ if(pedidosAtivos.size||!origem||origem!==chatAtivoId)return;
+ try{const d=await enviarAcao('gemini_preparar',{...dados,chat_id:origem});if(d&&origem===chatAtivoId){text($('gemini-resposta'),d.mensagem);exibirPedidoConversa('gemini-resposta',d.pedido)}}
+ catch(e){text($('gemini-resposta'),'⚠️ '+e.message)}
+}
+async function atualizarGemini(){
+ if(pedidosAtivos.size||!chatAtivoId)return;const origem=chatAtivoId;pedidosAtivos.add('gemini-local');atualizarBotoes();
+ try{
+  const d=await api('/api/gemini?chat_id='+encodeURIComponent(origem));if(origem!==chatAtivoId)return;
+  if(!Array.isArray(d.tarefas)||d.tarefas.length>25||!Array.isArray(d.perfis)||d.perfis.length>10)throw Error('Registro Gemini inválido.');
+  text($('gemini-status'),d.configuracao?.sdk_presente&&d.configuracao?.chave_definida?'SDK/chave presentes; conta e cota não verificadas. Modo de conversa: '+String(d.configuracao.modo):'Configure o SDK e a chave no console local.');
+  const lista=$('gemini-tarefas'),perfis=$('gemini-perfis'),anterior=$('gemini-anterior');lista.replaceChildren();perfis.replaceChildren();anterior.replaceChildren();const inicial=el('option','Nova tarefa');inicial.value='';anterior.append(inicial);
+  for(const t of d.tarefas){
+   if(!t||typeof t.id!=='string'||!/^g[a-f0-9]{16}$/.test(t.id)||typeof t.texto!=='string'||t.texto.length>12000)throw Error('Tarefa inválida.');
+   const caixa=el('div',undefined,'projeto-item');caixa.append(el('h3',t.id+' · '+String(t.estado).slice(0,50)),el('p',String(t.titulo).slice(0,120)),el('pre',t.texto));
+   if(t.estado==='completed'){const op=el('option',t.id+' · '+String(t.titulo).slice(0,60));op.value=t.id;anterior.append(op)}
+   for(const [acao,rotulo] of [['consultar','Atualizar estado remoto'],['cancelar','Solicitar cancelamento'],['contribuir','Registrar proposta no projeto'],['excluir','Excluir registro remoto/local']]){
+    const botao=el('button',rotulo);botao.type='button';botao.addEventListener('click',async()=>{if(origem!==chatAtivoId||pedidosAtivos.size)return;if(acao==='consultar'){const r=await agir('gemini_consultar',{id:t.id,chat_id:origem});if(r&&origem===chatAtivoId){text($('gemini-resposta'),r.mensagem);await atualizarGemini()}}else await prepararGemini({operacao:acao,id:t.id},origem)});caixa.append(botao);
+   }lista.append(caixa);
+  }
+  for(const p of d.perfis){if(!p||typeof p.id!=='string'||p.id.length>200)throw Error('Perfil inválido.');const caixa=el('div',undefined,'projeto-item');caixa.append(el('h3',String(p.titulo).slice(0,80)),el('p',p.id));for(const [acao,rotulo] of [['usar','Usar este agente'],['perfil_excluir','Excluir perfil remoto']]){const b=el('button',rotulo);b.type='button';b.addEventListener('click',()=>{if(origem!==chatAtivoId)return;if(acao==='usar')$('gemini-agente').value=p.id;else prepararGemini({operacao:acao,id:p.id},origem)});caixa.append(b)}perfis.append(caixa)}
+ }catch(e){text($('gemini-status'),'⚠️ '+e.message)}finally{pedidosAtivos.delete('gemini-local');atualizarBotoes()}
+}
+$('prontidao-local').addEventListener('click',()=>conferirProntidao(false));
+$('prontidao-sondar').addEventListener('click',()=>conferirProntidao(true));
+$('chat-9router-salvar').addEventListener('click',()=>modelo9RouterConversa(false));
+$('chat-9router-testar').addEventListener('click',()=>modelo9RouterConversa(true));
+$('chat-9router-catalogo').addEventListener('click',atualizarModelos9Router);
+$('exportar-memoria').addEventListener('click',exportarMemoria);
+$('gemini-atualizar').addEventListener('click',atualizarGemini);
+$('gemini-form').addEventListener('submit',evento=>{evento.preventDefault();if(!$('gemini-form').reportValidity())return;prepararGemini({operacao:'tarefa',agente:$('gemini-agente').value.trim()||'antigravity-preview-09-2026',texto:$('gemini-texto').value.trim(),rede:$('gemini-rede').checked===true,anterior:$('gemini-anterior').value||''})});
+$('gemini-perfil-form').addEventListener('submit',evento=>{evento.preventDefault();if(!$('gemini-perfil-form').reportValidity())return;prepararGemini({operacao:'perfil_criar',titulo:$('gemini-perfil-titulo').value.trim(),instrucoes:$('gemini-perfil-instrucoes').value.trim(),rede:$('gemini-rede').checked===true})});
+
 </script></body></html>

@@ -1,8 +1,10 @@
 """Equipes finitas, paralelas ou cooperativas; respostas não executam ferramentas."""
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import math
 import os
 import threading
+import time
 
 from configurar_ia_local import validar_modelo
 from interpretacao_natural import extrair_resposta
@@ -10,8 +12,55 @@ from nucleo import redigir
 
 _TRAVA = threading.Lock()
 MAX_MODELOS = 8
+MAX_MODELOS_PARALELA = MAX_MODELOS
+MAX_MODELOS_COOPERATIVA = 32
 PAPEIS = ('análise do pedido', 'proposta prática', 'revisão crítica', 'riscos e verificação')
 LIMITE_PROMPT = 11000
+
+
+def _segundos_configurados(nome, padrao, minimo, maximo):
+    try:valor=float(os.getenv(nome,str(padrao)))
+    except (ValueError,TypeError):valor=padrao
+    if not math.isfinite(valor):valor=padrao
+    return max(minimo,min(maximo,valor))
+
+
+def _parcial(callback, item, respondidos, total):
+    """Uma contribuição provisória; nunca entrega planos ou executa ações."""
+    if callback is None:return
+    try:
+        callback({'modelo':item['modelo'],'texto':item['texto'][:2000],
+                  'respondidos':respondidos,'total':total,'provisoria':True})
+    except Exception:
+        # A interface não altera a execução nem faz repetir a consulta.
+        pass
+
+
+def _expirou(erro):
+    if isinstance(erro,TimeoutError):return True
+    if getattr(erro,'categoria',None)=='tempo_esgotado':return True
+    # Adaptadores antigos ainda podem classificar um timeout como rede.
+    return (getattr(erro,'categoria',None)=='rede' and
+            any(t in str(erro).casefold() for t in ('timed out','timeout','prazo de resposta')))
+
+
+class _OrcamentoEsgotado(TimeoutError):
+    categoria='adiado'
+
+
+def _responder_com_prazo(roteador,mensagem,historico,modelo,segundos,prazo):
+    # Métodos declarados permitem limitar o adaptador nativo sem alterar
+    # assinaturas de integrações legadas ou criar métodos em mocks.
+    restante=prazo-time.monotonic()
+    if restante<=0:
+        raise _OrcamentoEsgotado('O orçamento desta rodada se esgotou. Nenhuma geração enviada.')
+    segundos=min(segundos,restante)
+    responder=getattr(type(roteador),'responder_equipe',None)
+    if callable(responder):
+        return responder(roteador,mensagem,historico=historico,
+                         modelo_ollama=modelo,limite_segundos=segundos)
+    return roteador.responder(mensagem,historico=historico,
+        provedor='Ollama',modelo_ollama=modelo,modo_cooperativo=True)
 
 
 def _progresso(callback, etapa, estado, modelo, indice, total):
@@ -112,10 +161,15 @@ def _preferido(sucessos, coordenador):
     return next((m for m in nomes if m.casefold().removesuffix(':latest')=='llama3.2'),nomes[0])
 
 
-def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, coordenador, progresso):
+def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, coordenador, progresso, parcial):
     itens=[]
     total=len(modelos)
     compacto=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu'
+    prazo=time.monotonic()+_segundos_configurados('OLLAMA_EQUIPE_TIMEOUT',90,5,180)
+    por_modelo=_segundos_configurados('OLLAMA_EQUIPE_TIMEOUT_MODELO',30 if compacto else 90,5,120)
+    interrupcao=None
+    parcial_enviada=False
+    nuvem=()
     ordem=list(modelos)
     # Consulte somente um método declarado pelo adaptador. Mocks e roteadores
     # antigos preservam a ordem, sem criar chamadas implícitas a atributos.
@@ -124,13 +178,29 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
         ordem=ordenar(roteador,list(modelos))
         if not isinstance(ordem,list) or len(ordem)!=len(modelos) or set(ordem)!=set(modelos):
             raise ValueError('A ordem de execução deve manter todos os participantes da equipe.')
+        obter_nuvem=getattr(type(roteador),'modelos_nuvem_equipe_cpu',None)
+        if callable(obter_nuvem):
+            snapshot=obter_nuvem(roteador)
+            if (not isinstance(snapshot,(list,tuple)) or any(not isinstance(nome,str) or nome not in modelos for nome in snapshot)):
+                raise ValueError('O snapshot da nuvem deve conter somente participantes da equipe.')
+            nuvem=tuple(snapshot)
     for indice,modelo in enumerate(ordem):
-        _progresso(progresso,'modelo','inicio',modelo,indice+1,total)
         item={'modelo':modelo,'ok':False,'texto':'','plano':None,'papel':PAPEIS[indice%len(PAPEIS)]}
+        restante=prazo-time.monotonic()
+        if interrupcao is None and restante<=0:
+            interrupcao='O orçamento desta rodada se esgotou.'
+        if interrupcao:
+            item.update({'categoria':'adiado','erro':interrupcao+
+                ' Participante adiado nesta rodada; continua selecionado. Nenhuma geração foi enviada.'})
+            itens.append(item)
+            _progresso(progresso,'modelo','adiado',modelo,indice+1,total)
+            continue
+        _progresso(progresso,'modelo','inicio',modelo,indice+1,total)
         try:
             copia=json.loads(json.dumps(historico,allow_nan=False))
-            resposta,provedor=roteador.responder(_prompt_participante(mensagem,itens,indice,compacto=compacto),historico=copia,
-                provedor='Ollama',modelo_ollama=modelo,modo_cooperativo=True)
+            resposta,provedor=_responder_com_prazo(roteador,
+                _prompt_participante(mensagem,itens,indice,compacto=compacto),
+                copia,modelo,min(restante,por_modelo),prazo)
             if provedor!='Ollama' or not isinstance(resposta,str) or not resposta.strip():
                 raise RuntimeError('O modelo não devolveu uma resposta textual válida.')
             resposta=str(redigir(resposta))
@@ -138,24 +208,44 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
             item.update({'ok':True,'texto':resultado['texto'][:8000],'plano':resultado['plano']})
         except Exception as erro:
             item['erro']=str(redigir(erro))[:600]
+            categoria=getattr(erro,'categoria',None)
+            if isinstance(categoria,str):item['categoria']=categoria
+            if isinstance(erro,_OrcamentoEsgotado):
+                interrupcao='O orçamento desta rodada se esgotou.'
+            elif _expirou(erro):
+                interrupcao=('Uma consulta atingiu o prazo de resposta. A geração no serviço pode continuar; '
+                             'não serão enviados novos pedidos nesta rodada.')
         itens.append(item)
-        _progresso(progresso,'modelo','sucesso' if item['ok'] else 'falha',modelo,indice+1,total)
+        _progresso(progresso,'modelo','adiado' if item.get('categoria')=='adiado' else
+                   ('sucesso' if item['ok'] else 'falha'),modelo,indice+1,total)
+        if item['ok'] and not parcial_enviada:
+            _parcial(parcial,item,1,total)
+            parcial_enviada=True
     sucessos=[r for r in itens if r['ok']]
     if not sucessos:
         raise RuntimeError('Nenhum modelo da equipe respondeu. '+
             '\n'.join(r['modelo']+': '+r['erro'] for r in itens))
-    escolhido=_preferido(sucessos,coordenador)
+    preferencia=coordenador
+    if preferencia is None:
+        preferencia=next((r['modelo'] for r in sucessos if r['modelo'] in nuvem),None)
+    escolhido=_preferido(sucessos,preferencia)
     original=next(r for r in sucessos if r['modelo']==escolhido)
     plano=_consenso(itens,interpretar)
     texto=original['texto']
     sintese={'tentada':False,'ok':False,'modelo':escolhido}
-    if len(sucessos)>1:
-        sintese['tentada']=True
+    restante=prazo-time.monotonic()
+    if len(sucessos)>1 and not interrupcao and restante>0:
         _progresso(progresso,'sintese','inicio',escolhido,total,total)
         try:
             copia=json.loads(json.dumps(historico,allow_nan=False))
-            resposta,provedor=roteador.responder(_prompt_sintese(mensagem,itens,plano,compacto=compacto),historico=copia,
-                provedor='Ollama',modelo_ollama=escolhido,modo_cooperativo=True)
+            # O callback da interface e a montagem do prompt consomem tempo;
+            # a consulta só pode começar com o saldo corrente da rodada.
+            prompt=_prompt_sintese(mensagem,itens,plano,compacto=compacto)
+            restante=prazo-time.monotonic()
+            if restante<=0:raise _OrcamentoEsgotado('O orçamento desta rodada se esgotou. Nenhuma síntese enviada.')
+            sintese['tentada']=True
+            resposta,provedor=_responder_com_prazo(roteador,
+                prompt,copia,escolhido,min(restante,por_modelo),prazo)
             if provedor!='Ollama' or not isinstance(resposta,str) or not resposta.strip():
                 raise RuntimeError('A síntese não devolveu resposta textual válida.')
             resultado=extrair_resposta(str(redigir(resposta)))
@@ -164,18 +254,39 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
             sintese['ok']=True
         except Exception as erro:
             sintese['erro']=str(redigir(erro))[:600]
+            if isinstance(erro,_OrcamentoEsgotado):
+                sintese['adiada']=True
+                sintese['tentada']=False
             plano=None
-        _progresso(progresso,'sintese','sucesso' if sintese['ok'] else 'falha',escolhido,total,total)
+        _progresso(progresso,'sintese','adiado' if sintese.get('adiada') else
+                   ('sucesso' if sintese['ok'] else 'falha'),escolhido,total,total)
+    elif len(sucessos)>1:
+        sintese['adiada']=True
+        sintese['erro']=interrupcao or 'O orçamento desta rodada se esgotou.'
+        # Uma rodada incompleta não prepara ações mesmo que seus sobreviventes
+        # tenham concordado. A próxima rodada exige um novo pedido do dono.
+        plano=None
     # A execução pode priorizar os menores; seleção e relatório mantêm a ordem
     # original, inclusive participantes adiados pelo orçamento de memória.
     itens.sort(key=lambda item:modelos.index(item['modelo']))
     linhas=[f'👥 Equipe cooperativa Ollama: {len(sucessos)}/{total} modelos responderam.']
+    ampliada = total > MAX_MODELOS_PARALELA
+    participacao = '\nParticipação: '+', '.join(
+        ('✅ ' if r['ok'] else '⚠️ ')+r['modelo']+
+        (' ['+r.get('categoria','falha')[:30]+']' if ampliada and not r['ok'] else '')
+        for r in itens)
+    # Em equipes grandes, reserve primeiro o registro de todos os selecionados.
+    # O corte final nunca deve esconder as últimas tags ou seus adiamentos.
+    if ampliada:
+        linhas.append(participacao)
+        texto = texto[:max(500, 10500-len(participacao))]
     if sintese['ok']:
         linhas.append('Resposta consolidada por '+escolhido+':\n'+texto)
     else:
         linhas.append('Resposta de '+escolhido+':\n'+texto)
         if sintese['tentada']:linhas.append('A síntese adicional não respondeu; foi preservada a contribuição acima.')
-    linhas.append('\nParticipação: '+', '.join(('✅ ' if r['ok'] else '⚠️ ')+r['modelo'] for r in itens))
+        elif sintese.get('adiada'):linhas.append('A síntese adicional não foi enviada: '+sintese['erro'])
+    if not ampliada:linhas.append(participacao)
     for item in itens:
         if not item['ok']:linhas.append(item['modelo']+': '+item['erro'][:250])
     if plano:
@@ -187,25 +298,27 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
 
 
 def consultar_modelos(texto, historico, modelos, roteador, *, interpretar=False,
-                      modo='paralela', coordenador=None, progresso=None):
+                      modo='paralela', coordenador=None, progresso=None, parcial=None):
     if not isinstance(texto, str) or not texto.strip() or len(texto)>12000:
         raise ValueError('Envie uma mensagem de até 12000 caracteres para a equipe.')
-    if not isinstance(modelos, list) or not 1<=len(modelos)<=MAX_MODELOS:
-        raise ValueError('A equipe aceita entre um e oito modelos.')
+    if modo not in ('paralela','cooperativa'):raise ValueError('Escolha equipe paralela ou cooperativa.')
+    limite = MAX_MODELOS_COOPERATIVA if modo == 'cooperativa' else MAX_MODELOS_PARALELA
+    if not isinstance(modelos, list) or not 1<=len(modelos)<=limite:
+        raise ValueError(f'A equipe {modo} aceita entre um e {limite} modelos.')
     modelos=list(dict.fromkeys(validar_modelo(m) for m in modelos))
     if not isinstance(historico, list):raise ValueError('Histórico de equipe inválido.')
-    if modo not in ('paralela','cooperativa'):raise ValueError('Escolha equipe paralela ou cooperativa.')
     if coordenador is not None:
         coordenador=validar_modelo(coordenador)
         if coordenador not in modelos:raise ValueError('O coordenador deve pertencer à equipe selecionada.')
     if progresso is not None and not callable(progresso):raise ValueError('Progresso deve ser uma função.')
+    if parcial is not None and not callable(parcial):raise ValueError('Parcial deve ser uma função.')
     mensagem=str(redigir(texto))
     historico=redigir(historico)
     if not _TRAVA.acquire(blocking=False):
         raise RuntimeError('Uma equipe de modelos já está respondendo. Aguarde a conclusão.')
     try:
         if modo=='cooperativa':
-            return _consultar_cooperativa(mensagem,historico,modelos,roteador,interpretar,coordenador,progresso)
+            return _consultar_cooperativa(mensagem,historico,modelos,roteador,interpretar,coordenador,progresso,parcial)
         def consultar(modelo):
             base={'modelo':modelo,'ok':False,'texto':'','plano':None}
             try:
@@ -224,7 +337,12 @@ def consultar_modelos(texto, historico, modelos, roteador, *, interpretar=False,
         respostas={}
         with ThreadPoolExecutor(max_workers=len(modelos),thread_name_prefix='equipe_ollama') as executor:
             futuros={executor.submit(consultar,m):m for m in modelos}
-            for futuro in as_completed(futuros):respostas[futuros[futuro]]=futuro.result()
+            parcial_enviada=False
+            for futuro in as_completed(futuros):
+                item=futuro.result();respostas[futuros[futuro]]=item
+                if item['ok'] and not parcial_enviada:
+                    _parcial(parcial,item,1,len(modelos))
+                    parcial_enviada=True
         itens=[respostas[m] for m in modelos]
         sucessos=[r for r in itens if r['ok']]
         if not sucessos:

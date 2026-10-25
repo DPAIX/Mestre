@@ -174,7 +174,7 @@ class EquipePadraoTeste(unittest.TestCase):
                      {'habilitado': True, 'modelos': 'invalido'},
                      {'habilitado': True, 'modelos': [{}]},
                      {'habilitado': True, 'modelos': [{'nome': 'tag;invalida'}]},
-                     {'habilitado': True, 'modelos': [{'nome': f'modelo:{i}'} for i in range(9)]}]
+                     {'habilitado': True, 'modelos': [{'nome': f'modelo:{i}'} for i in range(33)]}]
         for catalogo in catalogos:
             with self.subTest(catalogo=catalogo):
                 self.roteador.catalogo_ollama.side_effect = None

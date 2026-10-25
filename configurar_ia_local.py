@@ -25,7 +25,7 @@ BASE = Path(__file__).resolve().parent
 ENV = BASE / '.env'
 URL_PADRAO = 'http://127.0.0.1:11434'
 MODELO_PADRAO = 'qwen2.5:3b'
-CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL','OLLAMA_PERFIL')
+CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL','OLLAMA_PERFIL','OLLAMA_NUVEM_HABILITADA')
 LIMITE_RESPOSTA = 2_000_000
 TIMEOUT_CONSULTA = 4
 TIMEOUT_DOWNLOAD = 30 * 60
@@ -225,13 +225,24 @@ def atualizar_env(modelo, url=URL_PADRAO, caminho=None,*,perfil=None):
     modelo = validar_modelo(modelo)
     url = validar_url(url)
     if perfil is not None and perfil not in ('cpu','padrao'):raise ValueError('Perfil Ollama inválido.')
+    alteracoes = {'OLLAMA_HABILITADO': '1', 'OLLAMA_URL': url, 'OLLAMA_MODEL': modelo}
+    if perfil is not None:alteracoes['OLLAMA_PERFIL']=perfil
+    _atualizar_opcoes_env(alteracoes,caminho)
+
+
+def configurar_nuvem(ativo,caminho=None):
+    """Autoriza nuvem no perfil CPU sem alterar modelo, perfil ou outras opções."""
+    if type(ativo) is not bool:raise ValueError('A autorização de nuvem deve ser booleana.')
+    _atualizar_opcoes_env({'OLLAMA_NUVEM_HABILITADA':'1' if ativo else '0'},caminho)
+
+
+def _atualizar_opcoes_env(alteracoes,caminho=None):
+    # Um único escritor atômico evita implementações de persistência divergentes.
     caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
     bruto = caminho.read_bytes() if caminho.exists() else b''
     bom = '\ufeff' if bruto.startswith(b'\xef\xbb\xbf') else ''
     original = bruto.decode('utf-8-sig')
     quebra = '\r\n' if '\r\n' in original else '\n'
-    alteracoes = {'OLLAMA_HABILITADO': '1', 'OLLAMA_URL': url, 'OLLAMA_MODEL': modelo}
-    if perfil is not None:alteracoes['OLLAMA_PERFIL']=perfil
     novas = []
     processadas = set()
     for linha in original.splitlines(keepends=True):

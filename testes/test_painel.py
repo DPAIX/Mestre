@@ -126,3 +126,55 @@ class PainelEvolucaoTeste(unittest.TestCase):
     def test_melhorias_sem_frase(self):
         with self.assertRaises(HTTPError) as e:self.post({'acao':'melhorias','confirmacao':'sim'})
         with e.exception as resposta:self.assertEqual(resposta.code,400)
+
+    def test_novas_leituras_exigem_token_antes_de_ler_registros(self):
+        with patch('servicos_gemini.estado') as gemini,patch('prontidao_assistente.coletar_prontidao') as pronto:
+            for rota in ('/api/gemini','/api/prontidao','/api/memoria_exportar'):
+                with self.subTest(rota=rota),self.assertRaises(HTTPError) as erro:urlopen(self.url+rota)
+                with erro.exception as r:self.assertEqual(r.code,403)
+            gemini.assert_not_called();pronto.assert_not_called()
+
+    def test_gemini_http_prepara_confirma_uma_vez_e_consulta_sem_reenviar(self):
+        import servicos_gemini as gemini
+        import gemini_interactions as api
+        chat=app.CENTRAL.obter_chat_ativo('painel')['id']
+        with patch.object(api,'criar_tarefa',return_value={'remote_id':'http-fixture','estado':'in_progress','texto':'','ambiente_id':''}) as criar:
+            pedido=self.post({'acao':'gemini_preparar','operacao':'tarefa','chat_id':chat,'texto':'Compare algoritmos.'})['pedido']
+            criar.assert_not_called()
+            resposta=self.post({'acao':'pedido_confirmar','id':pedido['id']})
+            self.assertTrue(resposta['ok']);criar.assert_called_once()
+            with self.assertRaises(HTTPError) as erro:self.post({'acao':'pedido_confirmar','id':pedido['id']})
+            with erro.exception as r:self.assertEqual(r.code,400)
+        registro=gemini.estado('painel',chat)['tarefas'][-1]
+        with patch.object(api,'consultar_tarefa',return_value={'remote_id':'http-fixture','estado':'completed','texto':'Conclusão fictícia','ambiente_id':''}) as consultar,patch.object(api,'criar_tarefa') as criar:
+            resposta=self.post({'acao':'gemini_consultar','chat_id':chat,'id':registro['id']})
+            self.assertEqual(resposta['tarefa']['estado'],'completed');consultar.assert_called_once_with('http-fixture');criar.assert_not_called()
+
+    def test_gemini_http_nao_confirma_na_conversa_errada(self):
+        import gemini_interactions as api
+        chat=app.CENTRAL.obter_chat_ativo('painel')['id']
+        pedido=self.post({'acao':'gemini_preparar','operacao':'tarefa','chat_id':chat,'texto':'Uma proposta.'})['pedido']
+        outro=app.CENTRAL.criar_chat('painel','Outra conversa de teste')
+        try:
+            with patch.object(api,'criar_tarefa') as criar:
+                with self.assertRaises(HTTPError) as erro:self.post({'acao':'pedido_confirmar','id':pedido['id']})
+                with erro.exception as r:self.assertEqual(r.code,400)
+                criar.assert_not_called()
+            req=Request(self.url+'/api/gemini?chat_id='+chat,headers={'X-Painel-Token':app.TOKEN_PAINEL})
+            with self.assertRaises(HTTPError) as erro:urlopen(req)
+            with erro.exception as r:self.assertEqual(r.code,400)
+        finally:app.CENTRAL.selecionar_chat('painel',chat)
+
+    def test_memoria_http_exclui_so_apos_confirmar_e_exporta_texto(self):
+        import memoria_assistente as memoria
+        chat=app.CENTRAL.obter_chat_ativo('painel')['id'];chave=memoria.contexto_chat('painel',chat)
+        nota=memoria.salvar_nota(chave,'Teste exportação','Estudar cálculo.',confirmado=True)
+        req=Request(self.url+'/api/memoria_exportar?chat_id='+chat,headers={'X-Painel-Token':app.TOKEN_PAINEL})
+        with urlopen(req) as r:self.assertIn('Estudar cálculo.',json.load(r)['texto'])
+        pedido=self.post({'acao':'memoria_remover_preparar','chat_id':chat,'nota_id':nota['id']})['pedido']
+        self.assertTrue(any(n['id']==nota['id'] for n in memoria.listar_notas(chave)))
+        self.post({'acao':'pedido_cancelar','id':pedido['id']})
+        self.assertTrue(any(n['id']==nota['id'] for n in memoria.listar_notas(chave)))
+        pedido=self.post({'acao':'memoria_remover_preparar','chat_id':chat,'nota_id':nota['id']})['pedido']
+        self.post({'acao':'pedido_confirmar','id':pedido['id']})
+        self.assertFalse(any(n['id']==nota['id'] for n in memoria.listar_notas(chave)))

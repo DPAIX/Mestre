@@ -28,7 +28,7 @@ _CPU_LOCK = threading.Lock()
 _CPU_ESTADO = {'instante': None, 'total': None, 'ocioso': None, 'percentual': None}
 _CPU_CACHE_SEGUNDOS = 0.5
 SENSITIVE = re.compile(r'(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{14,}|(?<!\d)\d{5,15}:[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,}|\bBearer\s+\S+)',re.I)
-CONFIG_KEYS = {'telegram_token','gemini_api_key','google_api_key','pool_chaves_api','openai_api_key','claude_api_key','anthropic_api_key','exa_api_key','token','api_key','authorization','x-api-key','access_token','refresh_token','client_secret'}
+CONFIG_KEYS = {'telegram_token','gemini_api_key','google_api_key','pool_chaves_api','openai_api_key','claude_api_key','anthropic_api_key','exa_api_key','nine_router_api_key','token','api_key','authorization','x-api-key','access_token','refresh_token','client_secret'}
 ATRIBUICAO_SENSIVEL = re.compile(
     r'(?<![\w-])(?P<aspas>[\"\']?)(?:' +
     '|'.join(re.escape(chave) for chave in sorted(CONFIG_KEYS, key=len, reverse=True)) +

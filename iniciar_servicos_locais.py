@@ -8,9 +8,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 
 from caminhos_instalacao import arquivo_env
 from diagnostico_ollama import consultar, validar_url, URL_PADRAO
@@ -49,6 +51,9 @@ def _ambiente_servidor(url):
     # Evita repassar chaves, proxy, Python ou hosts remotos ao processo local.
     ambiente = {k: v for k, v in os.environ.items() if k.upper() in _AMBIENTE_PUBLICO}
     ambiente['OLLAMA_HOST'] = url
+    if any(k.upper() == 'OLLAMA_NO_CLOUD' and v.lower() in ('1', 'true')
+           for k, v in os.environ.items()):
+        ambiente['OLLAMA_NO_CLOUD'] = '1'
     if not any(k.upper() == 'OLLAMA_MODELS' for k in ambiente):
         # Na instalação redirecionada F:\MeuControlePC_v2\.env, reaproveita
         # F:\Models apenas se a estrutura do catálogo já existir.
@@ -66,6 +71,17 @@ def _responde(url, timeout):
                 and isinstance(dados.get('version'), str) and dados['version'].strip())
 
 
+def _porta_ocupada(url):
+    partes=urlsplit(url)
+    try:
+        with socket.create_connection((partes.hostname,partes.port or 80),timeout=0.3):return True
+    except ConnectionRefusedError:return False
+    except OSError:
+        # Timeout/permissão não demonstram uma porta livre. Preservar o processo
+        # existente é preferível a tentar outro servidor sobre a mesma porta.
+        return True
+
+
 def garantir_ollama():
     """Garante uma tentativa finita de início; não confunde versão com inferência."""
     if os.getenv('OLLAMA_HABILITADO') != '1':
@@ -78,6 +94,10 @@ def garantir_ollama():
     try:
         if _responde(url, 3):
             return _resultado(True, False, 'Ollama já responde aos metadados locais; geração ainda não verificada.')
+        if os.getenv('OLLAMA_INICIAR_SERVICO','1')!='1':
+            return _resultado(False,False,'O início do servidor Ollama está desativado. Abra-o manualmente quando precisar; os recursos locais do assistente continuam disponíveis.')
+        if _porta_ocupada(url):
+            return _resultado(False,False,'A porta local está ocupada ou não foi confirmada livre, mas a API Ollama não respondeu. Nenhum segundo servidor foi iniciado.')
         caminho = _executavel_ollama()
         if caminho is None:
             return _resultado(False, False, 'Ollama não foi encontrado no PC. Instale-o para usar os modelos locais.')

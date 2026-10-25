@@ -1,5 +1,5 @@
 pyTelegramBotAPI>=4.20,<6
-google-genai>=1.0,<3
+google-genai>=2.9,<3
 pyautogui>=0.9.54,<1
 Pillow>=10.0,<13
 psutil>=6.0,<8

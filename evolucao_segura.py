@@ -22,14 +22,15 @@ import nucleo
 
 _ANALISE_LOCK = threading.RLock()
 FONTES = ('assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
-          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','voz_assistente.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py',
+          'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','voz_assistente.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','integracoes_agentes.py',
           'agenda_google.py','autorizar_google.py','configurar_telegram.py','startup_windows.py',
           'caminhos_instalacao.py','redirecionar_assistente.py','idempotencia_painel.py',
           'transcritor_local.py','iniciar_servicos_locais.py','instancia_assistente.py','preparar_inicio_automatico.py','manutencao_assistente.py',
+          'roteador_9router.py','integracoes_9stack.py','configurar_9router.py','memoria_assistente.py','configuracao_assistente.py','diagnostico_rede.py','gemini_interactions.py','servicos_gemini.py','configurar_gemini.py','prontidao_assistente.py',
           'evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')
 DADOS_CRITICOS = ('gestao_vida.json','minhas_macros.json','base_auto_aprendizado.json')
 BACKUP_SEGURO = DADOS_CRITICOS + ('robotask_conhecimento.json','ecossistema_suporte.json')
-PROVEDORES = ('Gemini','OpenAI','Claude','Exa','Ollama')
+PROVEDORES = ('Gemini','OpenAI','Claude','Exa','Ollama','9Router')
 STATUS_FALHA = ('erro','falha','indisponivel')
 
 
@@ -65,7 +66,7 @@ def _categoria_evento(evento):
     elif codigo==402 or any(x in detalhe for x in ('sem_creditos','sem créditos','insufficient_quota','credit balance','no credits')):categoria='sem_creditos'
     elif codigo==429:categoria='limite_temporario'
     else:
-        categoria=next((x for x in ('servidor_ocupado','cota_temporaria','autenticacao','modelo_indisponivel','limite_temporario','rede','resposta_invalida','requisicao_invalida') if x in detalhe),'temporario')
+        categoria=next((x for x in ('servidor_ocupado','cota_temporaria','autenticacao','modelo_indisponivel','limite_temporario','tempo_esgotado','rede','resposta_invalida','requisicao_invalida') if x in detalhe),'temporario')
     return categoria,codigo
 
 
@@ -79,6 +80,7 @@ def _orientacao_provedor(provedor,categoria):
         'autenticacao':'Revise a credencial no .env local e as permissões da conta; não compartilhe chaves. Depois use /reativar_ias e uma consulta explícita.',
         'modelo_indisponivel':'Confira o modelo configurado e o acesso da sua conta. Depois use /reativar_ias e uma consulta explícita.',
         'rede':f'Confira a conexão e repita uma consulta explícita com {consulta}.',
+        'tempo_esgotado':f'O prazo da consulta acabou; isso não comprova falha de rede nem cancelamento no serviço. Confira o Ollama antes de enviar outra consulta explícita com {consulta}.',
     }
     return orientacoes.get(categoria,f'Confira /verificar e os logs; uma nova consulta explícita com {consulta} é necessária para verificar o provedor.')
 

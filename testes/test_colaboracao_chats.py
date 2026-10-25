@@ -99,6 +99,30 @@ class ColaboracaoChats(unittest.TestCase):
                 colab.preparar_chats_modelos(self.contexto,['novo:1b','novo:2b'])
         self.assertEqual((self.dados/'colaboracao_chats.json').read_bytes(),antes)
 
+    def test_preparar_modelo_reaproveita_chat_legado_com_escolha_individual(self):
+        chat=colab.criar_chat(self.contexto,'Modelo legado','Ollama')
+        colab.configurar_chat(self.contexto,chat['id'],modelo_ollama='llama3.2:latest')
+        colab.registrar_troca(self.contexto,'Pergunta anterior','Resposta anterior','Ollama')
+        historico=colab.historico_chat(self.contexto)
+        dados=nucleo.ler_json('colaboracao_chats.json',{})
+        for espaco in dados['contextos'].values():
+            for item in espaco['chats']:
+                if item['id']==chat['id']:item.pop('equipe_politica',None)
+        nucleo.gravar_json('colaboracao_chats.json',dados)
+        resultado=colab.preparar_chats_modelos(self.contexto,['llama3.2:latest'])
+        self.assertEqual(resultado['criados'],0)
+        self.assertEqual(resultado['chats'][0]['id'],chat['id'])
+        self.assertEqual(colab.obter_chat_ativo(self.contexto)['equipe_politica'],'manual')
+        self.assertEqual(colab.historico_chat(self.contexto),historico)
+
+    def test_contexto_exporta_componentes_de_conversa_e_recuperacao_do_painel(self):
+        componentes=['conversa_equipe.py','interpretacao_natural.py','idempotencia_painel.py']
+        for nome in componentes:(self.fontes/nome).write_text('# Fonte fictícia para revisão do projeto.\n',encoding='utf8')
+        with zipfile.ZipFile(colab.exportar_contexto(self.contexto)) as pacote:
+            for nome in componentes:
+                self.assertIn('fontes/'+nome,pacote.namelist())
+                self.assertIn(b'Fonte fict',pacote.read('fontes/'+nome))
+
     def test_historico_limita_trocas_tamanho_e_redige_segredos(self):
         colab.criar_chat(self.contexto,'Histórico limitado')
         for numero in range(22):

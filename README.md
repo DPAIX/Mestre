@@ -1,4 +1,38 @@
-# MeuControlePC v2.3.2
+# MeuControlePC v2.10.2
+
+**Correção após integração de branches:** restaura recuperação de ações do painel, definição do modelo Ollama padrão e contexto de colaboração. [Revisão e atualização](REVISAO_V2_10_2.md). [Concluir a conexão local 9Router](GUIA_CONCLUIR_9ROUTER.md).
+
+**Retomar a configuração:** se as bibliotecas/Telegram já foram preparados, abra `retomar_configuracao.bat`. A nova ordem inicia o Ollama autorizado antes de escolher modelos e valida os campos Gemini/9Router antes de pedir chaves. [Passos para concluir](GUIA_RETOMAR_CONFIGURACAO.md).
+
+**Preparação integrada e Gemini:** abra `preparar_assistente_completo.bat` com o bot encerrado. Painel com estado das integrações, modelos 9Router por conversa, memória com exclusão/exportação e Gemini Interactions/Managed Agents. [Instalar, usar e reverter](GUIA_ASSISTENTE_INTEGRADO.md) · [Validação v2.10.0](REVISAO_V2_10_0.md). Contas, cota e pareamento precisam ser configurados no PC; a rede existente é preservada.
+
+**Quedas de navegação no Windows:** `diagnosticar_rede.bat` registra apenas metadados de conectividade e recursos durante 90 segundos, sem alterar a rede. O início automático também preserva `OLLAMA_NO_CLOUD=1` quando definido. [Diagnóstico, limites e reversão](REVISAO_V2_9_2.md).
+
+**Configuração local sem esperar modelos:** “faça as configurações necessárias” abre um plano local e, após confirmar, uma janela de configuração no PC. Também há botão no Telegram/painel e `configurar_assistente.bat`. [Aplicar, validar e reverter](REVISAO_V2_9_1.md).
+
+> **v2.9.0:** [Instalar e integrar modelos, agentes, 9Router, 9Remote e memória](GUIA_INTEGRACOES_V2_9.md) · [Correções e validação](REVISAO_V2_9_0.md). Após substituir as fontes completas em C:, abra `atualizar_assistente.bat`. Novas integrações são configuradas na aba **Integrações & memória**, com confirmação e contas próprias.
+
+**Recuperação após patch externo:** fontes completas sem hooks, resposta local para “me fale suas capacidades” e `/logs` com detalhe redigido da última falha. Preserva confirmação, seleção de modelos e registros existentes. [Recuperar no Windows](GUIA_RECUPERACAO_PATCH.md) · [Auditoria do patch e revisão v2.8.2](REVISAO_V2_8_2.md).
+
+**Atualizar e otimizar:** encerre o bot, copie as fontes na raiz em C: e abra `atualizar_assistente.bat`. Ele confere bibliotecas da aplicação/voz/Google, executa `pip check`, limpa bytecode gerado e inicia o assistente, reaproveitando configuração/dados/modelos e o Startup existente. Respostas sociais são locais e rápidas; status sem espera; equipe CPU prioriza modelos menores e explica adiamento por RAM. [Guia de manutenção](GUIA_MANUTENCAO.md) · [Revisão v2.8.0](REVISAO_V2_8_0.md).
+
+**Correção v2.7.1:** a equipe agora preserva os limites CPU do modelo individual e usa instruções/resumos compactos. Conversas sem ação mantêm sua resposta; timeouts não são tratados como prova de falha de rede. [Atualização, validação e reversão](REVISAO_V2_7_1.md).
+
+Abra `ativar_assistente_automatico.bat` uma vez para preparar a voz local e o início após o logon. Depois envie texto ou áudio: Whisper local é o transcritor padrão e todos os modelos Ollama cooperam automaticamente, sem comandos de ativação. Código em C:, configuração/dados/pesos em F:. [Guia de preparação e reversão](GUIA_AUTOMATICO.md) · [Revisão v2.7.0](REVISAO_V2_7_0.md).
+
+Histórico v2.6.0: todos os modelos instalados podem colaborar com `/chat equipe on`: consultas sequenciais, contribuições compartilhadas e uma resposta consolidada. O perfil CPU existente é preservado. [Ativação e limites](GUIA_EQUIPE_COOPERATIVA.md) · [Revisão v2.6.0](REVISAO_V2_6_0.md). A frase “mostre a minha rotina da semana” agora consulta os registros locais.
+
+Se o teste isolado do Llama respondeu em CPU, ative o mesmo caminho no assistente com `/modelos perfil cpu` e confirme no Telegram. O perfil seleciona Llama, usa CPU/contexto pequeno e desativa a equipe desta conversa. [Ativação, limites e reversão](GUIA_PERFIL_CPU.md) · [Revisão v2.5.2](REVISAO_V2_5_2.md).
+
+Para timeouts também reproduzidos no comando nativo do Ollama, há um [diagnóstico independente de RAM, GPU e modelos carregados](GUIA_DIAGNOSTICO_OLLAMA.md). A leitura padrão não gera texto nem altera a configuração.
+
+Corrigida a validação que recusava hábitos textuais/fracionários do próprio projeto e o teste de instalação que confundia uma fixture anterior com nova gravação junto às fontes. [Correções e recuperação sem alterar os dados](REVISAO_V2_5_1.md).
+
+Consulta simultânea opcional aos modelos Ollama: `/chat equipe paralelo`. Respostas identificadas por modelo, histórico por conversa e confirmação de ações preservados. [Guia](GUIA_EQUIPE_PARALELA.md) · [Revisão técnica](REVISAO_V2_5_0.md) · [Auditoria do arquivo enviado](AUDITORIA_ASSISTENTE_V2_5_0.md).
+
+**Código em C: e configuração em F:** execute `iniciar_redirecionado.bat` para usar as fontes em `C:\Users\Mestre\Documents\GitHub\Mestre`, o `.env` em `F:\MeuControlePC_v2\.env` e os dados em `F:\MeuControlePC_v2\dados`. O redirecionador reaproveita o Python instalado, preserva os caminhos nos reinícios e nos configuradores e não copia credenciais para o repositório. Veja [preparação, comandos e reversão](GUIA_REDIRECIONAMENTO.md).
+
+O painel passa a identificar cada pedido no servidor, rejeitar alterações com estado antigo entre abas e recuperar resultados por consulta após perda de resposta HTTP, sem reenviar a ação. [Mudanças e validação](REVISAO_V2_4_1.md).
 
 Assistente Python para Windows com bot Telegram, painel local, rotina, finanças, catálogo RoboTask e provedores de IA configuráveis.
 

@@ -25,13 +25,14 @@ DESCRICOES_FALHA={
     'sem_creditos':'sem créditos','autenticacao':'credencial rejeitada',
     'modelo_indisponivel':'modelo não acessível','limite_temporario':'limite temporário',
     'servidor_ocupado':'servidor ocupado','requisicao_invalida':'requisição inválida',
-    'rede':'problema de rede','resposta_invalida':'resposta inválida',
+    'rede':'problema de rede','tempo_esgotado':'prazo de resposta esgotado',
+    'resposta_invalida':'resposta inválida',
     'configuracao':'configuração incompleta','temporario':'falha temporária',
     'cota_temporaria':'cota de uso temporariamente esgotada',
     'recursos':'orçamento de memória insuficiente para esta consulta',
 }
 SISTEMA='Responda em português do Brasil com precisão. Não simule execução de comandos no computador.'
-PROVEDORES_RESPOSTA=('Gemini','OpenAI','Claude','Ollama')
+PROVEDORES_RESPOSTA=('9Router','Gemini','OpenAI','Claude','Ollama')
 
 def memoria_fisica_bytes():
     """RAM total, quando disponível; não lê arquivos do assistente."""
@@ -47,6 +48,13 @@ def assinatura_configuracao_ollama():
              os.getenv('OLLAMA_MODEL','qwen2.5:3b').strip(),os.getenv('OLLAMA_HABILITADO')=='1']
     perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
     if perfil!='padrao':valores.append(perfil)
+    if os.getenv('OLLAMA_NUVEM_HABILITADA','0')=='1':valores.append('nuvem_autorizada')
+    return hashlib.sha256(json.dumps(valores,ensure_ascii=True).encode('utf-8')).hexdigest()
+
+def assinatura_configuracao_9router():
+    """Só o hash fica no estado; modelo, endpoint e chave não são persistidos."""
+    nomes=('NINE_ROUTER_HABILITADO','NINE_ROUTER_URL','NINE_ROUTER_MODEL','NINE_ROUTER_API_KEY','NINE_ROUTER_TIMEOUT')
+    valores=[os.getenv(nome,'') for nome in nomes]
     return hashlib.sha256(json.dumps(valores,ensure_ascii=True).encode('utf-8')).hexdigest()
 
 def limitar_retry(valor):
@@ -119,6 +127,13 @@ def detalhe_seguro(texto,chave=''):
     if chave:texto=texto.replace(chave,'[CREDENCIAL-REDACTADA]')
     return str(redigir(texto))
 
+
+def validar_limite_segundos(valor):
+    if valor is None:return None
+    if type(valor) not in (int,float) or not 0<valor<=120 or not math.isfinite(valor):
+        raise ValueError('O limite desta consulta deve ser um número finito entre zero e 120 segundos, exclusivo de zero.')
+    return float(valor)
+
 @dataclass
 class FalhaAPI(Exception):
     provedor: str
@@ -127,6 +142,14 @@ class FalhaAPI(Exception):
     categoria: str='temporario'
     retry_after: float | None=None
     def __str__(self):return f'{self.provedor} ({self.codigo}/{self.categoria}): {self.detalhe}'
+
+
+def nuvem_autorizada():
+    """Opt-in da exceção cloud no perfil CPU; não testa conta/disponibilidade."""
+    valor=os.getenv('OLLAMA_NUVEM_HABILITADA','0')
+    if valor not in ('0','1'):
+        raise FalhaAPI('Ollama',0,'OLLAMA_NUVEM_HABILITADA inválida; use somente 0 ou 1.','configuracao')
+    return valor=='1'
 
 def analisar_erro(provedor,codigo,corpo,retry_after=None):
     e={}
@@ -187,7 +210,9 @@ def postar(url,chave,payload,provedor,headers=None,timeout=18,opener=None):
         finally:e.close()
         raise analisar_erro(provedor,e.code,detalhe_seguro(corpo,chave),retry_after=retry) from None
     except (urllib.error.URLError,TimeoutError,OSError) as e:
-        raise FalhaAPI(provedor,0,detalhe_seguro(e,chave)[:150],'rede') from None
+        causa=e.reason if isinstance(e,urllib.error.URLError) else e
+        categoria='tempo_esgotado' if isinstance(causa,TimeoutError) else 'rede'
+        raise FalhaAPI(provedor,0,detalhe_seguro(e,chave)[:150],categoria) from None
 
 class Roteador:
     def __init__(self):
@@ -198,8 +223,11 @@ class Roteador:
         self.ultimo_provedor='local'
         self.mutex=threading.RLock()
         self._catalogo_cpu_cache=None
+        self._nuvem_equipe_cpu_snapshot=()
         self._assinatura_ollama=assinatura_configuracao_ollama()
+        self._assinatura_9router=assinatura_configuracao_9router()
         self._pausa_ollama_pendente=None
+        self._pausa_9router_pendente=None
         self._recuperar_bloqueios()
 
     def _restaurar_bloqueio(self,nome,item):
@@ -231,6 +259,11 @@ class Roteador:
                     # Só consome esse candidato na primeira observação da configuração.
                     self._pausa_ollama_pendente=dict(item)
                     if assinatura!=self._assinatura_ollama:continue
+                if nome=='9Router':
+                    assinatura=item.get('configuracao')
+                    if not isinstance(assinatura,str) or not re.fullmatch(r'[a-f0-9]{64}',assinatura):continue
+                    self._pausa_9router_pendente=dict(item)
+                    if assinatura!=self._assinatura_9router:continue
                 self._restaurar_bloqueio(nome,item)
         except (ValueError,TypeError,OSError):pass
 
@@ -250,19 +283,37 @@ class Roteador:
             if mudou:self._salvar_bloqueios()
             return mudou
 
+    def atualizar_configuracao_9router(self):
+        """Trocar credencial/modelo do gateway esquece só sua pausa anterior."""
+        assinatura=assinatura_configuracao_9router()
+        with self.mutex:
+            mudou=assinatura!=self._assinatura_9router
+            if mudou:
+                for estados in (self.bloqueados,self.motivos,self.falhas,self.sucessos):estados.pop('9Router',None)
+                self._assinatura_9router=assinatura
+            pendente=self._pausa_9router_pendente
+            self._pausa_9router_pendente=None
+            if pendente and pendente.get('configuracao')==assinatura:
+                self._restaurar_bloqueio('9Router',pendente)
+            if mudou:self._salvar_bloqueios()
+            return mudou
+
     def _salvar_bloqueios(self):
         try:
             gravar_json('estado_ia.json',{nome:{'ate':ate,'categoria':self.motivos.get(nome,'temporario'),
                                              'codigo':self.falhas.get(nome,{}).get('codigo'),
                                              'falha_em':self.falhas.get(nome,{}).get('falha_em'),
-                                             **({'configuracao':self._assinatura_ollama} if nome=='Ollama' else {})}
+                                             **({'configuracao':self._assinatura_ollama} if nome=='Ollama' else
+                                                {'configuracao':self._assinatura_9router} if nome=='9Router' else {})}
                          for nome,ate in self.bloqueados.items() if ate>time.time()})
         except (OSError,ValueError):pass
 
-    def _registrar_sucesso(self,provedor,assinatura_ollama=None):
+    def _registrar_sucesso(self,provedor,assinatura_ollama=None,assinatura_9router=None):
         if provedor=='Ollama':self.atualizar_configuracao_ollama()
+        if provedor=='9Router':self.atualizar_configuracao_9router()
         with self.mutex:
             if provedor=='Ollama' and assinatura_ollama is not None and assinatura_ollama!=self._assinatura_ollama:return
+            if provedor=='9Router' and assinatura_9router is not None and assinatura_9router!=self._assinatura_9router:return
             self.bloqueados.pop(provedor,None)
             self.motivos.pop(provedor,None)
             self.sucessos[provedor]=time.time()
@@ -275,6 +326,7 @@ class Roteador:
         with self.mutex:
             antigos=len(self.bloqueados)
             self._pausa_ollama_pendente=None
+            self._pausa_9router_pendente=None
             self.bloqueados.clear()
             self.motivos.clear()
             self._salvar_bloqueios()
@@ -283,16 +335,19 @@ class Roteador:
 
     def disponivel(self,provedor):
         if provedor=='Ollama':self.atualizar_configuracao_ollama()
+        if provedor=='9Router':self.atualizar_configuracao_9router()
         with self.mutex:return time.time()>=self.bloqueados.get(provedor,0)
-    def registrar_falha(self,erro,assinatura_ollama=None):
+    def registrar_falha(self,erro,assinatura_ollama=None,assinatura_9router=None):
         if erro.provedor=='Ollama':self.atualizar_configuracao_ollama()
+        if erro.provedor=='9Router':self.atualizar_configuracao_9router()
         duracao={'sem_creditos':24*3600,'autenticacao':24*3600,'modelo_indisponivel':24*3600,
                  'requisicao_invalida':3600,'limite_temporario':120,'cota_temporaria':120,
-                 'servidor_ocupado':60,'rede':60}.get(erro.categoria,90)
+                 'servidor_ocupado':60,'rede':60,'tempo_esgotado':60}.get(erro.categoria,90)
         if erro.categoria in ('limite_temporario','cota_temporaria','servidor_ocupado'):
             duracao=limitar_retry(erro.retry_after) or duracao
         with self.mutex:
             if erro.provedor=='Ollama' and assinatura_ollama is not None and assinatura_ollama!=self._assinatura_ollama:return
+            if erro.provedor=='9Router' and assinatura_9router is not None and assinatura_9router!=self._assinatura_9router:return
             agora=time.time()
             self.bloqueados[erro.provedor]=agora+duracao
             self.motivos[erro.provedor]=erro.categoria
@@ -301,11 +356,15 @@ class Roteador:
         registrar('api_'+erro.provedor,'indisponivel',str(erro),erro.provedor)
     def _configurados(self):
         self.atualizar_configuracao_ollama()
+        self.atualizar_configuracao_9router()
         config={'Gemini':bool(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')),
                 'OpenAI':bool(os.getenv('OPENAI_API_KEY')),
                 'Claude':bool(os.getenv('ANTHROPIC_API_KEY')),
                 'Exa':bool(os.getenv('EXA_API_KEY'))}
         if os.getenv('OLLAMA_HABILITADO')=='1':config['Ollama']=True
+        if os.getenv('NINE_ROUTER_HABILITADO')=='1':
+            from roteador_9router import configurado
+            config['9Router']=configurado()
         return config
 
     def estado_local(self):
@@ -331,6 +390,7 @@ class Roteador:
     def _explicar_indisponibilidade(self,nome,estado):
         if not estado['configurado']:
             if nome=='Ollama':return 'Ollama: integração local desabilitada; configure um modelo local antes de habilitar.'
+            if nome=='9Router':return '9Router: gateway desabilitado ou sem configuração válida. Confira o serviço local e selecione um modelo/combo.'
             return nome+': sem chave configurada.'
         categoria=estado['categoria'] or 'temporario'
         causa=DESCRICOES_FALHA.get(categoria,'falha temporária')
@@ -363,7 +423,7 @@ class Roteador:
             result={}
             for nome,habilitado in config.items():
                 if not habilitado:
-                    result[nome]='sem chave';continue
+                    result[nome]='gateway sem configuração válida' if nome=='9Router' else 'sem chave';continue
                 limite=self.bloqueados.get(nome,0)
                 if limite>time.time():
                     cat=self.motivos.get(nome,'temporario')
@@ -374,6 +434,11 @@ class Roteador:
                 else:result[nome]='configurado; não testado'
             return result
     def gemini(self,pergunta,historico=None):
+        modo=os.getenv('GEMINI_API_MODO','generate_content')
+        if modo=='interactions':
+            from gemini_interactions import responder
+            return responder(pergunta,historico)
+        if modo!='generate_content':raise FalhaAPI('Gemini',0,'Escolha GEMINI_API_MODO=interactions ou generate_content.','configuracao')
         chave=os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
         if not chave:raise FalhaAPI('Gemini',0,'Chave não configurada.','configuracao')
         try:from google import genai
@@ -448,9 +513,9 @@ class Roteador:
         return copy.deepcopy(modelos)
 
     def ordenar_equipe_cpu(self,modelos):
-        """Prioriza pesos menores sem remover participantes selecionados."""
+        """Local menor primeiro; nuvem autorizada pode colaborar antes dos maiores."""
         if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()!='cpu':return list(modelos)
-        from configurar_ia_local import FalhaConfiguracao
+        from configurar_ia_local import FalhaConfiguracao,modelo_em_nuvem
         try:catalogo=self._obter_catalogo_ollama(endpoint_ollama().removesuffix('/api/chat'),usar_cache=True)
         except (ValueError,FalhaConfiguracao) as erro:
             raise FalhaAPI('Ollama',0,str(erro),'configuracao') from None
@@ -458,7 +523,25 @@ class Roteador:
         conhecidos={nome:valor for nome,valor in tamanhos.items() if type(valor) is int and valor>0}
         # Sem tamanho público, preserve a ordem existente em vez de inferir
         # quantização ou capacidade pelo nome da tag.
-        return sorted(modelos,key=lambda nome:conhecidos.get(nome,float('inf'))) if conhecidos else list(modelos)
+        ordem=sorted(modelos,key=lambda nome:conhecidos.get(nome,float('inf'))) if conhecidos else list(modelos)
+        nuvem=[]
+        if nuvem_autorizada() and os.getenv('OLLAMA_NO_CLOUD','0')!='1':
+            remotos={item['nome'] for item in catalogo if item.get('nuvem') is True}
+            nuvem=[nome for nome in modelos if nome in remotos or modelo_em_nuvem(nome)]
+            locais=[nome for nome in ordem if nome not in nuvem]
+            ordem=locais[:1]+nuvem+locais[1:]
+        with self.mutex:self._nuvem_equipe_cpu_snapshot=tuple(nuvem)
+        return ordem
+
+    def modelos_nuvem_equipe_cpu(self):
+        """Snapshot da ordenação da rodada, sem rede ou inferência adicional."""
+        with self.mutex:return tuple(self._nuvem_equipe_cpu_snapshot)
+
+    def nine_router(self,pergunta,historico=None,*,modelo=None):
+        # Importação tardia evita ciclo: o conector reutiliza FalhaAPI e redação.
+        from roteador_9router import responder
+        opcoes={'modelo':modelo} if modelo is not None else {}
+        return responder(pergunta,historico=historico,**opcoes)
 
     def catalogo_ollama(self):
         """Leitura explícita do serviço no PC; não gera respostas nem baixa modelos."""
@@ -487,7 +570,25 @@ class Roteador:
         except FalhaConfiguracao as exc:
             raise FalhaAPI('Ollama',0,str(exc),'configuracao') from None
 
-    def ollama(self,pergunta,historico=None,modelo=None):
+    def _explicar_404_ollama(self,modelo,erro):
+        if erro.codigo!=404:return erro
+        from configurar_ia_local import listar_modelos,modelo_instalado,FalhaConfiguracao
+        base=endpoint_ollama().removesuffix('/api/chat')
+        try:
+            nomes=listar_modelos(base)
+            if modelo_instalado(modelo,nomes):
+                detalhe=f'O modelo {modelo} está no catálogo, mas a rota /api/chat retornou HTTP 404. Confira o serviço/versão e OLLAMA_URL.'
+            else:
+                detalhe=f'O modelo configurado {modelo} não consta no catálogo Ollama. Disponíveis: '+(', '.join(nomes[:6]) or 'nenhum')+'.'
+        except (FalhaConfiguracao,ValueError):
+            detalhe=f'Ollama retornou HTTP 404 para {modelo}; não foi possível conferir o catálogo. Confira o serviço e OLLAMA_URL.'
+        detalhe+=' Use /modelos ollama e /modelos padrao NOME com uma tag instalada. Nenhum modelo foi baixado nem outra geração tentada.'
+        return FalhaAPI('Ollama',404,detalhe,'modelo_indisponivel')
+
+    def ollama(self,pergunta,historico=None,modelo=None,*,modo_cooperativo=False,limite_segundos=None):
+        if not isinstance(modo_cooperativo,bool):raise ValueError('Modo cooperativo inválido.')
+        limite_segundos=validar_limite_segundos(limite_segundos)
+        prazo=time.monotonic()+limite_segundos if limite_segundos is not None else None
         if os.getenv('OLLAMA_HABILITADO')!='1':
             raise FalhaAPI('Ollama',0,'Integração local desabilitada. Configure Ollama e habilite OLLAMA_HABILITADO=1.','configuracao')
         endpoint=endpoint_ollama()
@@ -506,19 +607,27 @@ class Roteador:
         payload={'model':modelo,'stream':False,
                  'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)}
         if perfil=='cpu':
+            permitir_nuvem=nuvem_autorizada()
             from configurar_ia_local import modelo_em_nuvem,modelo_instalado,FalhaConfiguracao
-            if modelo_em_nuvem(modelo):
-                raise FalhaAPI('Ollama',0,'O perfil CPU não se aplica a tags cloud. Selecione um modelo local ou o perfil padrao.','configuracao')
+            if modelo_em_nuvem(modelo) and not permitir_nuvem:
+                raise FalhaAPI('Ollama',0,'Este modelo usa a nuvem do Ollama. Autorize pelo botão de nuvem do assistente; exige internet, login e cota. Nenhuma geração enviada.','configuracao')
             try:
                 catalogo=self._obter_catalogo_ollama(endpoint.removesuffix('/api/chat'),usar_cache=True)
             except (ValueError,FalhaConfiguracao):
                 raise FalhaAPI('Ollama',0,'Não foi possível confirmar o modelo local do perfil CPU no catálogo. Nenhuma geração enviada.','configuracao') from None
-            local=modelo_instalado(modelo,[m['nome'] for m in catalogo if not m['nuvem']])
-            if local is None:
+            instalado=modelo_instalado(modelo,[m['nome'] for m in catalogo])
+            if instalado is None:
                 self.invalidar_catalogo_ollama()
-                raise FalhaAPI('Ollama',0,'O perfil CPU exige uma tag confirmada como local no catálogo. Nenhuma geração enviada.','configuracao')
-            if modo_cooperativo:
-                tamanho=next((m.get('tamanho_bytes') for m in catalogo if m['nome']==local),None)
+                raise FalhaAPI('Ollama',0,'O perfil CPU exige uma tag confirmada no catálogo. Nenhuma geração enviada.','configuracao')
+            # Aliases sem sufixo cloud também podem representar um modelo
+            # remoto. Uma indicação remota prevalece sobre registros duplicados.
+            nuvem=bool(modelo_em_nuvem(instalado) or any(m['nuvem'] for m in catalogo if m['nome']==instalado))
+            if nuvem and os.getenv('OLLAMA_NO_CLOUD','0')=='1':
+                raise FalhaAPI('Ollama',0,'OLLAMA_NO_CLOUD=1 bloqueia esta consulta de nuvem no perfil CPU. O opt-in não remove esse bloqueio. Nenhuma geração enviada.','configuracao')
+            if nuvem and not permitir_nuvem:
+                raise FalhaAPI('Ollama',0,'O catálogo identifica este modelo como nuvem do Ollama. Autorize pelo botão de nuvem do assistente; exige internet, login e cota. Nenhuma geração enviada.','configuracao')
+            if modo_cooperativo and not nuvem:
+                tamanho=next((m.get('tamanho_bytes') for m in catalogo if m['nome']==instalado),None)
                 total=memoria_fisica_bytes() if type(tamanho) is int and tamanho>0 else None
                 if total is not None and tamanho>max(0,total-RESERVA_RAM_CPU):
                     raise FalhaAPI('Ollama',0,
@@ -526,8 +635,10 @@ class Roteador:
                         f'{total/1024**3:.2f} GiB físicos, reservando 0.50 GiB. É uma estimativa, '
                         'não um teste de inferência. A tag continua selecionada e no catálogo; '
                         'nenhuma geração foi enviada para este participante.','recursos')
-            payload['model']=local
-            payload.update({'keep_alive':0,'options':{'num_gpu':0,'num_ctx':1024,'num_predict':128}})
+            payload['model']=instalado
+            opcoes={'num_ctx':1024,'num_predict':128}
+            if not nuvem:opcoes['num_gpu']=0
+            payload.update({'keep_alive':0,'options':opcoes})
         if modo_cooperativo:
             payload['keep_alive']=0
             # O limite de resposta inclui o raciocínio interno em modelos
@@ -538,14 +649,19 @@ class Roteador:
             else:
                 payload['messages']=[{'role':'system','content':SISTEMA}]+limitar_historico_cpu(payload['messages'][1:])
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),SemRedirecionamento())
+        if prazo is not None:
+            restante=prazo-time.monotonic()
+            if restante<=0:
+                raise FalhaAPI('Ollama',0,'O orçamento da consulta se esgotou antes do envio. Nenhuma geração enviada.','tempo_esgotado')
+            timeout=min(timeout,restante)
         try:
             dados=postar(endpoint,'',payload,'Ollama',timeout=timeout,opener=opener)
         except FalhaAPI as erro:
             self.invalidar_catalogo_ollama()
-            if erro.categoria=='rede' and any(t in erro.detalhe.casefold() for t in ('timed out','timeout')):
+            if erro.categoria=='tempo_esgotado' or (erro.categoria=='rede' and any(t in erro.detalhe.casefold() for t in ('timed out','timeout'))):
                 raise FalhaAPI('Ollama',erro.codigo,
                     'O prazo de resposta do Ollama se esgotou. Isso não comprova falha de rede nem '
-                    'cancelamento da geração no serviço. Nenhuma nova tentativa foi enviada.',erro.categoria) from None
+                    'cancelamento da geração no serviço. Nenhuma nova tentativa foi enviada.','tempo_esgotado') from None
             raise self._explicar_404_ollama(modelo,erro) from None
         mensagem=dados.get('message')
         texto=mensagem.get('content') if isinstance(mensagem,dict) else None
@@ -575,7 +691,7 @@ class Roteador:
         valor=str(provedor).strip().lower()
         if valor=='auto':return 'todos' if permitir_todos else 'auto'
         if permitir_todos and valor=='todos':return 'todos'
-        if valor not in nomes:raise ValueError('Provedor inválido. Escolha auto, Gemini, OpenAI, Claude ou Ollama.')
+        if valor not in nomes:raise ValueError('Provedor inválido. Escolha auto, 9Router, Gemini, OpenAI, Claude ou Ollama.')
         return nomes[valor]
 
     def verificar_conexoes(self,provedor='todos'):
@@ -589,27 +705,28 @@ class Roteador:
         config=self._configurados()
         nomes=list(config) if escolhido=='todos' else [escolhido]
         funcoes={'Gemini':self.gemini,'OpenAI':self.openai,'Claude':self.claude,
-                 'Ollama':self.ollama,'Exa':self.pesquisa_exa}
+                 'Ollama':self.ollama,'Exa':self.pesquisa_exa,'9Router':self.nine_router}
         resultado={}
         for nome in nomes:
             assinatura=assinatura_configuracao_ollama() if nome=='Ollama' else None
+            meta_9router={'assinatura_9router':assinatura_configuracao_9router()} if nome=='9Router' else {}
             if not config.get(nome,False):
                 resultado[nome]={'ok':False,'categoria':'configuracao','codigo':0,
-                    'mensagem':'Integração local desabilitada.' if nome=='Ollama' else 'Chave não configurada.',
+                    'mensagem':'Integração local desabilitada ou incompleta.' if nome in ('Ollama','9Router') else 'Chave não configurada.',
                     'verificado_em':None}
                 continue
             try:
                 texto=funcoes[nome]('Python documentação oficial' if nome=='Exa' else 'Responda somente OK.')
                 if not isinstance(texto,str) or not texto.strip():
                     raise FalhaAPI(nome,0,'Resposta vazia.','resposta_invalida')
-                self._registrar_sucesso(nome,assinatura_ollama=assinatura)
+                self._registrar_sucesso(nome,assinatura_ollama=assinatura,**meta_9router)
                 registrar('teste_conexao','sucesso','Resposta recebida nesta solicitação explícita.',nome)
                 resultado[nome]={'ok':True,'categoria':'sucesso','codigo':200,
                     'mensagem':'Resposta recebida nesta solicitação; isso não informa créditos disponíveis.',
                     'verificado_em':time.time()}
             except Exception as exc:
                 erro=exc if isinstance(exc,FalhaAPI) else FalhaAPI(nome,0,str(redigir(exc))[:180])
-                self.registrar_falha(erro,assinatura_ollama=assinatura)
+                self.registrar_falha(erro,assinatura_ollama=assinatura,**meta_9router)
                 resultado[nome]={'ok':False,'categoria':erro.categoria,'codigo':erro.codigo,
                     'mensagem':DESCRICOES_FALHA.get(erro.categoria,'falha temporária')+
                         (f' (HTTP {erro.codigo})' if erro.codigo else '')+
@@ -617,9 +734,18 @@ class Roteador:
                     'verificado_em':time.time()}
         return resultado
 
-    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None,*,modo_cooperativo=False):
+    def responder_equipe(self,pergunta,*,historico=None,modelo_ollama,limite_segundos):
+        """Adaptador explícito de equipe; nunca faz fallback ou altera o padrão."""
+        if limite_segundos is None:raise ValueError('Informe o orçamento finito desta consulta de equipe.')
+        return self.responder(pergunta,historico=historico,provedor='Ollama',
+            modelo_ollama=modelo_ollama,modo_cooperativo=True,limite_segundos=limite_segundos)
+
+    def responder(self,pergunta,pesquisa=False,historico=None,provedor='auto',modelo_ollama=None,*,modo_cooperativo=False,limite_segundos=None,modelo_9router=None):
         if not isinstance(modo_cooperativo,bool):raise ValueError('Modo cooperativo inválido.')
+        limite_segundos=validar_limite_segundos(limite_segundos)
         escolhido=self._selecionar_provedor(provedor)
+        if limite_segundos is not None and (escolhido!='Ollama' or modelo_ollama is None or pesquisa):
+            raise ValueError('O orçamento desta consulta exige um modelo Ollama explícito.')
         if modo_cooperativo and (escolhido!='Ollama' or modelo_ollama is None or pesquisa):
             raise ValueError('Modo cooperativo exige um modelo Ollama explícito.')
         if modelo_ollama is not None:
@@ -627,6 +753,12 @@ class Roteador:
             modelo_ollama=validar_modelo(modelo_ollama)
             if escolhido!='Ollama' or pesquisa:
                 raise ValueError('Selecione Ollama para escolher um modelo dessa integração.')
+        if modelo_9router is not None:
+            if escolhido!='9Router' or pesquisa:
+                raise ValueError('Selecione 9Router para escolher um modelo ou combo desse gateway.')
+            from roteador_9router import validar_modelo as validar_modelo_9router
+            modelo_9router=validar_modelo_9router(modelo_9router)
+        pergunta_original=pergunta
         mensagens=preparar_mensagens(pergunta,historico)
         pergunta=mensagens[-1]['content']
         if historico is not None:historico=mensagens[:-1]
@@ -635,6 +767,7 @@ class Roteador:
             # cloud não pausam outro modelo nem alteram o estado do padrão.
             try:
                 opcoes={'modo_cooperativo':True} if modo_cooperativo else {}
+                if limite_segundos is not None:opcoes['limite_segundos']=limite_segundos
                 texto=self.ollama(pergunta,historico=historico,modelo=modelo_ollama,**opcoes)
                 self.ultimo_provedor='Ollama'
                 registrar('pergunta','sucesso','Modelo '+modelo_ollama+'; '+pergunta[:120],'Ollama')
@@ -643,6 +776,19 @@ class Roteador:
                 registrar('api_Ollama','indisponivel','Modelo '+modelo_ollama+'; '+str(exc),'Ollama')
                 raise FalhaAPI('Ollama',exc.codigo,'Modelo '+modelo_ollama+': '+exc.detalhe,
                                exc.categoria,exc.retry_after) from None
+        if modelo_9router is not None:
+            # Escolha por conversa não altera o padrão nem seus registros de
+            # saúde. Respeita a pausa do gateway e nunca tenta outro provedor.
+            if not self.disponivel('9Router'):
+                estado=self.estado_local().get('9Router',{})
+                raise FalhaAPI('9Router',estado.get('codigo') or 0,
+                    self._explicar_indisponibilidade('9Router',estado),'suspenso')
+            texto=self.nine_router(pergunta_original,historico=historico,modelo=modelo_9router)
+            if not isinstance(texto,str) or not texto.strip():
+                raise FalhaAPI('9Router',0,'Resposta vazia.','resposta_invalida')
+            self.ultimo_provedor='9Router'
+            registrar('pergunta','sucesso','Modelo/combo 9Router '+str(redigir(modelo_9router)),'9Router')
+            return texto,'9Router'
         if pesquisa:
             if escolhido not in ('auto','Exa'):raise ValueError('Pesquisa usa Exa; escolha auto ou Exa.')
             prov='Exa'
@@ -660,23 +806,34 @@ class Roteador:
                 raise
         if escolhido=='Exa':raise ValueError('Exa atende somente pesquisas explícitas.')
         config=self._configurados()
+        if escolhido=='9Router' and not config.get('9Router',False):
+            raise FalhaAPI('9Router',0,self._explicar_indisponibilidade('9Router',{'configurado':False}),'configuracao')
+        if escolhido=='9Router' and not self.disponivel('9Router'):
+            estado=self.estado_local()['9Router']
+            raise FalhaAPI('9Router',estado['codigo'] or 0,self._explicar_indisponibilidade('9Router',estado),'suspenso')
         selecionados=[escolhido] if escolhido!='auto' else [nome for nome in PROVEDORES_RESPOSTA
-                            if nome!='Ollama' or config.get('Ollama',False)]
-        funcoes={'Gemini':self.gemini,'OpenAI':self.openai,'Claude':self.claude,'Ollama':self.ollama}
+                            if nome not in ('Ollama','9Router') or config.get(nome,False)]
+        funcoes={'Gemini':self.gemini,'OpenAI':self.openai,'Claude':self.claude,'Ollama':self.ollama,'9Router':self.nine_router}
         for prov in selecionados:
             if not config.get(prov,False) or not self.disponivel(prov):continue
             assinatura=assinatura_configuracao_ollama() if prov=='Ollama' else None
+            meta_9router={'assinatura_9router':assinatura_configuracao_9router()} if prov=='9Router' else {}
             try:
-                texto=funcoes[prov](pergunta) if historico is None else funcoes[prov](pergunta,historico=historico)
+                # O cliente 9Router valida/redige seu limite de 12000 e reserva
+                # o contexto ao redor do pedido integral; não aplique o corte
+                # legado de 11000 ao último pedido antes de encaminhá-lo.
+                atual=pergunta_original if prov=='9Router' else pergunta
+                texto=funcoes[prov](atual) if historico is None else funcoes[prov](atual,historico=historico)
                 if not isinstance(texto,str) or not texto.strip():raise FalhaAPI(prov,0,'Resposta vazia.','resposta_invalida')
                 self.ultimo_provedor=prov
-                self._registrar_sucesso(prov,assinatura_ollama=assinatura)
+                self._registrar_sucesso(prov,assinatura_ollama=assinatura,**meta_9router)
                 registrar('pergunta','sucesso',pergunta[:120],prov)
                 return texto,prov
             except FalhaAPI as e:
-                self.registrar_falha(e,assinatura_ollama=assinatura)
+                self.registrar_falha(e,assinatura_ollama=assinatura,**meta_9router)
+                if escolhido=='9Router':raise
             except Exception as e:
-                self.registrar_falha(FalhaAPI(prov,0,str(redigir(e))[:180]),assinatura_ollama=assinatura)
+                self.registrar_falha(FalhaAPI(prov,0,str(redigir(e))[:180]),assinatura_ollama=assinatura,**meta_9router)
         estados=self.estado_local()
         explicacao='\n'.join(self._explicar_indisponibilidade(nome,estados.get(nome,{'configurado':False})) for nome in selecionados)
         if escolhido=='auto' and estados['Exa']['configurado']:
