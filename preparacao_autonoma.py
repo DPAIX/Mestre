@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 import webbrowser
 
-VERSAO='2.11.1'
+VERSAO='2.11.2'
 BASE=Path(__file__).resolve().parent
 MAX_CORPO=16384
 MODULOS=('telebot','google.genai','psutil','PIL','pyautogui','faster_whisper','googleapiclient','google_auth_oauthlib')
@@ -231,6 +231,7 @@ def _instalar_ollama_ausente(ctx):
 class Preparador:
     def __init__(self,ctx):
         self.ctx=ctx;self.lock=threading.RLock();self.worker=None;self.python=_python(ctx);self._backup_feito=False
+        self._filho=None
         self.estado={'versao':VERSAO,'executando':False,'finalizado':False,'etapa':'Preparando',
             'itens':[],'pendencias':[],'modelos_9router':[],'bot_iniciado':False,'painel_url':'http://127.0.0.1:8765'}
 
@@ -252,7 +253,7 @@ class Preparador:
         if type(conferir) is not bool:raise ValueError('A conferência deve ser booleana.')
         with self.lock:
             if self.estado['executando']:return False
-            self.estado.update(executando=True,finalizado=False,pendencias=[],modelos_9router=[])
+            self.estado.update(executando=True,finalizado=False,itens=[],pendencias=[],modelos_9router=[])
             self._backup_feito=False
             self.worker=threading.Thread(target=self._executar,args=(modelo,),kwargs={'conferir':conferir},daemon=True);self.worker.start()
             return True
@@ -416,6 +417,24 @@ class Preparador:
             'Automação usa os serviços e scripts locais. Macros existentes não auditadas não foram disparadas.')
         return telegram
 
+    def _parar_filho(self):
+        """O Popen original identifica só o bot criado por esta preparação.
+
+        No Windows ele mantém o HANDLE do filho, sem depender de CIM/PID.
+        Instâncias de outra preparação continuam na verificação independente.
+        """
+        if self._filho is None:return True
+        processo,contexto=self._filho
+        ctx=self.ctx
+        if contexto!=(ctx.codigo,ctx.dados,ctx.arquivo_env,self.python):return True
+        try:
+            if processo.poll() is None:
+                processo.terminate();processo.wait(timeout=8)
+            self._filho=None
+            with self.lock:self.estado['bot_iniciado']=False
+            return True
+        except (OSError,subprocess.SubprocessError):return False
+
     def _executar(self,modelo,*,conferir=False):
         ctx=self.ctx
         try:
@@ -430,13 +449,20 @@ class Preparador:
                     and ctx.origem==ctx.codigo and ctx.arquivo_env.exists()
                     and ultima.get('config_mtime')==ctx.arquivo_env.stat().st_mtime_ns):
                     with self.lock:self.estado.update(bot_iniciado=True,painel_url=ultima.get('painel_url','http://127.0.0.1:8765'))
-                    self.item('inicio','Assistente','pronto','A versão preparada já está em execução; nenhuma segunda instância foi iniciada.');return
+                    self.item('inicio','Assistente','pronto','A versão preparada já está em execução; nenhuma segunda instância foi iniciada.')
+                    if ultima.get('tem_pendencias',True):
+                        self.pendente('conferencia','retomar','A conferência anterior tem pendências ou não registrou sua conclusão. Use Retomar para conferir os serviços.')
+                    return
             from controlar_instancia_preparacao import parar_assistente
             self.item('parada','Instância anterior','verificando','Só a identidade comprovada deste assistente pode ser encerrada para atualizar.')
+            if not self._parar_filho():
+                self.item('parada','Instância anterior','pendente','O bot iniciado nesta preparação ainda não encerrou; nenhum outro processo foi selecionado.')
+                self.pendente('parada','retomar','Encerre a janela do bot desta preparação e use Retomar.');return
             parada=parar_assistente(ctx.codigo,ctx.dados,autorizado=True)
             if not parada['livre']:
                 self.item('parada','Instância anterior','pendente',parada['mensagem'])
                 self.pendente('parada','retomar','Feche somente a janela do assistente indicada e clique em Retomar.');return
+            self.item('parada','Instância anterior','pronto','A instalação está livre para a preparação.')
             with instancia_unica(ctx.dados):
                 self._configuracao()
                 import implantacao_assistente as implantar
@@ -465,19 +491,32 @@ class Preparador:
                     self.item('startup','Início após logon','pendente','O registro não foi confirmado; o início manual continua disponível.')
             from redirecionar_assistente import plano_execucao
             plano=plano_execucao(ctx.codigo,ctx.arquivo_env,ctx.dados,self.python,modo='start' if telegram else 'painel',ambiente=_ambiente(ctx))
-            subprocess.Popen(plano['comando'],cwd=plano['cwd'],env=plano['ambiente'],shell=False,stdin=subprocess.DEVNULL,
+            processo=subprocess.Popen(plano['comando'],cwd=plano['cwd'],env=plano['ambiente'],shell=False,stdin=subprocess.DEVNULL,
                 creationflags=getattr(subprocess,'CREATE_NEW_CONSOLE',0x10) if sys.platform=='win32' else 0)
+            self._filho=(processo,(ctx.codigo,ctx.dados,ctx.arquivo_env,self.python))
             with self.lock:self.estado['bot_iniciado']=True
             self.item('aplicacao','Assistente','iniciado','Início solicitado com a configuração externa. A resposta de cada modelo é verificada no uso.')
             _json_gravar(ctx.preparacao/'ultima.json',{'versao':VERSAO,'codigo':str(ctx.codigo),'bot_iniciado':True,
-                'config_mtime':ctx.arquivo_env.stat().st_mtime_ns,'painel_url':self.estado['painel_url']})
+                'config_mtime':ctx.arquivo_env.stat().st_mtime_ns,'painel_url':self.estado['painel_url'],
+                'tem_pendencias':bool(self.estado['pendencias']) or any(i['estado']=='pendente' for i in self.estado['itens'])})
         except Exception:
             # Bibliotecas/instaladores podem incluir segredos nas exceções.
             etapa=self.snapshot()['etapa']
             self.item('erro','Preparação','pendente','A etapa '+etapa+' não concluiu. Confira o requisito indicado acima e use Retomar; configuração e dados foram preservados.')
             self.pendente('erro','retomar','Conferir a última etapa e retomar a preparação.')
         finally:
-            with self.lock:self.estado.update(executando=False,finalizado=True)
+            with self.lock:
+                # Um ciclo encerrado não pode deixar etapas antigas parecendo
+                # ativas, inclusive quando uma biblioteca interrompeu a etapa.
+                for item in self.estado['itens']:
+                    if item['id']!='inicio' and item['estado'] in ('executando','verificando'):
+                        item.update(estado='pendente',detalhe='A etapa encerrou sem confirmação. Confira as pendências e use Retomar.')
+                pendente=bool(self.estado['pendencias']) or any(
+                    item['id']!='inicio' and item['estado']=='pendente' for item in self.estado['itens'])
+                self.item('inicio','Preparação automática','pendente' if pendente else 'concluida',
+                    'Conferência encerrada com pendências. Conclua os itens indicados e use Retomar.' if pendente else
+                    'Conferência encerrada. O funcionamento dos modelos é verificado no uso.')
+                self.estado.update(executando=False,finalizado=True,etapa='Preparação encerrada')
 
     def salvar_credencial(self,nome,valor):
         if not isinstance(nome,str) or nome not in CHAVES or not isinstance(valor,str) or not 1<=len(valor)<=4096:
@@ -515,7 +554,7 @@ class Interface(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MeuControlePCPreparacao/2.11.1'
+    server_version='MeuControlePCPreparacao/2.11.2'
     def setup(self):
         super().setup();self.connection.settimeout(10)
     def log_message(self,*args):pass

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -192,6 +193,10 @@ class OrquestracaoAutomatica(BasePreparacao):
             self.motor._executar(None)
         configurar.assert_not_called();copiar.assert_not_called();iniciar.assert_not_called()
         self.assertTrue(self.motor.snapshot()['finalizado']);self.assertFalse(self.motor.snapshot()['bot_iniciado'])
+        estado=self.motor.snapshot()
+        self.assertEqual(estado['etapa'],'Preparação encerrada')
+        self.assertEqual(next(i['estado'] for i in estado['itens'] if i['id']=='inicio'),'pendente')
+        self.assertFalse(any(i['estado'] in ('executando','verificando') for i in estado['itens']))
 
     def test_ordem_parada_trava_implantacao_e_liberacao_antes_do_bot(self):
         eventos=[];travado=[False];self.escrever_env('PAINEL_PORTA=8765\n')
@@ -211,6 +216,10 @@ class OrquestracaoAutomatica(BasePreparacao):
         self.assertLess(eventos.index('parar'),eventos.index('implantar'))
         self.assertEqual(eventos[-2:],['liberar','iniciar']);self.assertEqual(plano.call_args.kwargs['modo'],'painel')
         self.assertTrue(self.motor.snapshot()['bot_iniciado'])
+        estado=self.motor.snapshot()
+        self.assertTrue(estado['finalizado']);self.assertFalse(estado['executando'])
+        self.assertEqual(next(i['estado'] for i in estado['itens'] if i['id']=='inicio'),'concluida')
+        self.assertFalse(any(i['estado'] in ('executando','verificando') for i in estado['itens']))
 
     def test_falha_interna_nao_revela_segredo_nem_inicia_bot(self):
         @contextmanager
@@ -229,15 +238,58 @@ class OrquestracaoAutomatica(BasePreparacao):
             self.assertTrue(self.motor.iniciar());self.assertTrue(entrada.wait(1))
             self.assertFalse(self.motor.iniciar());sair.set();self.motor.worker.join(3)
 
+    def test_retomada_limpa_resultados_antigos_sem_apagar_inicio_ja_solicitado(self):
+        self.motor.item('aplicacao','Assistente','iniciado','Resultado do ciclo anterior.')
+        self.motor.pendente('anterior','chave','Pedido do ciclo anterior.','gemini_chave')
+        self.motor.estado['bot_iniciado']=True
+        recebido=[]
+        def executar(_,*,conferir=False):
+            recebido.append(self.motor.snapshot())
+            with self.motor.lock:self.motor.estado.update(executando=False,finalizado=True)
+        with patch.object(self.motor,'_executar',side_effect=executar):
+            self.assertTrue(self.motor.iniciar(conferir=True));self.motor.worker.join(3)
+        self.assertEqual(len(recebido),1)
+        self.assertEqual(recebido[0]['itens'],[]);self.assertEqual(recebido[0]['pendencias'],[])
+        self.assertTrue(recebido[0]['bot_iniciado'])
+
+    def test_falha_em_etapa_ativa_nao_deixa_progresso_executando(self):
+        @contextmanager
+        def trava(_):yield
+        def falhar(*args,**kw):
+            self.motor.item('etapa_ficticia','Etapa em curso','executando','Aguardando conferência.')
+            raise RuntimeError(CHAVE)
+        with patch.object(instancia,'instancia_unica',side_effect=trava),\
+                patch.object(controle,'parar_assistente',side_effect=falhar),patch.object(preparo.subprocess,'Popen') as iniciar:
+            self.motor._executar(None)
+        estado=self.motor.snapshot();iniciar.assert_not_called()
+        self.assertTrue(estado['finalizado']);self.assertFalse(estado['executando'])
+        self.assertFalse(any(i['estado'] in ('executando','verificando') for i in estado['itens']))
+        self.assertEqual(next(i['estado'] for i in estado['itens'] if i['id']=='etapa_ficticia'),'pendente')
+        self.assertEqual(next(i['estado'] for i in estado['itens'] if i['id']=='inicio'),'pendente')
+        self.assertNotIn(CHAVE,json.dumps(estado))
+
     def test_versao_preparada_em_execucao_nao_para_ou_duplica_bot(self):
         self.escrever_env('PAINEL_PORTA=8765\n')
         self.motor.ctx=preparo.Caminhos(self.codigo,self.codigo,self.env,self.dados,self.ctx.preparacao,self.ctx.backups,self.ctx.manifesto)
-        preparo._json_gravar(self.ctx.preparacao/'ultima.json',{'versao':preparo.VERSAO,'bot_iniciado':True,'codigo':str(self.codigo),'config_mtime':self.env.stat().st_mtime_ns,'painel_url':'http://127.0.0.1:8765'})
+        preparo._json_gravar(self.ctx.preparacao/'ultima.json',{'versao':preparo.VERSAO,'bot_iniciado':True,'codigo':str(self.codigo),'config_mtime':self.env.stat().st_mtime_ns,'painel_url':'http://127.0.0.1:8765','tem_pendencias':False})
         @contextmanager
         def trava(_):raise instancia.InstanciaAtiva('ocupada');yield
         with patch.object(instancia,'instancia_unica',side_effect=trava),patch.object(controle,'parar_assistente') as parar,patch.object(preparo.subprocess,'Popen') as iniciar:
             self.motor._executar(None)
         parar.assert_not_called();iniciar.assert_not_called();self.assertTrue(self.motor.snapshot()['bot_iniciado'])
+
+    def test_reabrir_bot_ativo_nao_esconde_pendencias_da_conferencia_anterior(self):
+        self.escrever_env('PAINEL_PORTA=8765\n')
+        self.motor.ctx=preparo.Caminhos(self.codigo,self.codigo,self.env,self.dados,self.ctx.preparacao,self.ctx.backups,self.ctx.manifesto)
+        preparo._json_gravar(self.ctx.preparacao/'ultima.json',{'versao':preparo.VERSAO,'bot_iniciado':True,
+            'codigo':str(self.codigo),'config_mtime':self.env.stat().st_mtime_ns,'tem_pendencias':True})
+        @contextmanager
+        def trava(_):raise instancia.InstanciaAtiva('ocupada');yield
+        with patch.object(instancia,'instancia_unica',side_effect=trava),patch.object(controle,'parar_assistente') as parar:
+            self.motor._executar(None)
+        parar.assert_not_called()
+        self.assertTrue(any(p['id']=='conferencia' for p in self.motor.snapshot()['pendencias']))
+        self.assertFalse(self.motor.snapshot()['executando'])
 
     def test_retomar_ou_escolher_modelo_nao_ignora_pendencias_com_bot_ativo(self):
         self.escrever_env('PAINEL_PORTA=8765\n')
@@ -253,6 +305,46 @@ class OrquestracaoAutomatica(BasePreparacao):
                 self.motor._executar(modelo,conferir=conferir)
             parar.assert_called_once();iniciar.assert_not_called()
             self.assertTrue(any(p['id']=='parada' for p in self.motor.snapshot()['pendencias']))
+
+
+class FilhoDaPreparacao(BasePreparacao):
+    def filho(self):
+        processo=Mock();processo.poll.return_value=None
+        self.motor._filho=(processo,(self.ctx.codigo,self.ctx.dados,self.ctx.arquivo_env,self.motor.python))
+        self.motor.estado['bot_iniciado']=True
+        return processo
+
+    def test_retomada_encerra_so_referencia_do_bot_que_ela_mesma_criou(self):
+        processo=self.filho()
+        with patch.object(controle,'parar_assistente') as externo:
+            self.assertTrue(self.motor._parar_filho())
+        processo.terminate.assert_called_once();processo.wait.assert_called_once_with(timeout=8)
+        externo.assert_not_called();self.assertIsNone(self.motor._filho)
+        self.assertFalse(self.motor.snapshot()['bot_iniciado'])
+
+    def test_contexto_diferente_nao_autoriza_parar_o_filho(self):
+        processo=self.filho();self.motor.python=self.raiz/'outro_python.exe'
+        self.assertTrue(self.motor._parar_filho())
+        processo.poll.assert_not_called();processo.terminate.assert_not_called()
+        self.assertIsNotNone(self.motor._filho)
+
+    def test_filho_que_ja_saiu_nao_recebe_terminate(self):
+        processo=self.filho();processo.poll.return_value=0
+        self.assertTrue(self.motor._parar_filho())
+        processo.terminate.assert_not_called();processo.wait.assert_not_called()
+
+    def test_timeout_mantem_pendencia_e_impede_novo_bot_ou_implantacao(self):
+        processo=self.filho();processo.wait.side_effect=subprocess.TimeoutExpired('fixture',8)
+        @contextmanager
+        def livre(_):yield
+        with patch.object(instancia,'instancia_unica',side_effect=livre),\
+                patch.object(controle,'parar_assistente') as externo,\
+                patch.object(implantacao,'implantar') as implantar,\
+                patch.object(preparo.subprocess,'Popen') as iniciar:
+            self.motor._executar(None,conferir=True)
+        externo.assert_not_called();implantar.assert_not_called();iniciar.assert_not_called()
+        self.assertIsNotNone(self.motor._filho)
+        self.assertTrue(any(p['id']=='parada' for p in self.motor.snapshot()['pendencias']))
 
 
 class InterfaceLocal(BasePreparacao):

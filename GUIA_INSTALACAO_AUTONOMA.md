@@ -1,4 +1,4 @@
-# Instalação automática — MeuControlePC v2.11.1
+# Instalação automática — MeuControlePC v2.11.2
 
 Extraia o pacote completo em uma pasta de Downloads, fora do diretório de fontes em C:, e abra **`INSTALAR_E_INICIAR.bat`**. Não é necessário copiar as fontes manualmente para a instalação em C:. O `iniciar_redirecionado.bat`, sem argumentos, também abre este fluxo. Depois da implantação, é possível abrir o iniciador na própria pasta instalada; o pacote de atualização não deve ser extraído em uma subpasta dela.
 
@@ -48,6 +48,12 @@ O destino de fontes padrão usa o perfil Windows atual. O preparador respeita `M
 O manifesto confere a integridade do pacote recebido; não é uma assinatura de origem. Use o pacote publicado no repositório do projeto. Arquivos privados, `.git`, `.venv`, caches e pesos não pertencem ao manifesto nem à atualização de fontes.
 
 DNS, `hosts`, proxy, Firefox, adaptadores, firewall, Tailscale e a inicialização de aplicativos de terceiros são preservados. A entrada gerenciada do próprio assistente é preparada; a habilitação efetiva pelo Windows deve ser conferida no Gerenciador de Tarefas.
+
+## Abrir o painel do computador no 9Remote
+
+Na versão gerenciada 3.0.43, abra **http://127.0.0.1:2208/ui/index.html**. As rotas `/` e `/ui` levam ao cliente e podem voltar ao login ou à apresentação; o caminho completo abre o painel do host. O botão de pareamento desta preparação usa esse endereço. Uma instalação já aberta pode usar o link diretamente.
+
+Nesse painel, confira o estado do host e os controles de pareamento. As chaves são próprias do 9Remote e devem permanecer no computador/dispositivo a parear. O login do cliente e a abertura do painel não comprovam uma sessão remota autorizada. Consulte a [correção v2.11.2](REVISAO_V2_11_2.md).
 
 ## RoboTask e acesso ao computador
 

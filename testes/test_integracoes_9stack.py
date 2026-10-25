@@ -229,7 +229,7 @@ class Integracoes9Stack(unittest.TestCase):
     def test_abrir_remote_ja_servindo_nao_repete_ui(self):
         self.porta.return_value=True
         texto=stack.executar_9stack('9remote','abrir',confirmado=True)
-        self.browser.assert_called_once_with('http://127.0.0.1:2208')
+        self.browser.assert_called_once_with('http://127.0.0.1:2208/ui/index.html')
         self.assertIn('sem iniciar outra instancia',texto);self.popen.assert_not_called()
 
     def test_servico_ausente_nao_usa_npx_automatico(self):

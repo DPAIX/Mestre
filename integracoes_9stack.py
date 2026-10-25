@@ -38,7 +38,9 @@ SERVICOS = {
     '9router': {'nome':'9Router', 'versao':'0.5.109', 'script':'cli.js',
                 'porta':20128, 'painel':'http://127.0.0.1:20128/dashboard'},
     '9remote': {'nome':'9Remote', 'versao':'3.0.43', 'script':'dist/cli.cjs',
-                'porta':2208, 'painel':'http://127.0.0.1:2208'},
+                # Na 3.0.43, / e /ui levam ao workspace/login; o painel do
+                # host empacotado permanece em /ui/index.html (commit 5f54ea2).
+                'porta':2208, 'painel':'http://127.0.0.1:2208/ui/index.html'},
 }
 _PROCESSOS = {}
 _TRAVA = threading.Lock()
@@ -258,7 +260,7 @@ def executar_9stack(servico,operacao='abrir',*,confirmado=False):
     if not _janela(servico,argumentos,ambiente,_pasta(servico)):
         return 'Ja existe uma janela desta integracao aberta pelo assistente. Confira-a no PC.'
     if servico=='9remote':
-        return ('Interface 9Remote solicitada no PC, sem pedir inicio do tunel. Quando estiver pronta, abra http://127.0.0.1:2208 no navegador do PC. A configuracao e a aprovacao de dispositivos pertencem ao 9Remote.' if operacao=='abrir' else
+        return ('Interface 9Remote solicitada no PC, sem pedir inicio do tunel. Quando estiver pronta, abra '+item['painel']+' no navegador do PC. A configuracao e a aprovacao de dispositivos pertencem ao 9Remote.' if operacao=='abrir' else
                 'Host e tunel REMOTO do 9Remote solicitados na janela do PC. Confira as permissoes e os dispositivos na interface oficial. Nenhuma chave ou URL de pareamento foi enviada ao assistente.')
     return 'Inicio do 9Router solicitado em 127.0.0.1:20128. Abra o painel para configurar provedores; nenhuma resposta foi testada.'
 

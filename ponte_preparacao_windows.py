@@ -30,7 +30,7 @@ _ALVOS = {
         'Conclua o login e as permissões da conta Anthropic; a abertura não cria créditos ou uma chave.'),
     'agenda_google': ('Credenciais Google Calendar', 'https://console.cloud.google.com/apis/credentials',
         'Conclua a configuração e o consentimento OAuth da sua conta Google antes de autorizar a agenda.'),
-    '9remote_pareamento': ('Pareamento 9Remote', 'http://127.0.0.1:2208',
+    '9remote_pareamento': ('Pareamento 9Remote', 'http://127.0.0.1:2208/ui/index.html',
         'Conclua o pareamento e as permissões na interface 9Remote. A abertura não inicia uma sessão remota.'),
     'ollama_instalacao': ('Ollama para Windows', 'https://ollama.com/download/windows',
         'Conclua o instalador oficial se a instalação automática não estiver disponível.'),

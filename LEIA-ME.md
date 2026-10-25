@@ -1,3 +1,5 @@
+> **v2.11.2:** [Painel do host 9Remote e progresso da preparação](REVISAO_V2_11_2.md). Com o 9Remote aberto, use **http://127.0.0.1:2208/ui/index.html** para sair do ciclo de login. A preparação mostra as pendências correspondentes e reaproveita a referência do bot que criou ao retomar.
+
 > **v2.11.1:** [Correção da porta Ollama e da retomada](REVISAO_V2_11_1.md). Feche a janela da preparação anterior, extraia o pacote novo em Downloads e abra **`INSTALAR_E_INICIAR.bat`**.
 
 > **v2.11.0:** [Instalação automática em um clique](GUIA_INSTALACAO_AUTONOMA.md). Extraia o pacote em Downloads e abra **`INSTALAR_E_INICIAR.bat`**; ele implanta as fontes com backup, prepara componentes e solicita o início do assistente. O `iniciar_redirecionado.bat` sem argumentos também abre esse fluxo. [Mudanças e reversão](REVISAO_V2_11_0.md).

@@ -50,7 +50,7 @@ test('dados de serviço contendo HTML são texto, sem URLs arbitrárias',async()
 });
 
 test('segredo é limpo antes do POST e nunca anexado à URL',async()=>{
- const p=await janela({...estado,pendencias:[{texto:'Chave necessária'}]});
+ const p=await janela({...estado,pendencias:[{tipo:'chave',texto:'Chave necessária'}]});
  p.obter('nome-chave').value='GEMINI_API_KEY';p.obter('valor-chave').value='segredo-ficticio';
  let capturado;
  p.contexto.fetch=async(url,opt)=>{
@@ -97,7 +97,7 @@ test('resposta de polling antiga não libera controles da execução recente',as
 });
 
 test('modelo escolhido precisa pertencer ao catálogo apresentado',async()=>{
- const p=await janela({...estado,modelos_9router:['combo-local',{id:'provedor/flash'}]});
+ const p=await janela({...estado,pendencias:[{tipo:'modelo',texto:'Escolha um modelo'}],modelos_9router:['combo-local',{id:'provedor/flash'}]});
  assert.equal(p.obter('modelo-form').hidden,false);
  assert.deepEqual(p.obter('modelo').children.map(e=>e.value),['combo-local','provedor/flash']);
  p.obter('modelo').value='injetado';p.obter('modelo-form').eventos.submit(evento);await p.tick();
@@ -135,4 +135,54 @@ test('abertura de conta não é apresentada como conta conectada',async()=>{
  await p.obter('pendencias').children[0].children[1].eventos.click();await p.tick();
  assert.match(p.obter('aviso').textContent,/Confirme o login/);
  assert.equal(p.obter('pendencias-caixa').hidden,false);
+});
+
+test('pendência operacional mostra a ação necessária sem pedir uma chave',async()=>{
+ const p=await janela({...estado,bot_iniciado:true,
+  pendencias:[{id:'parada',tipo:'retomar',texto:'Feche a instância anterior e retome.'}],
+  modelos_9router:['combo-ja-configurado']});
+ assert.equal(p.obter('pendencias-caixa').hidden,false);
+ assert.equal(p.obter('chave-form').hidden,true);
+ assert.equal(p.obter('modelo-form').hidden,true);
+ assert.match(p.obter('resumo').textContent,/aguarda as pendências indicadas/);
+ assert.doesNotMatch(p.obter('resumo').textContent,/opcionais/);
+ assert.match(html,/<h2>Pendências da preparação<\/h2>/);
+ assert.match(html,/<form id="chave-form"[^>]*\bhidden\b/);
+ p.obter('valor-chave').value='segredo-que-nao-foi-enviado';
+ p.obter('chave-form').eventos.submit(evento);await p.tick();
+ assert.equal(p.obter('valor-chave').value,'segredo-que-nao-foi-enviado');
+ assert.equal(p.chamadas.some(c=>c.opt.method==='POST'),false);
+});
+
+test('somente pendência de credencial revela o formulário oculto',async()=>{
+ const p=await janela({...estado,pendencias:[{tipo:'chave',servico:'gemini_chave',texto:'Conclua a conta'}]});
+ assert.equal(p.obter('chave-form').hidden,false);
+ assert.equal(p.obter('modelo-form').hidden,true);
+ p.contexto.fetch=async()=>resposta({...estado,pendencias:[{tipo:'pagina',servico:'9remote_pareamento',texto:'Conclua o pareamento'}]});
+ await p.executar('atualizar()');
+ assert.equal(p.obter('chave-form').hidden,true);
+ assert.equal(p.obter('pendencias-caixa').hidden,false);
+ assert.equal(p.obter('pendencias').children[0].children[1].textContent,'Abrir etapa');
+});
+
+test('seletor exige pendência de modelo e opções válidas no catálogo',async()=>{
+ const p=await janela({...estado,pendencias:[{tipo:'modelo',texto:'Escolha um modelo'}],
+  modelos_9router:[{},null,'','  ','invalido\n','x'.repeat(201)]});
+ assert.equal(p.obter('modelo-form').hidden,true);
+ assert.equal(p.obter('modelo').children.length,0);
+ p.contexto.fetch=async()=>resposta({...estado,pendencias:[{tipo:'modelo',texto:'Escolha um modelo'}],
+  modelos_9router:[{},'combo-local',{id:'provedor/flash'}]});
+ await p.executar('atualizar()');
+ assert.equal(p.obter('modelo-form').hidden,false);
+ assert.deepEqual(p.obter('modelo').children.map(e=>e.value),['combo-local','provedor/flash']);
+ assert.equal(p.obter('chave-form').hidden,true);
+});
+
+test('preparação sem pendências mantém os formulários escondidos',async()=>{
+ const p=await janela({...estado,finalizado:true,bot_iniciado:true,modelos_9router:['combo-configurado']});
+ assert.equal(p.obter('pendencias-caixa').hidden,true);
+ assert.equal(p.obter('chave-form').hidden,true);
+ assert.equal(p.obter('modelo-form').hidden,true);
+ assert.match(p.obter('resumo').textContent,/conferência da preparação foi concluída/);
+ assert.doesNotMatch(p.obter('resumo').textContent,/aguarda|opcionais/);
 });

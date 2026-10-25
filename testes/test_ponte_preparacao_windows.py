@@ -68,6 +68,13 @@ class PontePreparacaoWindows(unittest.TestCase):
         self.assertEqual(segundo['itens'][0]['estado'], 'ja_solicitada')
         self.assertEqual(terceiro['aberturas_solicitadas'], 1)
 
+    def test_9remote_abre_painel_do_host_sem_cair_na_raiz_do_cliente(self):
+        with patch.object(ponte.subprocess,'Popen') as abrir:
+            ponte.abrir_ajudas(['9remote_pareamento'],confirmado=True)
+        self.assertEqual(abrir.call_args.args[0],[str(self.programa),'url.dll,FileProtocolHandler',
+            'http://127.0.0.1:2208/ui/index.html'])
+        self.assertNotIn('FIXTURE_SEGREDO',repr(abrir.call_args))
+
     def test_erro_de_abertura_nao_e_sucesso_e_nao_expoe_excecao(self):
         with patch.object(ponte.subprocess, 'Popen', side_effect=OSError('FIXTURE_SEGREDO')) as abrir:
             resultado = ponte.abrir_ajudas(['telegram_token'], confirmado=True)
