@@ -132,6 +132,13 @@ def _script(servico):
         return None
 
 
+def _corrigir_9remote(script):
+    # Somente o pacote gerenciado exato recebe a correção com backup/hash.
+    # Mantém DNS nativo e evita encerramento de aplicativos por porta/PID salvo.
+    from correcao_dns_9remote import aplicar_correcao
+    return aplicar_correcao(script.parents[1])
+
+
 def catalogo_9stack():
     """Sem executar Node/npm e sem testar servicos ou ler credenciais."""
     node=bool(shutil.which('node.exe') or shutil.which('node'))
@@ -204,8 +211,10 @@ def instalar_9stack(servico,*,confirmado=False):
         raise RuntimeError('O limite de 10 minutos do npm acabou; dependencias podem estar incompletas e scripts filhos podem continuar. Nenhuma nova tentativa foi enviada.') from None
     except OSError:
         raise RuntimeError('Nao foi possivel executar npm; confira a instalacao do Node.js e as permissoes locais.') from None
-    if resultado.returncode or _script(servico) is None:
+    script=_script(servico)
+    if resultado.returncode or script is None:
         raise RuntimeError('O npm nao confirmou o pacote e a versao esperados; confira o erro na janela do PC.')
+    if servico=='9remote':_corrigir_9remote(script)
     return item['nome']+' '+item['versao']+' instalado. O servico nao foi iniciado; nenhuma inferencia ou conexao remota foi testada.'
 
 
@@ -252,6 +261,7 @@ def executar_9stack(servico,operacao='abrir',*,confirmado=False):
     script=_script(servico)
     if script is None:raise RuntimeError('Instale primeiro o pacote gerenciado '+item['nome']+' '+item['versao']+'.')
     node=_node(ambiente)
+    if servico=='9remote':_corrigir_9remote(script)
     argumentos=[str(node),str(script)]
     if servico=='9router':
         argumentos+=['--host','127.0.0.1','--port','20128','--tray','--no-browser','--skip-update']

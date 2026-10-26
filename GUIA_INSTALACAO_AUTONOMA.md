@@ -1,4 +1,4 @@
-# Instalação automática — MeuControlePC v2.11.2
+# Instalação automática — MeuControlePC v2.11.3
 
 Extraia o pacote completo em uma pasta de Downloads, fora do diretório de fontes em C:, e abra **`INSTALAR_E_INICIAR.bat`**. Não é necessário copiar as fontes manualmente para a instalação em C:. O `iniciar_redirecionado.bat`, sem argumentos, também abre este fluxo. Depois da implantação, é possível abrir o iniciador na própria pasta instalada; o pacote de atualização não deve ser extraído em uma subpasta dela.
 
@@ -12,7 +12,7 @@ A janela local mostra o progresso e as pendências de conta. A preparação come
 2. O preparador identifica esta instalação do assistente. Se houver um bot anterior, só o encerra quando consegue comprovar o executável, os argumentos, o proprietário e a identidade do processo. Se não houver essa comprovação, mostra a pendência e aguarda o fechamento daquela janela.
 3. Confere os hashes do pacote público, guarda as fontes que serão substituídas e atualiza a pasta de código. Configuração, dados, ambientes virtuais e modelos não entram nessa cópia.
 4. Confere as bibliotecas, o ambiente e a voz local. Reaproveita uma instalação saudável; prepara os componentes faltantes quando necessário. A preparação inicial de voz e bibliotecas pode baixar arquivos e levar vários minutos.
-5. Prepara Node.js e os componentes gerenciados 9Router/9Remote quando faltarem, solicita o início do 9Router e abre a interface do 9Remote para pareamento. A abertura da interface não equivale a uma sessão remota autorizada.
+5. Prepara Node.js e os componentes gerenciados 9Router/9Remote quando faltarem, solicita o início do 9Router e abre a interface do 9Remote para pareamento. O 9Remote 3.0.43 recebe a correção verificada para usar DNS nativo e limpar somente seus filhos conhecidos. A abertura da interface não equivale a uma sessão remota autorizada.
 6. Confere o Ollama. Se ele não estiver instalado e a configuração permitir seu uso e início, solicita a instalação oficial pelo `winget` e confere novamente o executável e a API. Não baixa modelos de conversa. Quando a porta está ocupada e a API não responde, identifica o processo que escuta nela quando o Windows permite essa consulta. Não mata esse processo nem abre um segundo servidor.
 7. Configura o cliente 9Router por sua API oficial local. Reaproveita o modelo manual ou um combo adequado existente; quando necessário, procura uma opção compacta em um provedor com credencial local. Se a seleção continuar ambígua, mostra o catálogo para uma escolha.
 8. Confere o Telegram por `getMe` se token e ID já estiverem configurados; confere o catálogo Gemini se houver chave. Prepara a entrada gerenciada de início após logon e solicita o início do bot, ou do painel local se o Telegram ainda estiver pendente.

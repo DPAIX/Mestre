@@ -1,6 +1,8 @@
-# MeuControlePC v2.11.2 — Projeto para Codex
+# MeuControlePC v2.11.3 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
+
+Correção v2.11.3: [conexão IPv6 e reinício do 9Remote](REVISAO_V2_11_3.md). O [reparo separado](REPARO_9REMOTE.md) corrige os bundles gerenciados exatos com backup e abre o painel do host, sem reinstalar o bot.
 
 Correção v2.11.2: [painel do host 9Remote e progresso da preparação](REVISAO_V2_11_2.md). O painel local do host é http://127.0.0.1:2208/ui/index.html.
 
