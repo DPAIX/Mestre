@@ -39,6 +39,8 @@ class Integracoes9Stack(unittest.TestCase):
         p=patch.object(stack.subprocess,'Popen',return_value=SimpleNamespace(poll=lambda:None))
         self.popen=p.start();self.addCleanup(p.stop)
         p=patch.object(stack.webbrowser,'open',return_value=True);self.browser=p.start();self.addCleanup(p.stop)
+        p=patch.object(stack,'_corrigir_9remote',return_value={'estado':'aplicada'})
+        self.correcao=p.start();self.addCleanup(p.stop)
 
     def pacote(self,nome):
         item=stack.SERVICOS[nome]
@@ -210,6 +212,24 @@ class Integracoes9Stack(unittest.TestCase):
         self.assertEqual(self.popen.call_args.args[0],[str(self.node.resolve()),str(script),'ui'])
         self.assertIn('sem pedir inicio do tunel',texto)
         self.assertEqual(self.popen.call_args.kwargs['cwd'],str(stack._pasta('9remote')))
+        self.correcao.assert_called_once_with(script)
+
+    def test_correcao_9remote_recusada_impede_inicio(self):
+        self.pacote('9remote')
+        self.correcao.side_effect=RuntimeError('Pacote diferente do oficial verificado.')
+        with self.assertRaises(RuntimeError):
+            stack.executar_9stack('9remote','iniciar',confirmado=True)
+        self.popen.assert_not_called()
+
+    def test_9router_nao_recebe_correcao_9remote(self):
+        self.pacote('9router')
+        stack.executar_9stack('9router','iniciar',confirmado=True)
+        self.correcao.assert_not_called()
+
+    def test_nova_instalacao_9remote_aplica_correcao_antes_de_concluir(self):
+        script=self.pacote('9remote')
+        stack.instalar_9stack('9remote',confirmado=True)
+        self.correcao.assert_called_once_with(script)
 
     def test_remote_iniciar_e_acao_distinta_sem_capturar_chaves(self):
         script=self.pacote('9remote')
@@ -229,7 +249,7 @@ class Integracoes9Stack(unittest.TestCase):
     def test_abrir_remote_ja_servindo_nao_repete_ui(self):
         self.porta.return_value=True
         texto=stack.executar_9stack('9remote','abrir',confirmado=True)
-        self.browser.assert_called_once_with('http://127.0.0.1:2208')
+        self.browser.assert_called_once_with('http://127.0.0.1:2208/ui/index.html')
         self.assertIn('sem iniciar outra instancia',texto);self.popen.assert_not_called()
 
     def test_servico_ausente_nao_usa_npx_automatico(self):

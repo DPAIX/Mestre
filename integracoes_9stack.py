@@ -38,7 +38,9 @@ SERVICOS = {
     '9router': {'nome':'9Router', 'versao':'0.5.109', 'script':'cli.js',
                 'porta':20128, 'painel':'http://127.0.0.1:20128/dashboard'},
     '9remote': {'nome':'9Remote', 'versao':'3.0.43', 'script':'dist/cli.cjs',
-                'porta':2208, 'painel':'http://127.0.0.1:2208'},
+                # Na 3.0.43, / e /ui levam ao workspace/login; o painel do
+                # host empacotado permanece em /ui/index.html (commit 5f54ea2).
+                'porta':2208, 'painel':'http://127.0.0.1:2208/ui/index.html'},
 }
 _PROCESSOS = {}
 _TRAVA = threading.Lock()
@@ -130,6 +132,13 @@ def _script(servico):
         return None
 
 
+def _corrigir_9remote(script):
+    # Somente o pacote gerenciado exato recebe a correção com backup/hash.
+    # Mantém DNS nativo e evita encerramento de aplicativos por porta/PID salvo.
+    from correcao_dns_9remote import aplicar_correcao
+    return aplicar_correcao(script.parents[1])
+
+
 def catalogo_9stack():
     """Sem executar Node/npm e sem testar servicos ou ler credenciais."""
     node=bool(shutil.which('node.exe') or shutil.which('node'))
@@ -202,8 +211,10 @@ def instalar_9stack(servico,*,confirmado=False):
         raise RuntimeError('O limite de 10 minutos do npm acabou; dependencias podem estar incompletas e scripts filhos podem continuar. Nenhuma nova tentativa foi enviada.') from None
     except OSError:
         raise RuntimeError('Nao foi possivel executar npm; confira a instalacao do Node.js e as permissoes locais.') from None
-    if resultado.returncode or _script(servico) is None:
+    script=_script(servico)
+    if resultado.returncode or script is None:
         raise RuntimeError('O npm nao confirmou o pacote e a versao esperados; confira o erro na janela do PC.')
+    if servico=='9remote':_corrigir_9remote(script)
     return item['nome']+' '+item['versao']+' instalado. O servico nao foi iniciado; nenhuma inferencia ou conexao remota foi testada.'
 
 
@@ -250,6 +261,7 @@ def executar_9stack(servico,operacao='abrir',*,confirmado=False):
     script=_script(servico)
     if script is None:raise RuntimeError('Instale primeiro o pacote gerenciado '+item['nome']+' '+item['versao']+'.')
     node=_node(ambiente)
+    if servico=='9remote':_corrigir_9remote(script)
     argumentos=[str(node),str(script)]
     if servico=='9router':
         argumentos+=['--host','127.0.0.1','--port','20128','--tray','--no-browser','--skip-update']
@@ -258,7 +270,7 @@ def executar_9stack(servico,operacao='abrir',*,confirmado=False):
     if not _janela(servico,argumentos,ambiente,_pasta(servico)):
         return 'Ja existe uma janela desta integracao aberta pelo assistente. Confira-a no PC.'
     if servico=='9remote':
-        return ('Interface 9Remote solicitada no PC, sem pedir inicio do tunel. Quando estiver pronta, abra http://127.0.0.1:2208 no navegador do PC. A configuracao e a aprovacao de dispositivos pertencem ao 9Remote.' if operacao=='abrir' else
+        return ('Interface 9Remote solicitada no PC, sem pedir inicio do tunel. Quando estiver pronta, abra '+item['painel']+' no navegador do PC. A configuracao e a aprovacao de dispositivos pertencem ao 9Remote.' if operacao=='abrir' else
                 'Host e tunel REMOTO do 9Remote solicitados na janela do PC. Confira as permissoes e os dispositivos na interface oficial. Nenhuma chave ou URL de pareamento foi enviada ao assistente.')
     return 'Inicio do 9Router solicitado em 127.0.0.1:20128. Abra o painel para configurar provedores; nenhuma resposta foi testada.'
 

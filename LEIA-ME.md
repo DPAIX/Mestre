@@ -1,3 +1,11 @@
+> **v2.11.3:** [Conexão IPv6 e reinício do 9Remote](REVISAO_V2_11_3.md). O [reparo separado](REPARO_9REMOTE.md) restaura o DNS nativo do Node no pacote gerenciado exato, com backup. Extraia-o e abra **`REPARAR_9REMOTE.bat`**, sem reinstalar o bot.
+
+> **v2.11.2:** [Painel do host 9Remote e progresso da preparação](REVISAO_V2_11_2.md). Com o 9Remote aberto, use **http://127.0.0.1:2208/ui/index.html** para sair do ciclo de login. A preparação mostra as pendências correspondentes e reaproveita a referência do bot que criou ao retomar.
+
+> **v2.11.1:** [Correção da porta Ollama e da retomada](REVISAO_V2_11_1.md). Feche a janela da preparação anterior, extraia o pacote novo em Downloads e abra **`INSTALAR_E_INICIAR.bat`**.
+
+> **v2.11.0:** [Instalação automática em um clique](GUIA_INSTALACAO_AUTONOMA.md). Extraia o pacote em Downloads e abra **`INSTALAR_E_INICIAR.bat`**; ele implanta as fontes com backup, prepara componentes e solicita o início do assistente. O `iniciar_redirecionado.bat` sem argumentos também abre esse fluxo. [Mudanças e reversão](REVISAO_V2_11_0.md).
+
 > **v2.10.2:** [Correção dos fluxos removidos no merge](REVISAO_V2_10_2.md) e [concluir a integração local 9Router](GUIA_CONCLUIR_9ROUTER.md). Atualize as fontes completas; preserve configuração, dados e modelos.
 
 > **v2.10.1:** [Corrigir e retomar as etapas pendentes](GUIA_RETOMAR_CONFIGURACAO.md). Use `retomar_configuracao.bat` para Ollama, 9Router e Gemini sem repetir bibliotecas, Telegram ou Startup.
@@ -42,7 +50,7 @@
 
 > **Atualização v2.2:** veja [GUIA_ATUALIZACAO_V2_2.md](GUIA_ATUALIZACAO_V2_2.md). O desligamento do computador não está disponível; o reinício do Windows permanece opcional.
 
-# MeuControlePC v2 — bot Telegram e painel local
+# MeuControlePC v2.11.3 — bot Telegram e painel local
 
 **Atualização v2.3.1:** escolha modelos Ollama por conversa, consulte uma equipe com vários modelos e leve o contexto para Manus e agentes de código. Se já tem modelos, use `configurar_ia_local.bat --listar` e `configurar_ia_local.bat --modelo qwen3.5:4b` com o nome do seu catálogo. Veja [o guia](GUIA_MULTIPLOS_CHATS.md) e [o relatório de testes e reversão](REVISAO_V2_3_1.md).
 
@@ -50,18 +58,16 @@ Revisão do projeto legado `assistente_pc.py`, destinada ao Windows. Código Pyt
 
 ## Instalar no Windows
 
-1. **Faça uma cópia de segurança da pasta antiga**, especialmente `assistente_pc.py`, `gestao_vida.json`, `minhas_macros.json`, os arquivos `.tsk` do RoboTask e outros dados. Não envie arquivos `.env`, `token.json`, `credentials.json` ou chaves ao Telegram.
-2. Descompacte **este ZIP em uma pasta nova** (por exemplo, `Desktop\MeuControlePC_v2`), sem substituir o diretório antigo. Verifique espaço em disco: os registros anteriores indicavam cerca de 1,2 GB livres.
-3. Execute `instalar_windows.bat` (Python 3.11 ou mais recente necessário). O instalador cria `.venv`, instala pacotes **sem o cache global do pip** e copia `.env.exemplo` para `.env` somente se ainda não existir. Ele também executa os testes locais.
-4. Revogue o token Telegram antigo por meio do **@BotFather** e gere um novo; substitua também as credenciais antigas de Gemini, OpenAI, Anthropic e Exa nas respectivas plataformas. Edite o arquivo `.env` com **as novas credenciais**. Nenhuma dessas chaves é obrigatória para os comandos locais, exceto `TELEGRAM_TOKEN` para o bot.
-5. **Se aparecer `Token must contain a colon`**, execute `configurar_telegram.bat`. Ele solicitará um novo token do BotFather com entrada oculta, validará o formato e salvará no `.env` sem sobrescrever outras APIs. `iniciar_windows.bat` também oferece essa configuração ao detectar token inválido. Para obter `TELEGRAM_ALLOWED_USER_IDS`, inicie com o campo vazio e envie `/id` ao bot: nessa condição ele apenas informa o identificador, sem aceitar ações de controle. Copie o número para `.env` e reinicie. Alternativamente use um ID pessoal previamente conhecido.
-6. **Antes de executar o bot pela primeira vez**, migre seus dados executando no Prompt/PowerShell, dentro da pasta nova:
-   ```bat
-   .venv\Scripts\python.exe migrar_legado.py "C:\Users\SEU_USUARIO\Desktop"
-   ```
-   Substitua a pasta se os seus arquivos antigos estiverem em outro lugar. A migração nunca sobrescreve dados já existentes na pasta `dados`.
-7. Execute `iniciar_windows.bat`. Acesse `http://127.0.0.1:8765` **no próprio PC** para o painel; o bot Telegram usa os botões e comandos descritos em `/ajuda`.
-8. Se quiser apenas o painel local, sem Telegram, execute `iniciar_somente_painel.bat`.
+1. Extraia o pacote completo em Downloads ou em outra pasta fora do diretório de fontes instalado. Abra **`INSTALAR_E_INICIAR.bat`**. O Python existente é reaproveitado; se estiver ausente e houver `winget`, o iniciador solicita o instalador oficial.
+2. Acompanhe a janela local. Ela confere o pacote, guarda as fontes anteriores, atualiza C:, preserva `.env`/dados/modelos externos e prepara bibliotecas e serviços faltantes. No computador apresentado, a configuração continua em `F:\MeuControlePC_v2\.env`. Não é necessário copiar as fontes manualmente ou executar cada configurador separado.
+3. Conclua somente as pendências de conta exibidas e use **Retomar**. O 9Router usa a autenticação oficial da CLI já existente para criar uma chave dedicada; quando login, permissão ou credencial faltarem, a página oficial e o campo oculto local são oferecidos. Senha, CAPTCHA, 2FA e consentimentos pertencem ao proprietário. Nunca cole chaves no chat.
+4. Abra o painel pelo botão da preparação e envie `/status` ao bot, se o Telegram estiver pronto. Sem Telegram confirmado, o preparador solicita o início apenas do painel. Uma conversa real no modelo escolhido é a conferência de geração e cota; a instalação não envia perguntas pagas de teste automaticamente.
+
+O `iniciar_redirecionado.bat`, sem argumentos, também abre a preparação automática. Os comandos avançados com argumentos continuam disponíveis. Não extraia um pacote de atualização em uma subpasta das fontes instaladas.
+
+Consulte [o guia completo](GUIA_INSTALACAO_AUTONOMA.md) para backups, caminhos, pendências e reversão. Se houver dados de uma instalação legada ainda dentro do código e os dados externos não forem localizados, a preparação interrompe para evitar usar uma pasta vazia. A migração legada por `migrar_legado.py` continua disponível e deve apontar para a pasta real dos arquivos antigos; ela não substitui dados existentes.
+
+RoboTask instalado não conecta o computador ao Codex na nuvem. A preparação usa scripts e APIs locais e não executa macros pessoais desconhecidas. A validação de cliques, pareamento e contas reais deve ocorrer no Windows.
 
 ## Correção de `Permission denied` durante o pip no Windows
 

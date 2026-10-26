@@ -21,7 +21,8 @@ import zipfile
 import nucleo
 
 _ANALISE_LOCK = threading.RLock()
-FONTES = ('assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
+FONTES = ('preparacao_autonoma.py','implantacao_assistente.py','configurar_gateway_automatico.py',
+          'controlar_instancia_preparacao.py','ponte_preparacao_windows.py','assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
           'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','voz_assistente.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','integracoes_agentes.py',
           'agenda_google.py','autorizar_google.py','configurar_telegram.py','startup_windows.py',
           'caminhos_instalacao.py','redirecionar_assistente.py','idempotencia_painel.py',

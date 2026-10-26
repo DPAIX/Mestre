@@ -52,7 +52,7 @@ O cliente faz uma requisição, sem retries próprios. Fallbacks internos, cobra
 
 Instale a versão gerenciada **3.0.43** no mesmo painel ou use `gerenciar_9stack.bat`. Os pacotes ficam em `%LOCALAPPDATA%\MeuControlePC\integracoes\9remote`, separados das fontes e das credenciais do bot.
 
-- **Abrir** solicita `9remote ui`, sem solicitar o início do túnel. A interface pode ser acessada no PC em `http://127.0.0.1:2208`.
+- **Abrir** solicita `9remote ui`, sem solicitar o início do túnel. A interface pode ser acessada no PC em `http://127.0.0.1:2208/ui/index.html`.
 - **Iniciar** é uma ação distinta: solicita o host e túnel de acesso **remoto**. A descrição informa acesso a terminal, arquivos e tela pelos dispositivos autorizados. Exige pedido explícito e confirmação.
 - Faça o login, pareamento e gestão de dispositivos no aplicativo oficial. Chaves, QR codes e URLs de pareamento não são capturados nem enviados pelo assistente. Encerre ou revogue acessos pela interface do 9Remote; não foi inventado um comando `stop` ou `revoke` ausente no CLI analisado.
 
