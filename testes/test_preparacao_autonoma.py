@@ -413,7 +413,20 @@ class InterfaceLocal(BasePreparacao):
             [(k,'text/plain' if k=='Content-Type' else v) for k,v in base],base+[('Transfer-Encoding','chunked')]]
         with patch.object(self.motor,'iniciar') as iniciar:
             for h in casos:
-                with self.subTest(headers=h):self.assertEqual(self.pedido(corpo=corpo,headers=h)[0],400)
+                with self.subTest(headers=[k for k,_ in h]):
+                    # Cabeçalhos inválidos devem ser recusados antes do corpo.
+                    # Enviar bytes extras nessa conexão HTTP/1.0 pode provocar
+                    # um RST no Windows e esconder a resposta 400 já enviada.
+                    direto=object.__new__(preparo.Handler)
+                    direto.connection=Mock();direto.server=self.servidor;direto.path='/api/acao'
+                    bruto=(''.join(k+': '+v+'\r\n' for k,v in h)+'\r\n').encode('ascii')
+                    direto.headers=http.client.parse_headers(io.BytesIO(bruto))
+                    direto.rfile=Mock();direto._resposta=Mock()
+                    direto.do_POST()
+                    direto._resposta.assert_called_once()
+                    self.assertEqual(direto._resposta.call_args.args[1],400)
+                    direto.rfile.read.assert_not_called()
+                    self.assertEqual(self.pedido(headers=h)[0],400)
         iniciar.assert_not_called()
 
     def test_retomar_valida_modelo_e_nao_aceita_credencial_como_modelo(self):
