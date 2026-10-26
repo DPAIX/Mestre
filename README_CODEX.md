@@ -6,6 +6,8 @@ Correção v2.11.3: [conexão IPv6 e reinício do 9Remote](REVISAO_V2_11_3.md). 
 
 Ferramentas separadas: [diagnóstico do acesso ao Telegram por duplo clique](DIAGNOSTICO_TELEGRAM.md) e [teste reversível da detecção automática de proxy do Windows](TESTE_PROXY_WINDOWS.md). Os pacotes próprios ficam em `distribuicao/`; não exigem reinstalar o assistente. O diagnóstico não valida o token do bot nem envia mensagens. O teste de proxy atua somente na opção indicada, com backup e restauração, e precisa de conferência no PC.
 
+Se o teste retornar `inalterado`, use o [reparo específico do hosts e diagnóstico do Windows](REPARO_HOSTS_E_DIAGNOSTICO.md). A correção de hosts libera somente `wl.spotify.com`; a sonda de proxy localiza a etapa que não responde, e as sondas NCSI comparam o acesso público por IPv4 e IPv6. O arquivo hosts privado não é distribuído.
+
 Correção v2.11.2: [painel do host 9Remote e progresso da preparação](REVISAO_V2_11_2.md). O painel local do host é http://127.0.0.1:2208/ui/index.html.
 
 Correção v2.11.1: [início do Ollama e retomada](REVISAO_V2_11_1.md). Para atualizar uma preparação ainda aberta, feche primeiro o console que mostra **Preparação automática: http://127.0.0.1:...**; depois abra o iniciador do pacote novo.

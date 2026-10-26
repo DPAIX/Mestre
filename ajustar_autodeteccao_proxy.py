@@ -15,6 +15,7 @@ import stat
 import struct
 import subprocess
 import sys
+import tempfile
 from contextlib import contextmanager
 
 
@@ -23,6 +24,9 @@ POLITICA = r"Software\Policies\Microsoft\Windows\CurrentVersion\Internet Setting
 NOME_BACKUP = "autodeteccao_proxy_v1.json"
 LIMITE_SET = 8
 LIMITE_AVISO = 3
+ETAPAS_SONDA = ("PYTHON_INICIADO", "IDENTIDADE_OK", "REGISTRO_OK",
+                "WININET_CARREGADO", "QUERY_FLAGS_OK")
+SEM_ETAPA = "NAO_CONFIRMADA"
 
 
 class FalhaProxy(Exception):
@@ -240,7 +244,53 @@ def _definir_flags(antes: int, depois: int, identidade: str) -> int:
     funcao = wininet.InternetSetOptionW
     funcao.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32]
     funcao.restype = ctypes.c_int
-    return 0 if funcao(None, 75, ctypes.byref(lista), ctypes.sizeof(lista)) else 22
+    _limpar_erro_nativo()
+    if funcao(None, 75, ctypes.byref(lista), ctypes.sizeof(lista)):
+        return 0
+    _emitir_erro_nativo()
+    return 22
+
+
+def _numero_seguro(valor: object) -> int | None:
+    return valor if type(valor) is int and -0x80000000 <= valor <= 0xFFFFFFFF else None
+
+
+def _limpar_erro_nativo() -> None:
+    if hasattr(ctypes, "set_last_error"):
+        ctypes.set_last_error(0)
+
+
+def _emitir_erro_nativo() -> None:
+    erro = _numero_seguro(getattr(ctypes, "get_last_error", lambda: 0)())
+    if erro is not None and erro >= 0:
+        print("ERRO_NATIVO_PROXY=" + str(erro), flush=True)
+
+
+def _sonda_worker() -> int:
+    def etapa(nome: str) -> None:
+        print("ETAPA_PROXY=" + nome, flush=True)
+    etapa("PYTHON_INICIADO")
+    _identidade()  # A identidade e lida, mas nunca emitida.
+    etapa("IDENTIDADE_OK")
+    _ler_estado()
+    etapa("REGISTRO_OK")
+    Opcao, Lista = _estruturas()
+    opcao = Opcao()
+    opcao.opcao = 10  # INTERNET_PER_CONN_FLAGS_UI: somente consulta.
+    lista = Lista(ctypes.sizeof(Lista), None, 1, 0, ctypes.pointer(opcao))
+    wininet = _dll("wininet.dll")
+    etapa("WININET_CARREGADO")
+    consultar = wininet.InternetQueryOptionW
+    consultar.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p,
+                          ctypes.POINTER(ctypes.c_uint32)]
+    consultar.restype = ctypes.c_int
+    tamanho = ctypes.c_uint32(ctypes.sizeof(lista))
+    _limpar_erro_nativo()
+    if not consultar(None, 75, ctypes.byref(lista), ctypes.byref(tamanho)):
+        _emitir_erro_nativo()
+        return 22
+    etapa("QUERY_FLAGS_OK")
+    return 0
 
 
 def _notificar() -> int:
@@ -260,24 +310,107 @@ def _python_worker() -> Path:
     return candidato
 
 
-def _executar_worker(argumentos: list[str], prazo: int) -> str:
+def _analisar_recibo(conteudo: bytes) -> dict:
+    invalido = {"ultima_etapa": SEM_ETAPA, "recibo_valido": False}
+    if not isinstance(conteudo, bytes) or len(conteudo) > 2048:
+        return invalido
+    try:
+        linhas = conteudo.decode("ascii").splitlines()
+    except UnicodeDecodeError:
+        return invalido
+    etapas = []
+    erro = None
+    for linha in linhas:
+        if not linha:
+            continue
+        if linha.startswith("ETAPA_PROXY="):
+            nome = linha[len("ETAPA_PROXY="):]
+            if len(etapas) >= len(ETAPAS_SONDA) or nome != ETAPAS_SONDA[len(etapas)]:
+                return invalido
+            etapas.append(nome)
+        elif re.fullmatch(r"ERRO_NATIVO_PROXY=\d{1,10}", linha) and erro is None:
+            erro = int(linha.split("=", 1)[1])
+            if erro > 0xFFFFFFFF:
+                return invalido
+        else:
+            return invalido
+    resultado = {"ultima_etapa": etapas[-1] if etapas else SEM_ETAPA,
+                 "recibo_valido": True}
+    if erro is not None:
+        resultado["erro_nativo"] = erro
+    return resultado
+
+
+def _executar_worker(argumentos: list[str], prazo: int) -> dict:
     python = _python_worker()
     fonte = Path(__file__).absolute()
     _sem_links(fonte)
-    ambiente = {k: os.environ[k] for k in ("SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "TEMP", "TMP")
+    permitidas = ("SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "TEMP", "TMP", "USERPROFILE",
+                  "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ALLUSERSPROFILE",
+                  "HOMEDRIVE", "HOMEPATH", "USERNAME", "USERDOMAIN", "COMSPEC", "PATH")
+    ambiente = {k: os.environ[k] for k in permitidas
                 if k in os.environ}
+    with tempfile.TemporaryFile(mode="w+b") as captura:
+        codigo = None
+        erro_inicio = None
+        try:
+            resultado = subprocess.run([str(python), "-I", "-S", "-E", str(fonte), *argumentos],
+                                       shell=False, stdin=subprocess.DEVNULL,
+                                       stdout=captura, stderr=subprocess.DEVNULL,
+                                       env=ambiente, timeout=prazo, check=False,
+                                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            codigo = _numero_seguro(resultado.returncode)
+            tentativa = "ok" if codigo == 0 else "falha"
+        except subprocess.TimeoutExpired:
+            # subprocess.run encerra e recolhe somente o filho desta chamada.
+            tentativa = "tempo_esgotado"
+        except OSError as erro:
+            tentativa = "falha"
+            erro_inicio = _numero_seguro(getattr(erro, "winerror", None))
+        captura.seek(0)
+        recibo = _analisar_recibo(captura.read(2049))
+    if not recibo.pop("recibo_valido"):
+        tentativa = "falha"
+    recibo["tentativa"] = tentativa
+    if codigo is not None:
+        recibo["codigo_saida"] = codigo
+    if erro_inicio is not None and erro_inicio >= 0:
+        recibo["erro_nativo"] = erro_inicio
+    return recibo
+
+
+def _recibo_publico(execucao: object) -> dict:
+    # Aceita tambem os recibos de texto antigos usados por chamadores internos.
+    if isinstance(execucao, str):
+        return {"tentativa": execucao if execucao in {"ok", "falha", "tempo_esgotado"} else "falha"}
+    if not isinstance(execucao, dict):
+        return {"tentativa": "falha"}
+    recibo = {"tentativa": execucao.get("tentativa") if execucao.get("tentativa") in
+              {"ok", "falha", "tempo_esgotado"} else "falha"}
+    etapa = execucao.get("ultima_etapa")
+    if etapa in (*ETAPAS_SONDA, SEM_ETAPA):
+        recibo["ultima_etapa"] = etapa
+    for nome in ("codigo_saida", "erro_nativo"):
+        numero = _numero_seguro(execucao.get(nome))
+        if numero is not None and (nome != "erro_nativo" or numero >= 0):
+            recibo[nome] = numero
+    return recibo
+
+
+def diagnosticar() -> dict:
+    if not _windows():
+        return {"sonda": "falha", "ultima_etapa": SEM_ETAPA}
     try:
-        resultado = subprocess.run([str(python), "-I", "-S", "-E", str(fonte), *argumentos],
-                                   shell=False, stdin=subprocess.DEVNULL,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   env=ambiente, timeout=prazo, check=False,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        return "ok" if resultado.returncode == 0 else "falha"
-    except subprocess.TimeoutExpired:
-        # subprocess.run encerra e recolhe somente o filho criado nesta chamada.
-        return "tempo_esgotado"
-    except OSError:
-        return "falha"
+        recibo = _recibo_publico(_executar_worker(["--worker-diagnosticar"], LIMITE_SET))
+        tentativa = recibo["tentativa"]
+        if tentativa == "ok" and recibo.get("ultima_etapa") == "QUERY_FLAGS_OK":
+            estado = "concluida"
+        else:
+            estado = "tempo_esgotado" if tentativa == "tempo_esgotado" else "falha"
+        return {"sonda": estado, "ultima_etapa": recibo.get("ultima_etapa", SEM_ETAPA),
+                **{k: v for k, v in recibo.items() if k in {"codigo_saida", "erro_nativo"}}}
+    except Exception:
+        return {"sonda": "falha", "ultima_etapa": SEM_ETAPA}
 
 
 def ajustar(modo: str) -> dict:
@@ -313,20 +446,20 @@ def ajustar(modo: str) -> dict:
                 antes, depois = backup["flags_original"], backup["flags_esperado"]
             if _ler_estado() != antes:
                 raise FalhaProxy("configuracao_alterada")
-            tentativa = _executar_worker(["--worker-set", str(antes), str(depois), identidade], LIMITE_SET)
+            recibo = _recibo_publico(_executar_worker(["--worker-set", str(antes), str(depois), identidade], LIMITE_SET))
             # Confere inclusive se a API expirou depois de aplicar a mudanca.
             try:
                 conferido = _ler_estado()
             except Exception:
-                return {"estado": "incerto", "tentativa": tentativa}
+                return {"estado": "incerto", **recibo}
             if conferido == antes:
-                return {"estado": "inalterado", "tentativa": tentativa}
+                return {"estado": "inalterado", **recibo}
             if conferido != depois:
-                return {"estado": "incerto", "tentativa": tentativa}
-            aviso = _executar_worker(["--worker-notify"], LIMITE_AVISO)
+                return {"estado": "incerto", **recibo}
+            aviso = _recibo_publico(_executar_worker(["--worker-notify"], LIMITE_AVISO))
             return {"estado": "restaurado" if modo == "restaurar" else "aplicado",
-                    "tentativa": tentativa,
-                    "atualizacao": "solicitada" if aviso == "ok" else "pendente"}
+                    **recibo,
+                    "atualizacao": "solicitada" if aviso["tentativa"] == "ok" else "pendente"}
     except FalhaProxy as erro:
         return {"estado": erro.codigo}
     except Exception:
@@ -351,6 +484,20 @@ MENSAGENS = {
 
 def main(argumentos: list[str] | None = None) -> int:
     args = sys.argv[1:] if argumentos is None else argumentos
+    if args == ["--worker-diagnosticar"] and _windows():
+        try:
+            return _sonda_worker()
+        except Exception:
+            return 23
+    if args == ["--diagnosticar"]:
+        resultado = diagnosticar()
+        print("PROXY_SONDA=" + resultado["sonda"])
+        print("ULTIMA_ETAPA=" + resultado["ultima_etapa"])
+        if "codigo_saida" in resultado:
+            print("CODIGO_SAIDA=" + str(resultado["codigo_saida"]))
+        if "erro_nativo" in resultado:
+            print("ERRO_NATIVO_PROXY=" + str(resultado["erro_nativo"]))
+        return 0 if resultado["sonda"] == "concluida" else 1
     if args == ["--worker-notify"] and _windows():
         try:
             return _notificar()
@@ -374,6 +521,12 @@ def main(argumentos: list[str] | None = None) -> int:
     estado = resultado["estado"]
     print("RESULTADO_PROXY=" + estado)
     print(MENSAGENS.get(estado, "Nao foi possivel concluir este reparo local."))
+    if "tentativa" in resultado:
+        print("TENTATIVA_PROXY=" + resultado["tentativa"])
+    if "codigo_saida" in resultado:
+        print("CODIGO_SAIDA=" + str(resultado["codigo_saida"]))
+    if "erro_nativo" in resultado:
+        print("ERRO_NATIVO_PROXY=" + str(resultado["erro_nativo"]))
     if resultado.get("atualizacao") == "pendente":
         print("A notificacao aos aplicativos ficou pendente; encerre e reabra o Spotify para testar.")
     return 0 if estado in {"aplicado", "restaurado", "ja_aplicado", "ja_restaurado", "autodeteccao_ja_desativada"} else 1

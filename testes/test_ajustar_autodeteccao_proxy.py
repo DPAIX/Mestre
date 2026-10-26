@@ -153,18 +153,96 @@ class AjusteProxyTests(unittest.TestCase):
             os.environ, {"TELEGRAM_TOKEN": "SEGREDO_TESTE", "NODE_OPTIONS": "nao-herdar",
                          "PYTHONPATH": "nao-herdar", "SYSTEMROOT": "Windows"}, clear=True
         ), patch.object(modulo.subprocess, "run", return_value=types.SimpleNamespace(returncode=0)) as executar:
-            self.assertEqual(modulo._executar_worker(["--worker-notify"], 3), "ok")
+            recibo = modulo._executar_worker(["--worker-notify"], 3)
+            self.assertEqual(recibo["tentativa"], "ok")
+            self.assertEqual(recibo["codigo_saida"], 0)
         args, opcoes = executar.call_args
         self.assertEqual(args[0][:4], [str(python), "-I", "-S", "-E"])
         self.assertIs(opcoes["shell"], False)
         self.assertEqual(opcoes["timeout"], 3)
         self.assertEqual(opcoes["env"], {"SYSTEMROOT": "Windows"})
-        self.assertEqual(opcoes["stdout"], subprocess.DEVNULL)
+        self.assertTrue(opcoes["stdout"].closed)
         self.assertEqual(opcoes["stderr"], subprocess.DEVNULL)
         with patch.object(modulo, "_python_worker", return_value=python), patch.object(
             modulo.subprocess, "run", side_effect=subprocess.TimeoutExpired("somente-filho", 8)
         ) as executar:
-            self.assertEqual(modulo._executar_worker(["--worker-notify"], 8), "tempo_esgotado")
+            self.assertEqual(modulo._executar_worker(["--worker-notify"], 8)["tentativa"], "tempo_esgotado")
+        self.assertEqual(executar.call_count, 1)
+
+    def test_sonda_consulta_flags_ui_sem_set_notificacao_ou_backup(self):
+        consulta = Mock(return_value=1)
+        alterar = Mock()
+        dll = types.SimpleNamespace(InternetQueryOptionW=consulta, InternetSetOptionW=alterar)
+        saida = io.StringIO()
+        with patch.object(modulo, "_ler_estado", return_value=9), patch.object(
+            modulo, "_dll", return_value=dll
+        ), patch("sys.stdout", saida), patch.object(modulo, "_criar_backup") as backup:
+            self.assertEqual(modulo.main(["--worker-diagnosticar"]), 0)
+        self.assertEqual(saida.getvalue().splitlines(), ["ETAPA_PROXY=" + x for x in modulo.ETAPAS_SONDA])
+        _, opcao, ponteiro, _ = consulta.call_args.args
+        _, Lista = modulo._estruturas()
+        self.assertEqual(opcao, 75)
+        self.assertEqual(ctypes.cast(ponteiro, ctypes.POINTER(Lista)).contents.opcoes[0].opcao, 10)
+        alterar.assert_not_called()
+        backup.assert_not_called()
+
+    def test_sonda_timeout_preserva_ultima_etapa_sem_repetir(self):
+        def travar(*args, **opcoes):
+            opcoes["stdout"].write(b"".join(("ETAPA_PROXY=" + x + "\n").encode() for x in modulo.ETAPAS_SONDA[:4]))
+            opcoes["stdout"].flush()
+            raise subprocess.TimeoutExpired("consulta-simulada", 8)
+        with patch.object(modulo, "_python_worker", return_value=Path(self.temporario.name) / "python.exe"), patch.object(
+            modulo.subprocess, "run", side_effect=travar
+        ) as executar:
+            resultado = modulo.diagnosticar()
+        self.assertEqual(resultado, {"sonda": "tempo_esgotado", "ultima_etapa": "WININET_CARREGADO"})
+        self.assertEqual(executar.call_count, 1)
+        self.assertIn("--worker-diagnosticar", executar.call_args.args[0])
+        self.assertNotIn("--worker-set", executar.call_args.args[0])
+
+    def test_sonda_recusa_saida_desconhecida_excessiva_e_ordem_invalida(self):
+        for conteudo in (b"TOKEN_PRIVADO_SIMULADO\n", b"x" * 2049,
+                         b"ETAPA_PROXY=WININET_CARREGADO\n",
+                         b"ERRO_NATIVO_PROXY=9999999999\n"):
+            with self.subTest(conteudo=conteudo[:20]):
+                recibo = modulo._analisar_recibo(conteudo)
+                self.assertFalse(recibo["recibo_valido"])
+                self.assertEqual(recibo["ultima_etapa"], modulo.SEM_ETAPA)
+                self.assertNotIn("TOKEN_PRIVADO_SIMULADO", repr(recibo))
+
+    def test_ambiente_worker_preserva_pastas_windows_sem_tokens_ou_proxy(self):
+        permitidas = {"USERPROFILE": "perfil-simulado", "APPDATA": "dados-simulados",
+                      "LOCALAPPDATA": "dados-locais-simulados", "PROGRAMDATA": "comum-simulado",
+                      "ALLUSERSPROFILE": "todos-simulados", "HOMEDRIVE": "C:", "HOMEPATH": "perfil",
+                      "USERNAME": "conta-simulada", "USERDOMAIN": "dominio-simulado",
+                      "COMSPEC": "cmd-simulado", "PATH": "caminho-simulado"}
+        ambiente = {**permitidas, "HTTPS_PROXY": "credencial-simulada", "PYTHONHOME": "nao-herdar",
+                    "NODE_OPTIONS": "nao-herdar", "TELEGRAM_TOKEN": "nao-herdar"}
+        with patch.dict(os.environ, ambiente, clear=True), patch.object(modulo, "_python_worker", return_value=Path(
+            self.temporario.name) / "python.exe"
+        ), patch.object(modulo.subprocess, "run", return_value=types.SimpleNamespace(returncode=0)) as executar:
+            modulo._executar_worker(["--worker-diagnosticar"], 8)
+        self.assertEqual(executar.call_args.kwargs["env"], permitidas)
+
+    def test_cli_sonda_exibe_apenas_recibos_validados(self):
+        saida = io.StringIO()
+        with patch.object(modulo, "_executar_worker", return_value={
+            "tentativa": "falha", "ultima_etapa": "WININET_CARREGADO", "codigo_saida": 22,
+            "erro_nativo": 87, "stderr": "TOKEN_PRIVADO_SIMULADO"
+        }), patch("sys.stdout", saida):
+            self.assertEqual(modulo.main(["--diagnosticar"]), 1)
+        self.assertEqual(saida.getvalue().splitlines(), ["PROXY_SONDA=falha", "ULTIMA_ETAPA=WININET_CARREGADO",
+                                                        "CODIGO_SAIDA=22", "ERRO_NATIVO_PROXY=87"])
+        self.assertNotIn("TOKEN_PRIVADO_SIMULADO", saida.getvalue())
+
+    def test_cli_aplicacao_inalterada_agora_exibe_tentativa_e_exitcode(self):
+        saida = io.StringIO()
+        with patch.object(modulo, "_ler_estado", side_effect=[9, 9, 9]), patch.object(
+            modulo, "_executar_worker", return_value={"tentativa": "falha", "codigo_saida": 23}
+        ) as executar, patch("sys.stdout", saida):
+            self.assertEqual(modulo.main(["--desativar"]), 1)
+        self.assertIn("TENTATIVA_PROXY=falha", saida.getvalue())
+        self.assertIn("CODIGO_SAIDA=23", saida.getvalue())
         self.assertEqual(executar.call_count, 1)
 
     def test_api_recebe_somente_opcao_flags_e_trabalhador_revalida(self):
