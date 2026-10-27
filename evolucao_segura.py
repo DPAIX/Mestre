@@ -25,7 +25,7 @@ FONTES = ('preparacao_autonoma.py','implantacao_assistente.py','configurar_gatew
           'controlar_instancia_preparacao.py','ponte_preparacao_windows.py','assistente_pc.py','nucleo.py','automacao_pc.py','multi_ia.py',
           'colaboracao_chats.py','servicos_chat.py','equipe_ia.py','conversa_equipe.py','voz_assistente.py','rotina_ativa.py','configurar_ia_local.py','interpretacao_natural.py','integracoes_agentes.py',
           'agenda_google.py','autorizar_google.py','configurar_telegram.py','startup_windows.py',
-          'caminhos_instalacao.py','redirecionar_assistente.py','idempotencia_painel.py',
+          'caminhos_instalacao.py','redirecionar_assistente.py','idempotencia_painel.py','saude_telegram.py',
           'transcritor_local.py','iniciar_servicos_locais.py','instancia_assistente.py','preparar_inicio_automatico.py','manutencao_assistente.py',
           'roteador_9router.py','integracoes_9stack.py','configurar_9router.py','memoria_assistente.py','configuracao_assistente.py','diagnostico_rede.py','gemini_interactions.py','servicos_gemini.py','configurar_gemini.py','prontidao_assistente.py',
           'evolucao_segura.py','reinicio_seguro.py','reiniciar_assistente.py','verificacao_ambiente.py')

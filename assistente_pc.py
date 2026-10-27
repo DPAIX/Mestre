@@ -29,9 +29,11 @@ from reinicio_seguro import preparar_reinicio_assistente, reiniciar_windows, can
 import colaboracao_chats as CENTRAL
 import servicos_chat as SERVICOS
 from idempotencia_painel import ControleAcoes,FalhaControle
+from saude_telegram import MonitorTelegram
 
 ROTEADOR=Roteador()
 BOT=None
+SAUDE_TELEGRAM=MonitorTelegram()
 PENDENTES={}
 POMODOROS_ATIVOS=set()
 PEND_LOCK=threading.RLock()
@@ -183,10 +185,13 @@ def mostrar_ias():
 
 def mostrar_status():
     s=resumo_status();r=ROTEADOR.status()
+    telegram=SAUDE_TELEGRAM.snapshot()
+    idade=telegram['ultima_consulta_ha_s']
+    recebimento=telegram['detalhe']+(f' Última consulta bem-sucedida há {idade}s.' if idade is not None else '')
     return (f"📊 PC: {s['disco_livre_mb']} MiB livres | CPU: {s['cpu_percentual'] if s['cpu_percentual'] is not None else 'N/D'}% | RAM: {s['ram_percentual'] if s['ram_percentual'] is not None else 'N/D'}%\n📅 Rotina: {s['concluidas']}/{s['total_tarefas']}\n"
             f"💧 Água: {s['agua']} | 🤖 RoboTask: {s['robotask_total']} tarefas\n"
-            f"🧠 Comandos registrados: {s['comandos']}\n🌐 APIs: "+', '.join(k+' '+v for k,v in r.items())+
-            '\nStatus não verificado = nenhuma consulta em tempo real foi feita.')
+            f"🧠 Comandos registrados: {s['comandos']}\n📡 Telegram: {recebimento}\n🌐 APIs: "+', '.join(k+' '+v for k,v in r.items())+
+            '\nAPIs de IA: esta leitura usa o estado local, sem novas consultas aos provedores.')
 
 def interpretar_comando(texto,contexto=None):
     """Usado também no painel local; não executa shell nem mudanças de código."""
@@ -455,7 +460,7 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.11.3 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.11.4 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -518,7 +523,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.11.3'
+    server_version='MeuControlePC/2.11.4'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -605,7 +610,7 @@ class PainelHandler(BaseHTTPRequestHandler):
                 dados_vida=vida()
                 dados_robotask=ler_json('robotask_conhecimento.json',{})
                 estado={'vida':dados_vida,'resumo':resumo_status(dados_vida=dados_vida,dados_robotask=dados_robotask),
-                         'provedores':ROTEADOR.status(),
+                         'provedores':ROTEADOR.status(),'telegram':SAUDE_TELEGRAM.snapshot(),
                          'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
                          'robotask':dados_robotask.get('tarefas',[])[:100],
                          'autoanalise':ler_json('ultima_autoanalise.json',{}),
@@ -1247,6 +1252,7 @@ def configurar_bot():
     try:import telebot
     except ImportError:raise RuntimeError('Instale as dependências: pip install -r requirements.txt') from None
     BOT=telebot.TeleBot(chave,threaded=True,num_threads=4)
+    SAUDE_TELEGRAM.observar(BOT)
     @BOT.message_handler(content_types=['document'])
     def documento(m):importar_documento(m)
     @BOT.message_handler(content_types=['voice','audio'])
@@ -1348,7 +1354,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.11.3')
+        print('MeuControlePC v2.11.4')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
@@ -1372,10 +1378,13 @@ def _executar_instancia(opt):
             raise RuntimeError('Token Telegram ausente ou invalido. Execute configurar_telegram.bat para corrigi-lo.')
         if not validar_ids(os.getenv('TELEGRAM_ALLOWED_USER_IDS','')):
             raise RuntimeError('TELEGRAM_ALLOWED_USER_IDS invalido. Corrija no .env.')
-    servidor=iniciar_painel()
-    print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
+    if opt.somente_painel:SAUDE_TELEGRAM.somente_painel()
+    else:SAUDE_TELEGRAM.iniciar()
+    servidor=None
+    monitor_parada=threading.Event()
     try:
-        monitor_parada=threading.Event()
+        servidor=iniciar_painel()
+        print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
         if os.name=='nt':threading.Thread(target=preparar_ia_em_segundo_plano,daemon=True).start()
         threading.Thread(target=executar_agendador,args=(monitor_parada,),kwargs={'obter_estado_provedores':ROTEADOR.estado_local},daemon=True).start()
         if opt.somente_painel:
@@ -1392,8 +1401,9 @@ def _executar_instancia(opt):
             print('Bot configurado; aguardando mensagens de proprietários autorizados.')
             bot.infinity_polling(timeout=20,long_polling_timeout=15,skip_pending=True)
     finally:
+        SAUDE_TELEGRAM.encerrar()
         monitor_parada.set()
-        servidor.shutdown();servidor.server_close()
+        if servidor is not None:servidor.shutdown();servidor.server_close()
 
 if __name__=='__main__':
     try:main()

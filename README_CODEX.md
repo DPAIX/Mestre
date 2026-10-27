@@ -1,6 +1,8 @@
-# MeuControlePC v2.11.3 — Projeto para Codex
+# MeuControlePC v2.11.4 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
+
+Novidade v2.11.4: [estado observado do Telegram no painel e no /status](REVISAO_V2_11_4.md), com idade da última consulta, falhas e recuperação, sem chamadas extras. A atualização completa preserva configuração, dados, modelos e rede.
 
 Correção v2.11.3: [conexão IPv6 e reinício do 9Remote](REVISAO_V2_11_3.md). O [reparo separado](REPARO_9REMOTE.md) corrige os bundles gerenciados exatos com backup e abre o painel do host, sem reinstalar o bot.
 
@@ -59,6 +61,7 @@ Opcional: `python -m pip install -r requirements.txt` no ambiente Windows, para 
 | Arquivo | Função |
 |---|---|
 | `assistente_pc.py` | Interface Telegram e comandos |
+| `saude_telegram.py` | Estado em memória das consultas existentes ao Telegram |
 | `nucleo.py` | Dados JSON, logs, migração e rotinas |
 | `multi_ia.py` | Provedores, erros e cotas |
 | `evolucao_segura.py` | Autoanálise e melhorias com backup |

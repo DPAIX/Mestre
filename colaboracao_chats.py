@@ -26,6 +26,7 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'saude_telegram.py','REVISAO_V2_11_4.md','testes/test_saude_telegram.py','testes/test_saude_telegram_integracao.py',
     'preparacao_autonoma.py','preparacao_autonoma.html','INSTALAR_E_INICIAR.bat',
     'implantacao_assistente.py','configurar_gateway_automatico.py','controlar_instancia_preparacao.py','ponte_preparacao_windows.py',
     'GUIA_INSTALACAO_AUTONOMA.md','REVISAO_V2_11_0.md','REVISAO_V2_11_1.md','REVISAO_V2_11_2.md','REVISAO_V2_11_3.md',
