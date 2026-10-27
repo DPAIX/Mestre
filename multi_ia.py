@@ -26,6 +26,7 @@ DESCRICOES_FALHA={
     'modelo_indisponivel':'modelo não acessível','limite_temporario':'limite temporário',
     'servidor_ocupado':'servidor ocupado','requisicao_invalida':'requisição inválida',
     'rede':'problema de rede','tempo_esgotado':'prazo de resposta esgotado',
+    'geracao_incompleta':'conclusão da geração não confirmada',
     'resposta_invalida':'resposta inválida',
     'configuracao':'configuração incompleta','temporario':'falha temporária',
     'cota_temporaria':'cota de uso temporariamente esgotada',
@@ -133,6 +134,14 @@ def validar_limite_segundos(valor):
     if type(valor) not in (int,float) or not 0<valor<=120 or not math.isfinite(valor):
         raise ValueError('O limite desta consulta deve ser um número finito entre zero e 120 segundos, exclusivo de zero.')
     return float(valor)
+
+
+def _segundos_ollama(nome,padrao,minimo,maximo):
+    """Opções públicas de prazo, finitas; não consulta serviços nem persiste."""
+    try:valor=float(os.getenv(nome,str(padrao)))
+    except (TypeError,ValueError,OverflowError):valor=padrao
+    if not math.isfinite(valor):valor=padrao
+    return max(minimo,min(maximo,valor))
 
 @dataclass
 class FalhaAPI(Exception):
@@ -597,10 +606,7 @@ class Roteador:
         try:modelo=validar_modelo(modelo)
         except ValueError:
             raise FalhaAPI('Ollama',0,'OLLAMA_MODEL inválido; informe o nome de um modelo instalado.','configuracao')
-        try:timeout=float(os.getenv('OLLAMA_TIMEOUT','90'))
-        except ValueError:timeout=90
-        if not math.isfinite(timeout):timeout=90
-        timeout=max(5,min(120,timeout))
+        timeout=_segundos_ollama('OLLAMA_TIMEOUT',90,5,120)
         perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
         if perfil not in ('cpu','padrao'):
             raise FalhaAPI('Ollama',0,'OLLAMA_PERFIL inválido; escolha cpu ou padrao.','configuracao')
@@ -634,7 +640,9 @@ class Roteador:
                         f'Adiado por orçamento de RAM CPU: pesos de {tamanho/1024**3:.2f} GiB para '
                         f'{total/1024**3:.2f} GiB físicos, reservando 0.50 GiB. É uma estimativa, '
                         'não um teste de inferência. A tag continua selecionada e no catálogo; '
-                        'nenhuma geração foi enviada para este participante.','recursos')
+                        'nenhuma geração foi enviada para este participante. Você pode pedir um '
+                        'modelo menor já instalado ou usar um gateway configurado. Nenhuma '
+                        'substituição foi feita.','recursos')
             payload['model']=instalado
             opcoes={'num_ctx':1024,'num_predict':128}
             if not nuvem:opcoes['num_gpu']=0
@@ -663,6 +671,14 @@ class Roteador:
                     'O prazo de resposta do Ollama se esgotou. Isso não comprova falha de rede nem '
                     'cancelamento da geração no serviço. Nenhuma nova tentativa foi enviada.','tempo_esgotado') from None
             raise self._explicar_404_ollama(modelo,erro) from None
+        # O endpoint não-streaming deve terminar a geração antes de entregar a
+        # resposta. Um marcador explícito diferente de true não comprova isso:
+        # não aproveitar texto parcial nem liberar a próxima geração da equipe.
+        # Servidores legados que não enviam o campo mantêm a compatibilidade.
+        if 'done' in dados and dados['done'] is not True:
+            raise FalhaAPI('Ollama',0,
+                'O serviço não confirmou a conclusão da geração. A geração pode continuar; '
+                'nenhuma nova tentativa foi enviada.','geracao_incompleta')
         mensagem=dados.get('message')
         texto=mensagem.get('content') if isinstance(mensagem,dict) else None
         if not isinstance(texto,str) or not texto.strip():
@@ -733,6 +749,37 @@ class Roteador:
                         (' — '+erro.detalhe if nome=='Ollama' else ''),
                     'verificado_em':time.time()}
         return resultado
+
+    def limites_equipe(self,total):
+        """Orçamento finito por participante, derivado da consulta individual.
+
+        O par 90/30 era distribuído como padrão gerenciado, inclusive em .env.
+        A política adaptativa deixa esse par acompanhar o prazo individual e
+        reserva uma oportunidade para cada selecionado e para a síntese. Não
+        altera o arquivo .env. Valores personalizados continuam limitando a
+        rodada; a política legado também preserva explicitamente o par antigo.
+        Nenhum orçamento prova que um modelo cabe na memória ou responderá.
+        """
+        if type(total) is not int or not 1<=total<=32:
+            raise ValueError('Informe entre um e 32 participantes para o orçamento da equipe.')
+        politica=os.getenv('OLLAMA_EQUIPE_ORCAMENTO','adaptativo').strip().casefold()
+        if politica not in ('adaptativo','legado'):
+            raise FalhaAPI('Ollama',0,
+                'OLLAMA_EQUIPE_ORCAMENTO inválido; escolha adaptativo ou legado. Nenhuma geração enviada.',
+                'configuracao')
+        individual=_segundos_ollama('OLLAMA_TIMEOUT',90,5,120)
+        por_modelo=_segundos_ollama('OLLAMA_EQUIPE_TIMEOUT_MODELO',30,5,120)
+        rodada=_segundos_ollama('OLLAMA_EQUIPE_TIMEOUT',90,5,900)
+        if politica=='adaptativo' and por_modelo==30 and rodada==90:
+            por_modelo=individual
+            rodada=min(900,por_modelo*(total+1))
+            origem='adaptativo'
+        else:
+            # O modo legado conserva os mesmos tetos da implementação antiga.
+            if politica=='legado':rodada=min(180,rodada)
+            por_modelo=min(individual,por_modelo)
+            origem='legado' if politica=='legado' else 'personalizado'
+        return {'por_modelo':float(por_modelo),'rodada':float(rodada),'origem':origem}
 
     def responder_equipe(self,pergunta,*,historico=None,modelo_ollama,limite_segundos):
         """Adaptador explícito de equipe; nunca faz fallback ou altera o padrão."""

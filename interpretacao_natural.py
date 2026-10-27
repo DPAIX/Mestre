@@ -12,12 +12,12 @@ import re
 import unicodedata
 
 LIMITE_RESPOSTA = 12000
-CONSULTAS = {'status', 'rotina', 'financas', 'kanban', 'robotask', 'agenda', 'agentes', 'memoria', 'configuracao'}
+CONSULTAS = {'status', 'rotina', 'financas', 'kanban', 'robotask', 'agenda', 'agentes', 'memoria', 'configuracao', 'modelos'}
 COMANDOS_PC = {
     'desktop', 'taskmgr', 'explorer', 'notepad', 'calc', 'vscode_pc', 'enter',
     'print', 'f8', 'f9', 'f10', 'furg', 'agenda', 'colab',
 }
-ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'agente_abrir','9stack','memoria_salvar','memoria_remover','equipe_modelos','configurar_assistente'}
+ACOES = CONSULTAS | {'pc', 'financeiro', 'rotina_criar', 'kanban_adicionar', 'concluir', 'agua', 'pomodoro','modelo_padrao', 'modelo_conversa', 'provedor_conversa', 'modelos_testar', 'agente_abrir','9stack','memoria_salvar','memoria_remover','equipe_modelos','configurar_assistente'}
 DIAS = {'segunda': 'Segunda', 'terca': 'Terça', 'quarta': 'Quarta', 'quinta': 'Quinta',
         'sexta': 'Sexta', 'sabado': 'Sábado', 'domingo': 'Domingo'}
 _VALOR = r'(?:[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)'
@@ -187,6 +187,7 @@ def validar_plano(obj):
         'agentes': 'Consultar as integrações de agentes externos',
         'memoria': 'Consultar as notas salvas nesta conversa',
         'configuracao': 'Consultar a preparação local do assistente, sem consultar modelos',
+        'modelos': 'Consultar os modelos registrados no Ollama, sem gerar respostas',
         'agua': 'Registrar um copo de água', 'pomodoro': 'Iniciar Pomodoro de 25 minutos',
     }.get(acao)
     if acao in CONSULTAS | {'agua', 'pomodoro'}:
@@ -232,11 +233,25 @@ def validar_plano(obj):
             raise ValueError('Novas tarefas entram na coluna A_Fazer.')
         campos = {'texto': _texto(campos['texto'], 'Tarefa', 200), 'coluna': 'A_Fazer'}
         descricao = 'Adicionar ao Kanban: ' + campos['texto']
-    elif acao == 'modelo_padrao':
+    elif acao in ('modelo_padrao', 'modelo_conversa'):
         from configurar_ia_local import validar_modelo
         _campos(campos, ('modelo',))
         campos={'modelo':validar_modelo(_texto(campos['modelo'],'Modelo',200))}
-        descricao='Usar '+campos['modelo']+' como padrão do Ollama e nesta conversa'
+        descricao=('Usar '+campos['modelo']+' como padrão do Ollama e nesta conversa' if acao=='modelo_padrao' else
+                   'Usar somente '+campos['modelo']+' nesta conversa, preservando o padrão global e o histórico')
+    elif acao == 'modelos_testar':
+        _campos(campos)
+        campos = {}
+        descricao = ('Testar os modelos Ollama registrados, um por vez, com uma consulta real curta por modelo e sem histórico. '
+                     'Modelos de nuvem dependem de autorização, conta e cota; os resultados indicarão os modelos que responderam ou ficaram pendentes')
+    elif acao == 'provedor_conversa':
+        _campos(campos, ('provedor',))
+        provedor = campos['provedor']
+        if not isinstance(provedor, str) or provedor not in ('Gemini', 'OpenAI', 'Claude', 'Ollama', '9Router', 'auto'):
+            raise ValueError('Escolha um provedor disponível no assistente.')
+        campos = {'provedor': provedor}
+        descricao = ('Usar '+provedor+' nesta conversa, preservando o histórico e a configuração global. '
+                     'As próximas mensagens poderão usar a conta e a cota do provedor configurado; esta seleção não envia uma consulta')
     elif acao == 'agente_abrir':
         from integracoes_agentes import preparar_lancamento
         _campos(campos, ('agente',), ('modelo', 'configurar'))
@@ -337,9 +352,23 @@ def interpretar_local(texto):
         'o que voce tem na memoria sobre mim':'memoria',
         'quais notas voce tem sobre mim':'memoria',
         'quais sao minhas notas salvas':'memoria',
+        'mostre meus modelos':'modelos', 'mostre os modelos':'modelos',
+        'mostre os modelos disponiveis':'modelos', 'quais modelos estao disponiveis':'modelos',
+        'quais sao os modelos disponiveis':'modelos', 'liste os modelos':'modelos',
     }
     if normal in leituras:
         return _plano(leituras[normal])
+    provedor = re.fullmatch(r'(?:use|usar|selecione|selecionar|quero conversar com|quero usar) (?:o )?'
+                           r'(gemini|openai|chatgpt|claude|ollama|9router|modo automatico)(?: nesta conversa)?', normal)
+    if provedor:
+        nomes = {'gemini':'Gemini','openai':'OpenAI','chatgpt':'OpenAI','claude':'Claude',
+                 'ollama':'Ollama','9router':'9Router','modo automatico':'auto'}
+        return _plano('provedor_conversa', provedor=nomes[provedor[1]])
+    if re.fullmatch(r'(?:teste|testar|verifique|verificar) (?:todos )?(?:os )?modelos(?: do ollama)?', normal):
+        return _plano('modelos_testar')
+    if re.fullmatch(r'(?:use|usar|ative|ativar) todos os modelos(?: (?:juntos|em equipe|em cooperacao|trabalhando juntos))?', normal) or normal in (
+            'trabalhem juntos', 'quero todos os modelos trabalhando juntos', 'quero usar todos os modelos juntos'):
+        return _plano('equipe_modelos', modo='cooperativa')
     equipe = re.fullmatch(
         r'(?:ative|ativar) (?:a )?equipe de modelos'
         r'(?: (?:em modo |em )?(cooperativa|cooperativo|paralela|paralelo))?', normal)
@@ -349,6 +378,16 @@ def interpretar_local(texto):
     if (re.fullmatch(r'(?:desative|desativar) (?:a )?equipe de modelos', normal)
             or normal in ('use o modo individual', 'usar o modo individual', 'volte ao modelo individual')):
         return _plano('equipe_modelos', modo='individual')
+    pedido_individual = original.strip(' .!?')
+    pedido_individual = re.sub(r'^por favor[, ]+', '', pedido_individual, flags=re.I)
+    pedido_individual = re.sub(r',? por favor$', '', pedido_individual, flags=re.I)
+    pedido_individual = re.sub(r'^(?:voc[eê] )?(?:pode|consegue) (?:me )?', '', pedido_individual, flags=re.I)
+    individual = re.fullmatch(
+        r'(?:use|usar|selecione|selecionar|escolha|escolher)\s+(?:(?:somente|só|so|apenas)\s+)?(?:o\s+)?modelo\s+'
+        r'([A-Za-z0-9][A-Za-z0-9._:/-]*)(?:\s+(?:nesta|nessa)\s+conversa)?', pedido_individual, re.I)
+    if individual:
+        try:return _plano('modelo_conversa', modelo=individual[1])
+        except ValueError:return None
     stack=re.fullmatch(r'(abra|abrir|inicie|iniciar|instale|instalar) (?:o )?(9router|9remote)',normal)
     if stack:
         operacao='instalar' if stack[1] in ('instale','instalar') else 'iniciar' if stack[1] in ('inicie','iniciar') else 'abrir'
@@ -557,7 +596,7 @@ def extrair_resposta(texto):
         # A integração de um agente abre um aplicativo com permissões próprias.
         # Ela exige um alvo literal no pedido local; uma sugestão do modelo ou
         # conteúdo de histórico não pode produzir esse plano.
-        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar','memoria_remover','equipe_modelos','configurar_assistente'):
+        if dados['acao'] in ('agente_abrir','9stack','memoria_salvar','memoria_remover','equipe_modelos','configurar_assistente','modelo_conversa','provedor_conversa','modelos_testar'):
             raise ValueError('Esta integração exige um pedido explícito reconhecido localmente.')
         plano = validar_plano({'acao': dados['acao'], 'campos': dados['campos']})
         return {'texto': resposta or 'Entendi o pedido: ' + plano['descricao'] + '.', 'plano': plano}

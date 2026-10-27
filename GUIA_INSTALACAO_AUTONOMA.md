@@ -1,4 +1,4 @@
-# Instalação automática — MeuControlePC v2.11.4
+# Instalação automática — MeuControlePC v2.12.0
 
 Extraia o pacote completo em uma pasta de Downloads, fora do diretório de fontes em C:, e abra **`INSTALAR_E_INICIAR.bat`**. Não é necessário copiar as fontes manualmente para a instalação em C:. O `iniciar_redirecionado.bat`, sem argumentos, também abre este fluxo. Depois da implantação, é possível abrir o iniciador na própria pasta instalada; o pacote de atualização não deve ser extraído em uma subpasta dela.
 
@@ -67,7 +67,7 @@ Para chamar o mesmo preparador por uma tarefa local revisada, é possível usar 
 
 Após a primeira execução, confira o estado de cada etapa na janela local. Se o Ollama permanecer pendente por porta ocupada, a mensagem deve identificar o motivo disponível; concluir o 9Router permite usar essa integração sem forçar o encerramento do Ollama.
 
-Abra o painel pelo botão da preparação. O cartão **Telegram** informa a última consulta observada e a idade dessa evidência; uma consulta bem-sucedida não confirma o processamento de um comando nem a entrega de uma resposta. O cartão é atualizado junto com os dados locais, sem consultas adicionais à API. Se o Telegram estiver pronto, envie `/status` ao seu próprio bot e faça uma pergunta simples no modelo escolhido. Essa utilização é a conferência real do provedor, sujeita à conta e às cotas. Para áudio, envie um áudio curto e confira a transcrição no próprio ambiente. Testes automatizados usam simulações e não confirmam essas operações reais.
+Abra o painel pelo botão da preparação. O cartão **Telegram** informa a última consulta observada e a idade dessa evidência; uma consulta bem-sucedida não confirma o processamento de um comando nem a entrega de uma resposta. O cartão é atualizado junto com os dados locais, sem consultas adicionais à API. Se o Telegram estiver pronto, diga “mostre o estado do computador” ao seu bot e faça uma pergunta simples no modelo escolhido. Texto e áudio usam o mesmo fluxo; “sim” confirma um pedido completo e “cancelar” o descarta. Para conferir a equipe, diga “teste todos os modelos” e confirme a consulta solicitada. Essa utilização é a conferência real do provedor, sujeita à conta e às cotas. Para áudio, envie um áudio curto e confira a transcrição no próprio ambiente. Testes automatizados usam simulações e não confirmam essas operações reais.
 
 Se faltarem `winget`, acesso aos instaladores oficiais, espaço ou permissão do Windows, conclua o requisito mostrado e use **Retomar**. Uma solicitação de permissão do instalador oficial pertence ao Windows; a preparação não a confirma em seu lugar.
 

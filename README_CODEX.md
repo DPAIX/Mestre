@@ -1,6 +1,8 @@
-# MeuControlePC v2.11.4 — Projeto para Codex
+# MeuControlePC v2.12.0 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
+
+Novidade v2.12.0: [equipe com orçamento por modelo e conversa por texto/áudio com esclarecimentos](REVISAO_V2_12_0.md). Basta pedir em linguagem comum; tarefas incompletas geram perguntas e ações continuam sujeitas a confirmação.
 
 Novidade v2.11.4: [estado observado do Telegram no painel e no /status](REVISAO_V2_11_4.md), com idade da última consulta, falhas e recuperação, sem chamadas extras. A atualização completa preserva configuração, dados, modelos e rede.
 

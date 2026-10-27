@@ -9,7 +9,7 @@ _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 _CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelos_testar','modelo_padrao','ollama_perfil','ollama_nuvem','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia','9router_configurar','chat_modelo_9router','modelo_testar_9router',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
@@ -180,6 +180,14 @@ def executar_acao(acao,obj,contexto,roteador):
 
 
 def _executar_acao(acao,obj,contexto,roteador):
+    if acao=='modelos_testar':
+        if obj.get('confirmacao')!='TESTAR MODELOS':
+            raise ValueError('Confirme TESTAR MODELOS; será feita uma consulta por modelo Ollama registrado.')
+        progresso=obj.get('_progresso_modelos')
+        if progresso is not None and not callable(progresso):
+            raise ValueError('Progresso dos testes inválido.')
+        from bateria_modelos import testar_catalogo, texto_resultado
+        return texto_resultado(testar_catalogo(roteador,progresso=progresso))
     if acao in ('chat_modelo_9router','modelo_testar_9router'):
         from roteador_9router import validar_modelo,listar_modelos
         teste=acao=='modelo_testar_9router'
