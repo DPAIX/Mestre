@@ -1,6 +1,8 @@
-# MeuControlePC v2.12.0 — Projeto para Codex
+# MeuControlePC v2.12.1 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
+
+Correção v2.12.1: [respostas utilizáveis e conversa em texto simples](REVISAO_V2_12_1.md). Formato inválido não conta como sucesso da equipe; a pergunta sobre capacidades recebe resposta local.
 
 Novidade v2.12.0: [equipe com orçamento por modelo e conversa por texto/áudio com esclarecimentos](REVISAO_V2_12_0.md). Basta pedir em linguagem comum; tarefas incompletas geram perguntas e ações continuam sujeitas a confirmação.
 

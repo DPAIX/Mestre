@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 import webbrowser
 
-VERSAO='2.12.0'
+VERSAO='2.12.1'
 BASE=Path(__file__).resolve().parent
 MAX_CORPO=16384
 MODULOS=('telebot','google.genai','psutil','PIL','pyautogui','faster_whisper','googleapiclient','google_auth_oauthlib')
@@ -554,7 +554,7 @@ class Interface(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MeuControlePCPreparacao/2.12.0'
+    server_version='MeuControlePCPreparacao/2.12.1'
     def setup(self):
         super().setup();self.connection.settimeout(10)
     def log_message(self,*args):pass

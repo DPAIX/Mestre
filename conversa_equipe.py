@@ -227,8 +227,11 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
                 copia,modelo,min(restante,por_modelo),prazo)
             if provedor!='Ollama' or not isinstance(resposta,str) or not resposta.strip():
                 raise RuntimeError('O modelo não devolveu uma resposta textual válida.')
-            resposta=str(redigir(resposta))
-            resultado=extrair_resposta(resposta) if interpretar else {'texto':resposta,'plano':None}
+            # Parsear o JSON antes da redação evita corromper suas aspas
+            # escapadas. O resultado inteiro é redigido antes de qualquer
+            # corte, armazenamento, contribuição parcial ou plano público.
+            resultado=redigir(extrair_resposta(resposta,estrito=True) if interpretar else
+                              {'texto':resposta,'plano':None})
             item.update({'ok':True,'texto':resultado['texto'][:8000],'plano':resultado['plano']})
         except Exception as erro:
             item['erro']=str(redigir(erro))[:600]
@@ -250,7 +253,7 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
             parcial_enviada=True
     sucessos=[r for r in itens if r['ok']]
     if not sucessos:
-        raise RuntimeError('Nenhum modelo da equipe respondeu. '+
+        raise RuntimeError('Nenhum modelo da equipe respondeu com conteúdo válido. '+
             '\n'.join(r['modelo']+': '+r['erro'] for r in itens))
     if independentes:
         # O perfil CPU não enfileira todos os modelos locais de uma vez. Cada
@@ -258,7 +261,7 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
         # a escolha do usuário continua "paralela", com execução explicitada.
         itens.sort(key=lambda item:modelos.index(item['modelo']))
         plano=_consenso(itens,interpretar)
-        linhas=[f'👥 Equipe Ollama: {len(sucessos)}/{total} modelos responderam.',
+        linhas=[f'👥 Equipe Ollama: {len(sucessos)}/{total} modelos responderam com conteúdo válido.',
                 'Modo solicitado: paralelo. Execução sequencial no perfil CPU para evitar concorrência de memória.']
         limite=max(350,min(1800,9500//total))
         for item in itens:
@@ -295,12 +298,14 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
                 prompt,copia,escolhido,min(restante,por_modelo),prazo)
             if provedor!='Ollama' or not isinstance(resposta,str) or not resposta.strip():
                 raise RuntimeError('A síntese não devolveu resposta textual válida.')
-            resultado=extrair_resposta(str(redigir(resposta)))
+            resultado=redigir(extrair_resposta(resposta,estrito=True))
             texto=resultado['texto'][:8000]
             if _assinatura(resultado['plano'])!=_assinatura(plano):plano=None
             sintese['ok']=True
         except Exception as erro:
             sintese['erro']=str(redigir(erro))[:600]
+            categoria=getattr(erro,'categoria',None)
+            if isinstance(categoria,str):sintese['categoria']=categoria
             if isinstance(erro,_OrcamentoEsgotado):
                 sintese['adiada']=True
                 sintese['tentada']=False
@@ -316,7 +321,7 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
     # A execução pode priorizar os menores; seleção e relatório mantêm a ordem
     # original, inclusive participantes adiados pelo orçamento de memória.
     itens.sort(key=lambda item:modelos.index(item['modelo']))
-    linhas=[f'👥 Equipe cooperativa Ollama: {len(sucessos)}/{total} modelos responderam.']
+    linhas=[f'👥 Equipe cooperativa Ollama: {len(sucessos)}/{total} modelos responderam com conteúdo válido.']
     ampliada = total > MAX_MODELOS_PARALELA
     participacao = '\nParticipação: '+', '.join(
         ('✅ ' if r['ok'] else '⚠️ ')+r['modelo']+
@@ -382,11 +387,14 @@ def consultar_modelos(texto, historico, modelos, roteador, *, interpretar=False,
                     provedor='Ollama',modelo_ollama=modelo)
                 if provedor!='Ollama' or not isinstance(resposta,str) or not resposta.strip():
                     raise RuntimeError('O modelo não devolveu uma resposta textual válida.')
-                resposta=str(redigir(resposta))
-                resultado=extrair_resposta(resposta) if interpretar else {'texto':resposta,'plano':None}
+                resultado=redigir(extrair_resposta(resposta,estrito=True) if interpretar else
+                                  {'texto':resposta,'plano':None})
                 return {**base,'ok':True,'texto':resultado['texto'][:8000], 'plano':resultado['plano']}
             except Exception as erro:
-                return {**base,'erro':str(redigir(erro))[:600]}
+                falha={**base,'erro':str(redigir(erro))[:600]}
+                categoria=getattr(erro,'categoria',None)
+                if isinstance(categoria,str):falha['categoria']=categoria
+                return falha
         respostas={}
         with ThreadPoolExecutor(max_workers=len(modelos),thread_name_prefix='equipe_ollama') as executor:
             futuros={executor.submit(consultar,m):m for m in modelos}
@@ -399,14 +407,14 @@ def consultar_modelos(texto, historico, modelos, roteador, *, interpretar=False,
         itens=[respostas[m] for m in modelos]
         sucessos=[r for r in itens if r['ok']]
         if not sucessos:
-            raise RuntimeError('Nenhum modelo da equipe respondeu. '+
+            raise RuntimeError('Nenhum modelo da equipe respondeu com conteúdo válido. '+
                 '\n'.join(r['modelo']+': '+r['erro'] for r in itens))
         plano=None
         if interpretar and len(sucessos)==len(itens) and all(r['plano'] for r in itens):
             assinaturas={json.dumps({'acao':r['plano']['acao'],'campos':r['plano']['campos']},
                 sort_keys=True,allow_nan=False) for r in itens}
             if len(assinaturas)==1:plano=itens[0]['plano']
-        linhas=[f'👥 Equipe Ollama: {len(sucessos)}/{len(itens)} modelos responderam.']
+        linhas=[f'👥 Equipe Ollama: {len(sucessos)}/{len(itens)} modelos responderam com conteúdo válido.']
         limite=max(350,min(1800,9500//len(itens)))
         for item in itens:
             linhas.append('\n'+('✅ ' if item['ok'] else '⚠️ ')+item['modelo'])

@@ -27,6 +27,7 @@ DESCRICOES_FALHA={
     'servidor_ocupado':'servidor ocupado','requisicao_invalida':'requisição inválida',
     'rede':'problema de rede','tempo_esgotado':'prazo de resposta esgotado',
     'geracao_incompleta':'conclusão da geração não confirmada',
+    'resposta_truncada':'resposta cortada pelo limite de saída',
     'resposta_invalida':'resposta inválida',
     'configuracao':'configuração incompleta','temporario':'falha temporária',
     'cota_temporaria':'cota de uso temporariamente esgotada',
@@ -679,6 +680,10 @@ class Roteador:
             raise FalhaAPI('Ollama',0,
                 'O serviço não confirmou a conclusão da geração. A geração pode continuar; '
                 'nenhuma nova tentativa foi enviada.','geracao_incompleta')
+        if dados.get('done_reason')=='length':
+            raise FalhaAPI('Ollama',0,
+                'O modelo atingiu o limite de saída e a resposta foi cortada. '
+                'Nenhuma ação foi preparada e nenhuma nova tentativa foi enviada.','resposta_truncada')
         mensagem=dados.get('message')
         texto=mensagem.get('content') if isinstance(mensagem,dict) else None
         if not isinstance(texto,str) or not texto.strip():

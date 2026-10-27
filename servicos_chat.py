@@ -1,6 +1,7 @@
 """Serviços de conversas e projeto compartilhado, sem dependência do Telegram."""
 from __future__ import annotations
 import os
+import re
 import threading
 import nucleo
 import colaboracao_chats as central
@@ -13,6 +14,33 @@ ACOES_CENTRAL = {
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia','9router_configurar','chat_modelo_9router','modelo_testar_9router',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
+_AVISOS_FORMATO_LOCAIS = (
+    'A resposta do modelo veio em formato incompleto ou inválido. Envie uma mensagem curta para tentar novamente.',
+    'Não preparei uma ação válida. Descreva o que deseja fazer e os dados necessários para eu ajudar.',
+)
+
+
+def _historico_sem_avisos_locais(historico):
+    """Exclui da próxima consulta apenas avisos locais antigos reconhecíveis.
+
+    Os registros persistidos, turnos do dono e contribuições reais permanecem.
+    A estrutura do relatório distingue um aviso selecionado de uma explicação
+    técnica que apenas cita o mesmo texto.
+    """
+    def aviso_local(item):
+        if not isinstance(item,dict) or item.get('role')!='assistant':return False
+        texto=item.get('content')
+        if not isinstance(texto,str):return False
+        corpo=texto.strip()
+        if corpo.startswith('🤖 ') and '\n' in corpo:
+            corpo=corpo.partition('\n')[2].strip()
+        if corpo in _AVISOS_FORMATO_LOCAIS:return True
+        inicio=(r'\A👥 Equipe cooperativa Ollama: [^\n]*\n'
+                r'(?:\nParticipação: [^\n]*\n)?'
+                r'Resposta (?:de|consolidada por) [^\r\n]{1,200}:\n')
+        avisos='(?:'+'|'.join(re.escape(aviso) for aviso in _AVISOS_FORMATO_LOCAIS)+')'
+        return re.match(inicio+avisos+r'(?=\nA síntese adicional |\n\nParticipação:|$)',corpo) is not None
+    return [item for item in historico if not aviso_local(item)]
 
 
 def campo_texto(obj,nome,limite=200,obrigatorio=True):
@@ -59,7 +87,7 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
             if not 1<=len(modelos)<=MAX_MODELOS_COOPERATIVA:
                 raise ValueError('A equipe automática precisa de um a '+str(MAX_MODELOS_COOPERATIVA)+' modelos; selecione uma equipe manual para um catálogo maior. Nenhum participante foi descartado.')
             chat=central.configurar_equipe_automatica(contexto,chat['id'],modelos)
-        historico=central.historico_chat(contexto,chat_id=chat['id'])
+        historico=_historico_sem_avisos_locais(central.historico_chat(contexto,chat_id=chat['id']))
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
         if modelo:opcoes['modelo_ollama']=modelo
@@ -98,13 +126,21 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
                 progresso=progresso,**extras)
             resposta=equipe_resultado['texto'];provedor='Ollama'
         else:resposta,provedor=roteador.responder(pergunta,**opcoes)
-        resposta=nucleo.redigir(resposta)
         plano=None
         if retornar_plano and equipe:
             plano=equipe_resultado['plano']
         elif retornar_plano:
-            resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
+            # Interpretar em memória antes da redação evita corromper escapes
+            # de um JSON válido. Só o resultado redigido pode ser apresentado
+            # ou registrado; avisos locais de formato não são falas da IA.
+            from interpretacao_natural import RespostaModeloInvalida
+            try:resultado=nucleo.redigir(extrair_resposta(resposta,estrito=True))
+            except RespostaModeloInvalida as erro:
+                from multi_ia import FalhaAPI
+                raise FalhaAPI(provedor,0,str(erro),'resposta_invalida') from None
+            resposta=resultado['texto'];plano=resultado['plano']
             if plano:resposta='Entendi: '+plano['descricao']+'. O pedido ainda não foi executado.'
+        resposta=nucleo.redigir(resposta)
         if notas['aviso']:resposta+='\n\n'+notas['aviso']
         extras_registro={'modelo_9router':modelo_gateway} if modelo_gateway else {}
         central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo,**extras_registro)

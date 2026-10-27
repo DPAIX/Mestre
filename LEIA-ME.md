@@ -1,3 +1,5 @@
+> **v2.12.1:** [Respostas utilizáveis da equipe](REVISAO_V2_12_1.md). Corrige a contagem de formato inválido, conversa comum em texto simples e a pergunta “me diga do que você é capaz”.
+
 > **v2.12.0:** [Equipe e conversa por texto/áudio](REVISAO_V2_12_0.md). Peça “trabalhem juntos”, “teste todos os modelos” ou “adicione uma tarefa”. O assistente pergunta os dados que faltarem e pede confirmação antes de agir. Extraia o pacote completo em Downloads e abra **`INSTALAR_E_INICIAR.bat`**.
 
 > **v2.11.4:** [Estado do Telegram no painel](REVISAO_V2_11_4.md). Mostra consulta confirmada, falha, confirmação antiga e modo somente painel. Usa as consultas existentes; não envia mensagens de teste. Extraia o pacote completo em Downloads e abra **`INSTALAR_E_INICIAR.bat`**.
@@ -54,7 +56,7 @@
 
 > **Atualização v2.2:** veja [GUIA_ATUALIZACAO_V2_2.md](GUIA_ATUALIZACAO_V2_2.md). O desligamento do computador não está disponível; o reinício do Windows permanece opcional.
 
-# MeuControlePC v2.12.0 — bot Telegram e painel local
+# MeuControlePC v2.12.1 — bot Telegram e painel local
 
 **Atualização v2.3.1:** escolha modelos Ollama por conversa, consulte uma equipe com vários modelos e leve o contexto para Manus e agentes de código. Se já tem modelos, use `configurar_ia_local.bat --listar` e `configurar_ia_local.bat --modelo qwen3.5:4b` com o nome do seu catálogo. Veja [o guia](GUIA_MULTIPLOS_CHATS.md) e [o relatório de testes e reversão](REVISAO_V2_3_1.md).
 

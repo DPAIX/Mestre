@@ -10,6 +10,7 @@ import time
 
 from configurar_ia_local import validar_modelo
 import conversa_equipe
+from interpretacao_natural import extrair_resposta
 from nucleo import redigir
 
 
@@ -84,6 +85,7 @@ def testar_catalogo(roteador, *, progresso=None):
                         provedor='Ollama', modelo_ollama=modelo, historico=[])
                 if provedor != 'Ollama' or not isinstance(texto, str) or not texto.strip():
                     raise ValueError('O modelo não devolveu uma resposta textual válida.')
+                texto=extrair_resposta(texto,estrito=True)['texto']
                 item = {'modelo': modelo, 'ok': True, 'enviado': True, 'categoria': None,
                     'detalhe': str(redigir(texto.strip()))[:140]}
             except Exception as erro:
@@ -110,7 +112,9 @@ def texto_resultado(resultado):
     linhas = [f"Modelos Ollama: {resultado['responderam']}/{resultado['total']} responderam ao teste."]
     for item in resultado['resultados']:
         estado = 'respondeu' if item['ok'] else item['categoria']
+        duracao=item.get('duracao_s')
+        tempo=f' ({duracao:g} s)' if type(duracao) in (int,float) and math.isfinite(duracao) and duracao>=0 else ''
         linhas.append(('✅ ' if item['ok'] else '⚠️ ') + item['modelo'] + ' — ' + estado + ': '
-            + item['detalhe'][:140])
+            + item['detalhe'][:120]+tempo)
     linhas.append('Uma consulta por modelo, sem histórico ou síntese. Os resultados valem para estes testes.')
     return str(redigir('\n'.join(linhas)))[:12000]

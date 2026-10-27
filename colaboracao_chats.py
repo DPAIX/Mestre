@@ -26,6 +26,8 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'REVISAO_V2_12_1.md','testes/test_formato_conversa_v2121.py',
+    'testes/test_qualidade_equipe_v2121.py','testes/test_ollama_truncamento_v2121.py',
     'esclarecimento_conversa.py','bateria_modelos.py','REVISAO_V2_12_0.md',
     'testes/test_bateria_modelos.py','testes/test_inferencia_equipe_v212.py','testes/test_equipe_continuacao.py',
     'testes/test_esclarecimento_conversa.py','testes/test_telegram_natural_v212.py',

@@ -142,7 +142,11 @@ class ConversaEquipeTeste(unittest.TestCase):
                 self.roteador.responder.side_effect = lambda mensagem, **kw: (
                     divergente if kw['modelo_ollama'] == MODELOS[-1] else envelope(), 'Ollama')
                 resultado = self.consultar(interpretar=True)
-                self.assertTrue(all(r['ok'] for r in resultado['resultados']))
+                if '"acao": "shell"' in divergente:
+                    self.assertEqual([r['ok'] for r in resultado['resultados']],[True,True,True,False])
+                    self.assertEqual(resultado['resultados'][-1]['categoria'],'resposta_invalida')
+                else:
+                    self.assertTrue(all(r['ok'] for r in resultado['resultados']))
                 self.assertIsNone(resultado['plano'])
                 self.assertIn('não tiveram concordância de todos', resultado['texto'])
 

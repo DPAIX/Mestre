@@ -16,6 +16,7 @@ class RoteadorFicticio:
         self.chamadas = []
         self.catalogos = 0
         self.erros = {}
+        self.conteudos = {}
         self.tempo = 100.0
 
     def catalogo_ollama(self):
@@ -33,7 +34,7 @@ class RoteadorFicticio:
         self.tempo += 45
         if modelo_ollama in self.erros:
             raise self.erros[modelo_ollama]
-        return 'OK', 'Ollama'
+        return self.conteudos.get(modelo_ollama,'OK'), 'Ollama'
 
     def responder(self, *args, **kwargs):
         raise AssertionError('O teste nativo não usa fallback.')
@@ -146,6 +147,17 @@ class BateriaModelosTeste(unittest.TestCase):
         self.assertEqual(len(eventos), 4)
         self.assertEqual(len(self.roteador.chamadas), 4)
         self.assertIn('4/4', texto)
+
+    def test_json_incompleto_nao_conta_como_modelo_valido_e_duracao_e_visivel(self):
+        self.roteador.conteudos[MODELOS[-1]]='{"resposta":"cortada'
+        resultado=bateria.testar_catalogo(self.roteador)
+        self.assertEqual(resultado['responderam'],3)
+        self.assertEqual(resultado['resultados'][-1]['categoria'],'resposta_invalida')
+        self.assertFalse(resultado['resultados'][-1]['ok'])
+        self.assertEqual(len(self.roteador.chamadas),4)
+        texto=bateria.texto_resultado(resultado)
+        self.assertIn('(45 s)',texto)
+        self.assertNotIn('{"resposta":"cortada',texto)
 
 
 if __name__ == '__main__':

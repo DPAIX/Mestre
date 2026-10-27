@@ -115,7 +115,9 @@ class ConversaSemAcaoTeste(unittest.TestCase):
         roteador = MagicMock()
         def responder(texto, **opcoes):
             resposta = 'Recebi sua mensagem.' if texto.startswith('Consolide ') else 'Revisão do pedido. ' * 500
-            return json.dumps({'resposta': resposta, 'acao': None, 'campos': {}}), 'Ollama'
+            # Preserve o mesmo conteúdo longo dentro do limite público de
+            # 12000 caracteres do envelope, sem expandir cada acento em \u.
+            return json.dumps({'resposta': resposta, 'acao': None, 'campos': {}}, ensure_ascii=False), 'Ollama'
         roteador.responder.side_effect = responder
         chat = {'id': 'fixture-chat', 'titulo': 'Conversa fictícia', 'equipe_politica': 'manual',
                 'provedor': 'Ollama', 'modelo_ollama': 'llama3.2:latest', 'equipe_paralela': True,

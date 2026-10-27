@@ -1,4 +1,4 @@
-# Instalação automática — MeuControlePC v2.12.0
+# Instalação automática — MeuControlePC v2.12.1
 
 Extraia o pacote completo em uma pasta de Downloads, fora do diretório de fontes em C:, e abra **`INSTALAR_E_INICIAR.bat`**. Não é necessário copiar as fontes manualmente para a instalação em C:. O `iniciar_redirecionado.bat`, sem argumentos, também abre este fluxo. Depois da implantação, é possível abrir o iniciador na própria pasta instalada; o pacote de atualização não deve ser extraído em uma subpasta dela.
 
