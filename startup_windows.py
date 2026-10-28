@@ -16,6 +16,14 @@ MAX_GERENCIADO=65536
 _TRAVA=threading.RLock()
 
 
+def _politica_f():
+    # Sem a opção explícita, preserve o contrato do início legado.
+    if 'MEUCONTROLEPC_SOMENTE_F' not in os.environ:
+        return None
+    import instalacao_em_f
+    return instalacao_em_f if instalacao_em_f.ativo() else None
+
+
 def _sem_redirecionamento(caminho):
     """Não segue links, junctions ou outros reparse points nos destinos."""
     caminho=Path(caminho)
@@ -71,8 +79,23 @@ def _argumento_cmd(valor):
 def texto_inicio(pasta=None, python=None, *, arquivo_env_externo=None, dados=None):
     """Persiste os caminhos, sem copiar o .env ou seus valores para o atalho."""
     pasta=Path(pasta) if pasta is not None else Path(__file__).resolve().parent
+    politica=_politica_f()
+    if politica:
+        pasta=politica.validar_caminho(pasta)
+        python=politica.validar_caminho(python or sys.executable)
+        arquivo_env_externo=politica.validar_caminho(
+            arquivo_env_externo if arquivo_env_externo is not None else
+            os.environ.get('MEUCONTROLEPC_ENV',str(politica.raiz()/'.env')))
+        dados=politica.validar_caminho(dados if dados is not None else
+            os.environ.get('MEUCONTROLEPC_DADOS',str(arquivo_env_externo.parent/'dados')))
     linhas=[ASSINATURA,'@echo off','setlocal DisableDelayedExpansion','chcp 65001 >nul',
             'cd /d '+_argumento_cmd(pasta)]
+    if politica:
+        raiz=politica.raiz()
+        _argumento_cmd(raiz)
+        linhas.extend(['set "MEUCONTROLEPC_SOMENTE_F=1"',
+                       'set "MEUCONTROLEPC_RAIZ_F='+str(raiz).replace('%','%%')+'"',
+                       'set "PYTHONDONTWRITEBYTECODE=1"'])
     if arquivo_env_externo is not None or 'MEUCONTROLEPC_ENV' in os.environ:
         env=Path(arquivo_env_externo) if arquivo_env_externo is not None else arquivo_env(pasta)
         dados=Path(dados) if dados is not None else (env.parent/'dados' if arquivo_env_externo is not None else diretorio_dados(pasta))
@@ -124,6 +147,42 @@ def _gravar_atomico(arquivo,conteudo):
     finally:Path(temporario).unlink(missing_ok=True)
 
 
+def _transferir_verificado(origem,destino,esperado=None,*,remover_origem=True):
+    """Transfere somente um atalho limitado, inclusive entre volumes.
+
+    O destino é criado exclusivamente e conferido antes de excluir a origem.
+    Uma mudança na origem ou no backup impede a exclusão/reversão automática.
+    """
+    origem=_sem_redirecionamento(origem)
+    destino=_sem_redirecionamento(destino)
+    if not origem.is_file() or origem.stat().st_size>MAX_GERENCIADO:
+        raise RuntimeError('O atalho de inicialização excede o limite ou é inválido.')
+    conteudo=origem.read_bytes()
+    if len(conteudo)>MAX_GERENCIADO or esperado is not None and conteudo!=esperado:
+        raise RuntimeError('O atalho mudou durante a preparação; os arquivos foram preservados.')
+    criado=False
+    try:
+        with destino.open('xb') as fp:
+            criado=True
+            fp.write(conteudo);fp.flush();os.fsync(fp.fileno())
+        _sem_redirecionamento(destino)
+        if destino.read_bytes()!=conteudo:
+            raise RuntimeError('A cópia do atalho não foi confirmada.')
+        _sem_redirecionamento(origem)
+        if origem.read_bytes()!=conteudo:
+            raise RuntimeError('O atalho mudou durante a cópia; a origem permanece.')
+        if remover_origem:origem.unlink()
+    except (OSError,RuntimeError,ValueError):
+        # Limpeza apenas da cópia que ainda coincide com o que gravamos.
+        if criado:
+            try:
+                _sem_redirecionamento(destino)
+                if destino.read_bytes()==conteudo:destino.unlink()
+            except (OSError,RuntimeError,ValueError):pass
+        raise
+    return conteudo
+
+
 def registrar_inicio(pasta=None,python=None,*,arquivo_env_externo=None,dados=None):
     """Configuração explícita; não convive com o atalho legado conhecido."""
     with _TRAVA:
@@ -146,32 +205,47 @@ def consolidar_inicio(pasta=None,python=None,*,arquivo_env_externo=None,dados=No
     """
     if confirmado is not True:raise PermissionError('Confirme a consolidação do início do assistente antes de alterar o Startup.')
     with _TRAVA:
+        politica=_politica_f()
         arquivo=conferir_destino()
         antigos=_legados(arquivo)
         texto=texto_inicio(pasta,python,arquivo_env_externo=arquivo_env_externo,dados=dados)
         anterior=arquivo.read_bytes() if arquivo.exists() else None
-        raiz=Path(diretorio_backup) if diretorio_backup is not None else arquivo.parent.parent/'MeuControlePC_inicio_guardado'
+        raiz=(Path(diretorio_backup) if diretorio_backup is not None else
+              politica.raiz()/'preparacao'/'inicio_guardado' if politica else
+              arquivo.parent.parent/'MeuControlePC_inicio_guardado')
+        if politica:raiz=politica.validar_caminho(raiz)
         _sem_redirecionamento(raiz)
         if raiz.resolve().is_relative_to(arquivo.parent.resolve()):
             raise ValueError('O backup de inicialização deve ficar fora da pasta Startup.')
         backup=None;movidos=[]
+        guardar_atual=politica and anterior is not None and anterior!=texto.encode('utf-8')
         try:
-            if antigos:
+            if antigos or guardar_atual:
                 raiz.mkdir(parents=True,exist_ok=True)
                 backup=raiz/('consolidacao_'+uuid.uuid4().hex)
                 backup.mkdir(exist_ok=False)
+                if guardar_atual:
+                    _transferir_verificado(arquivo,backup/arquivo.name,anterior,remover_origem=False)
                 for original in antigos:
                     destino_backup=backup/original.name
-                    os.replace(original,destino_backup)
-                    movidos.append((original,destino_backup))
+                    if politica:
+                        conteudo=_transferir_verificado(original,destino_backup)
+                    else:
+                        os.replace(original,destino_backup);conteudo=None
+                    movidos.append((original,destino_backup,conteudo))
+            if politica:
+                atual=arquivo.read_bytes() if arquivo.exists() else None
+                if atual!=anterior:
+                    raise RuntimeError('A entrada de início mudou durante a preparação; a alteração posterior foi preservada.')
             inicio=registrar_inicio(pasta,python,arquivo_env_externo=arquivo_env_externo,dados=dados)
         except (OSError,RuntimeError,ValueError):
             falha_reversao=False
-            for original,salvo in reversed(movidos):
+            for original,salvo,conteudo in reversed(movidos):
                 try:
                     if original.exists():raise RuntimeError('Destino ocupado durante a reversão.')
-                    os.replace(salvo,original)
-                except (OSError,RuntimeError):falha_reversao=True
+                    if politica:_transferir_verificado(salvo,original,conteudo)
+                    else:os.replace(salvo,original)
+                except (OSError,RuntimeError,ValueError):falha_reversao=True
             try:
                 if arquivo.exists() and arquivo.read_bytes()==texto.encode('utf-8'):
                     if anterior is None:arquivo.unlink()

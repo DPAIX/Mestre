@@ -103,6 +103,12 @@ def _baixar(url):
     if not executavel:
         raise FalhaPreparacao('O executável do Ollama não foi encontrado. Abra o Ollama instalado e tente novamente.')
     ambiente = {k: v for k, v in os.environ.items() if k.upper() in AMBIENTE_PUBLICO}
+    import instalacao_em_f as politica
+    if politica.ativo():
+        ambiente.update(politica.ambiente())
+        perfil=politica.raiz()/'perfil_ollama'
+        ambiente.update({'USERPROFILE':str(perfil),'LOCALAPPDATA':str(perfil/'AppData'/'Local'),
+                         'APPDATA':str(perfil/'AppData'/'Roaming')})
     ambiente['OLLAMA_HOST'] = configurar.validar_url(url)
     print('Baixando ' + MODELO_LEVE + '; aproximadamente '
           f'{TAMANHO_BYTES / 1024**3:.2f} GiB. Aguarde o progresso do Ollama.', flush=True)
@@ -226,6 +232,14 @@ def preparar(caminho_env, dados, *, autorizado=False, restaurar=False):
             anteriores = _opcoes(iniciais)
             if iniciais.get('OLLAMA_HABILITADO') != '1':
                 raise FalhaPreparacao('Habilite o Ollama pela preparação do assistente antes de preparar a alternativa.')
+            import instalacao_em_f as politica
+            if politica.ativo():
+                # O cliente não escolhe o disco de um daemon já existente.
+                from iniciar_servicos_locais import garantir_ollama_em_f
+                os.environ['MEUCONTROLEPC_ENV']=str(caminho_env)
+                confirmado=garantir_ollama_em_f(iniciais.get('OLLAMA_URL',configurar.URL_PADRAO))
+                if not confirmado['ok']:raise FalhaPreparacao(confirmado['mensagem'])
+                iniciais=configurar.valores_env(caminho_env)
             prazo_teste = _prazo_teste(iniciais)
             url = configurar.validar_url(iniciais.get('OLLAMA_URL', configurar.URL_PADRAO))
             _conferir_ocioso(url)

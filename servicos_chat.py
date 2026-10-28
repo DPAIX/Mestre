@@ -74,8 +74,8 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
         catalogo_alternativa=None
         politica=chat.get('equipe_politica','automatica')
         if politica not in ('automatica','manual'):raise ValueError('Política de equipe inválida nesta conversa; arquivo preservado.')
-        from roteador_9router import configurado as nine_router_configurado
-        if politica=='automatica' and nine_router_configurado():
+        from roteador_9router import configurado as nine_router_configurado, perfil_local_permitido
+        if politica=='automatica' and nine_router_configurado() and perfil_local_permitido():
             chat=central.configurar_roteador_automatico(contexto,chat['id'])
         elif politica=='automatica':
             from configurar_ia_local import validar_modelo

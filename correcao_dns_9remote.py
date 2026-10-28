@@ -149,7 +149,9 @@ def _pares_unicos(pares):
 
 def _pacote(valor):
     pacote = _absoluto(valor)
-    local = _absoluto(os.environ.get('LOCALAPPDATA', ''))
+    import instalacao_em_f as instalacao
+    local = _absoluto(instalacao.raiz()/'runtime'/'Local' if instalacao.ativo()
+                      else os.environ.get('LOCALAPPDATA', ''))
     esperado = local / 'MeuControlePC' / 'integracoes' / '9remote' / 'node_modules' / '9remote'
     if pacote != esperado:
         raise FalhaCorrecao('A correção aceita somente o pacote 9Remote gerenciado pelo assistente.')

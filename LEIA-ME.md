@@ -1,3 +1,5 @@
+> **v2.12.3:** [Instalação em F:](REVISAO_V2_12_3.md). Salve e extraia em **F:\Instaladores**. Feche assistente/preparador anteriores e abra **INSTALAR_EM_F_COM_27B.bat**. Código, Python, modelos, temporários, caches e backups do aplicativo usam F:.
+
 > **v2.12.2:** [27B leve e agendamento por conversa](REVISAO_V2_12_2.md). Para preparar a alternativa local, feche assistente e preparador antigos, extraia em Downloads, abra **`PREPARAR_27B_LEVE.bat`** e depois **`INSTALAR_E_INICIAR.bat`**. O download de aproximadamente 11,2 GB preserva o original. Só um teste real concluído permite selecionar a alternativa para a equipe.
 
 > **v2.12.1:** [Respostas utilizáveis da equipe](REVISAO_V2_12_1.md). Corrige a contagem de formato inválido, conversa comum em texto simples e a pergunta “me diga do que você é capaz”.
@@ -58,7 +60,7 @@
 
 > **Atualização v2.2:** veja [GUIA_ATUALIZACAO_V2_2.md](GUIA_ATUALIZACAO_V2_2.md). O desligamento do computador não está disponível; o reinício do Windows permanece opcional.
 
-# MeuControlePC v2.12.2 — bot Telegram e painel local
+# MeuControlePC v2.12.3 — bot Telegram e painel local
 
 **Atualização v2.3.1:** escolha modelos Ollama por conversa, consulte uma equipe com vários modelos e leve o contexto para Manus e agentes de código. Se já tem modelos, use `configurar_ia_local.bat --listar` e `configurar_ia_local.bat --modelo qwen3.5:4b` com o nome do seu catálogo. Veja [o guia](GUIA_MULTIPLOS_CHATS.md) e [o relatório de testes e reversão](REVISAO_V2_3_1.md).
 
@@ -66,8 +68,8 @@ Revisão do projeto legado `assistente_pc.py`, destinada ao Windows. Código Pyt
 
 ## Instalar no Windows
 
-1. Extraia o pacote completo em Downloads ou em outra pasta fora do diretório de fontes instalado. Abra **`INSTALAR_E_INICIAR.bat`**. O Python existente é reaproveitado; se estiver ausente e houver `winget`, o iniciador solicita o instalador oficial.
-2. Acompanhe a janela local. Ela confere o pacote, guarda as fontes anteriores, atualiza C:, preserva `.env`/dados/modelos externos e prepara bibliotecas e serviços faltantes. No computador apresentado, a configuração continua em `F:\MeuControlePC_v2\.env`. Não é necessário copiar as fontes manualmente ou executar cada configurador separado.
+1. Salve e extraia o pacote completo em F:\Instaladores, fora do diretório instalado. Abra **`INSTALAR_EM_F_COM_27B.bat`**. O Python existente é usado para bootstrap e a venv final fica em F:. Não há fallback de instalação em C:.
+2. Acompanhe a janela local. Ela confere o pacote, guarda as fontes anteriores, atualiza F:\MeuControlePC_v2\aplicativo, preserva `.env`/dados/modelos externos e prepara bibliotecas e serviços faltantes. No computador apresentado, a configuração continua em `F:\MeuControlePC_v2\.env`. Não é necessário copiar as fontes manualmente ou executar cada configurador separado.
 3. Conclua somente as pendências de conta exibidas e use **Retomar**. O 9Router usa a autenticação oficial da CLI já existente para criar uma chave dedicada; quando login, permissão ou credencial faltarem, a página oficial e o campo oculto local são oferecidos. Senha, CAPTCHA, 2FA e consentimentos pertencem ao proprietário. Nunca cole chaves no chat.
 4. Abra o painel pelo botão da preparação e envie `/status` ao bot, se o Telegram estiver pronto. Sem Telegram confirmado, o preparador solicita o início apenas do painel. Uma conversa real no modelo escolhido é a conferência de geração e cota; a instalação não envia perguntas pagas de teste automaticamente.
 

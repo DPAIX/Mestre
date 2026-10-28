@@ -231,6 +231,48 @@ def diagnosticar_porta_ollama(url=None, *, sondar_api=True):
         acao, processos, api_responde)
 
 
+def garantir_ollama_em_f(url=None):
+    """Confere o daemon antes de pull; só então salva os caminhos públicos."""
+    import instalacao_em_f as politica
+    import configurar_ia_local as configurar
+    from armazenamento_ollama_f import garantir_armazenamento_f, FalhaArmazenamento
+    destino=politica.raiz()
+    env=arquivo_env(BASE)
+    politica.validar_caminho(env)
+    politica.preparar_pastas()
+    url=validar_url(url or os.getenv('OLLAMA_URL',URL_PADRAO))
+    executavel=_executavel_ollama()
+    try:
+        # Dependências ficam na venv F, mesmo usando Python antigo para bootstrap.
+        try:import psutil
+        except ImportError:
+            python=next((p for p in (destino/'aplicativo'/'.venv'/'Scripts'/'python.exe',
+                destino/'.venv'/'Scripts'/'python.exe') if p.is_file()),None)
+            if python is None:raise FalhaArmazenamento('Prepare primeiro o ambiente Python em F:.')
+            comando=[str(python),str(BASE/'armazenamento_ollama_f.py'),'--garantir',
+                     '--url',url,'--raiz',str(destino)]
+            if executavel is not None:comando.extend(['--executavel',str(executavel)])
+            ambiente=_ambiente_servidor(url);ambiente.update(politica.ambiente())
+            retorno=subprocess.run(comando,env=ambiente,cwd=str(BASE),shell=False,
+                stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=None,
+                text=True,encoding='utf-8',errors='replace',timeout=1800,check=False)
+            if retorno.returncode or len(retorno.stdout)>10000:raise ValueError
+            resultado=json.loads(retorno.stdout)
+            if resultado.get('ok') is not True:raise ValueError
+        else:
+            resultado=garantir_armazenamento_f(url,destino,executavel=executavel)
+        novo_url=validar_url(resultado['url'])
+        modelos=politica.validar_caminho(resultado['modelos'])
+        opcoes={'OLLAMA_URL':novo_url,'OLLAMA_MODELS':str(modelos)}
+        configurar._atualizar_opcoes_env(opcoes,env)
+        os.environ.update(opcoes)
+        return _resultado(True,bool(resultado['iniciado']),
+            'Armazenamento do servidor Ollama comprovado em F:. Modelos anteriores preservados; geração ainda não verificada.')
+    except (FalhaArmazenamento,OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):
+        return _resultado(False,False,
+            'O armazenamento do Ollama em F: não foi confirmado. Nenhum download foi enviado para C:; confira a pendência da preparação.')
+
+
 def garantir_ollama():
     """Garante uma tentativa finita de início; não confunde versão com inferência."""
     if os.getenv('OLLAMA_HABILITADO') != '1':
@@ -239,6 +281,8 @@ def garantir_ollama():
         url = validar_url(os.getenv('OLLAMA_URL', URL_PADRAO))
     except ValueError:
         return _resultado(False, False, 'Endereço Ollama inválido; configure somente IP de loopback.')
+    import instalacao_em_f as politica
+    if politica.ativo():return garantir_ollama_em_f(url)
     inicio = time.monotonic()
     try:
         if _responde(url, 3):

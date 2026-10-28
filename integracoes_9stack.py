@@ -46,6 +46,30 @@ _PROCESSOS = {}
 _TRAVA = threading.Lock()
 
 
+def _perfil_f():
+    """Perfil apenas dos filhos Node/npm; não muda o perfil do Windows/bot."""
+    import instalacao_em_f as instalacao
+    if not instalacao.ativo():return {}
+    runtime=instalacao.raiz()/'runtime'
+    return {'APPDATA':str(runtime/'Roaming'), 'LOCALAPPDATA':str(runtime/'Local'),
+            'USERPROFILE':str(runtime/'perfil')}
+
+
+def _preparar_perfil(ambiente):
+    import instalacao_em_f as instalacao
+    if not instalacao.ativo():return
+    instalacao.preparar_pastas()
+    for chave in ('APPDATA','LOCALAPPDATA','USERPROFILE'):
+        pasta=Path(ambiente[chave])
+        instalacao.validar_caminho(pasta)
+        for parte in (pasta,*pasta.parents):
+            try:meta=parte.lstat()
+            except FileNotFoundError:continue
+            if stat.S_ISLNK(meta.st_mode) or getattr(meta,'st_file_attributes',0)&0x400:
+                raise RuntimeError('O perfil gerenciado nao pode seguir links ou junctions.')
+        pasta.mkdir(parents=True,exist_ok=True)
+
+
 def _servico(valor):
     if not isinstance(valor,str) or valor not in SERVICOS:
         raise ValueError('Escolha 9router ou 9remote.')
@@ -86,22 +110,31 @@ def _ambiente():
            'PROGRAMFILES','PROGRAMFILES(X86)','PROGRAMDATA','TEMP','TMP',
            'USERNAME','USERDOMAIN','OS','PROCESSOR_ARCHITECTURE',
            'NUMBER_OF_PROCESSORS','LANG','LC_ALL','TERM','COLORTERM'}
-    return {k:v for k,v in os.environ.items() if k.upper() in nomes}
+    ambiente={k:v for k,v in os.environ.items() if k.upper() in nomes}
+    import instalacao_em_f as instalacao
+    if instalacao.ativo():
+        ambiente.update(instalacao.ambiente())
+        ambiente.update(_perfil_f())
+    return ambiente
 
 
 def _pasta(servico):
     _servico(servico)
-    local=os.environ.get('LOCALAPPDATA','')
+    import instalacao_em_f as instalacao
+    somente_f=instalacao.ativo()
+    local=_perfil_f()['LOCALAPPDATA'] if somente_f else os.environ.get('LOCALAPPDATA','')
     raiz=Path(local) if local else None
     if raiz is None or not raiz.is_absolute():
         raise RuntimeError('LOCALAPPDATA do Windows nao foi localizado; nenhuma pasta foi criada.')
     destino=raiz/'MeuControlePC'/'integracoes'/servico
+    if somente_f:instalacao.validar_caminho(destino)
     pacote=destino/'node_modules'/servico
     componentes=(raiz,raiz/'MeuControlePC',destino.parent,destino,
                  destino/'package.json',destino/'package-lock.json',
                  destino/'npm-shrinkwrap.json',destino/'.npmrc',
                  destino/'node_modules',pacote,pacote/'package.json')
     if servico=='9remote':componentes+=((pacote/'dist'),)
+    if somente_f:componentes=(*reversed(raiz.parents),*componentes)
     for pasta in componentes:
         try:
             meta=pasta.lstat()
@@ -163,7 +196,15 @@ def _windows():
 
 
 def _node(ambiente):
-    caminho=shutil.which('node.exe') or shutil.which('node')
+    import instalacao_em_f as instalacao
+    if instalacao.ativo():
+        candidatos=(Path(r'F:\PROGRAMAS\nodejs\node.exe'),
+                    instalacao.raiz()/'ferramentas'/'nodejs'/'node.exe')
+        caminho=next((str(p) for p in candidatos if p.is_file()),None)
+        if not caminho:
+            caminho=(shutil.which('node.exe',path=ambiente.get('PATH','')) or
+                     shutil.which('node',path=ambiente.get('PATH','')))
+    else:caminho=shutil.which('node.exe') or shutil.which('node')
     if not caminho:raise RuntimeError('Instale Node.js 22 LTS ou mais recente pelo site nodejs.org e reabra o terminal.')
     arquivo=Path(caminho).resolve()
     if arquivo.suffix.lower()!='.exe' or not arquivo.is_file():
@@ -197,6 +238,7 @@ def instalar_9stack(servico,*,confirmado=False):
     if confirmado is not True:raise PermissionError('Confirme a instalacao antes de executar npm.')
     _windows()
     ambiente=_ambiente();node=_node(ambiente);npm=_npm_cli(node)
+    _preparar_perfil(ambiente)
     pasta=_pasta(servico)
     try:pasta.mkdir(parents=True,exist_ok=True)
     except OSError:
@@ -222,6 +264,59 @@ def _porta_ocupada(porta):
     try:
         with socket.create_connection(('127.0.0.1',porta),timeout=.4):return True
     except OSError:return False
+
+
+def _provar_no_python_f(servico):
+    """Prova de leitura pela venv F quando o bootstrap não possui psutil."""
+    import instalacao_em_f as instalacao
+    raiz=instalacao.raiz()
+    python=next((p for p in (raiz/'aplicativo'/'.venv'/'Scripts'/'python.exe',
+        raiz/'.venv'/'Scripts'/'python.exe') if p.is_file()),None)
+    if python is None:return False
+    instalacao.validar_caminho(python)
+    programa=('import json,sys;from integracoes_9stack import servico_f_comprovado;'
+              'print(json.dumps({"comprovado":servico_f_comprovado(sys.argv[1],_filho=True)}))')
+    try:
+        r=subprocess.run([str(python),'-c',programa,servico],cwd=str(BASE),env=_ambiente(),
+            shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+            text=True,encoding='utf-8',errors='replace',timeout=8,check=False)
+        if r.returncode or len(r.stdout)>256:return False
+        return json.loads(r.stdout)=={'comprovado':True}
+    except (OSError,ValueError,subprocess.SubprocessError):return False
+
+
+def servico_f_comprovado(servico,*,_filho=False):
+    """Verifica só a identidade pública do listener antes de escritas via API.
+
+    O ambiente bruto e os argumentos do processo nunca saem desta função.
+    Falta de permissão ou prova contraditória deixa o serviço pendente.
+    """
+    item=_servico(servico)
+    import instalacao_em_f as instalacao
+    if not instalacao.ativo():return True
+    if sys.platform!='win32':return False
+    esperado=_perfil_f();base=(instalacao.raiz()/'runtime').resolve()
+    try:import psutil
+    except ImportError:
+        return False if _filho else _provar_no_python_f(servico)
+    try:
+        listeners=[c for c in psutil.net_connections(kind='tcp')
+                   if c.status==psutil.CONN_LISTEN and c.laddr and c.laddr.port==item['porta']]
+        pids={c.pid for c in listeners}
+        if not pids or None in pids or len(pids)>4:return False
+        for pid in pids:
+            processo=psutil.Process(pid)
+            if Path(processo.exe()).name.casefold()!='node.exe':return False
+            env=processo.environ()
+            if any(Path(env.get(k,'')).resolve()!=Path(v).resolve() for k,v in esperado.items()):return False
+            cwd=Path(processo.cwd()).resolve()
+            if not cwd.is_relative_to(base):return False
+            argumentos=processo.cmdline()
+            if not any(isinstance(arg,str) and Path(arg).is_absolute() and
+                    Path(arg).resolve().is_relative_to(base) for arg in argumentos[1:]):return False
+        return True
+    except Exception:
+        return False
 
 
 def _janela(chave,argumentos,ambiente,cwd):
@@ -254,6 +349,10 @@ def executar_9stack(servico,operacao='abrir',*,confirmado=False):
         if not webbrowser.open(item['painel']):raise RuntimeError('O navegador nao confirmou a abertura do painel local.')
         return 'Abertura do painel local 9Router solicitada. Isso nao inicia o servico nem comprova provedores disponiveis.'
     if _porta_ocupada(item['porta']):
+        import instalacao_em_f as instalacao
+        if instalacao.ativo() and not servico_f_comprovado(servico):
+            raise RuntimeError('A porta do '+item['nome']+' esta ocupada, mas o perfil em F nao foi comprovado. '
+                               'Encerre a instancia anterior pela interface oficial e retome. Nenhum processo foi encerrado.')
         if operacao=='abrir':
             webbrowser.open(item['painel'])
             return 'A porta local ja esta em uso; abertura da interface solicitada sem iniciar outra instancia. Confira qual aplicativo responde no PC.'
@@ -261,6 +360,7 @@ def executar_9stack(servico,operacao='abrir',*,confirmado=False):
     script=_script(servico)
     if script is None:raise RuntimeError('Instale primeiro o pacote gerenciado '+item['nome']+' '+item['versao']+'.')
     node=_node(ambiente)
+    _preparar_perfil(ambiente)
     if servico=='9remote':_corrigir_9remote(script)
     argumentos=[str(node),str(script)]
     if servico=='9router':

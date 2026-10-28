@@ -1,6 +1,8 @@
-# MeuControlePC v2.12.2 — Projeto para Codex
+# MeuControlePC v2.12.3 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
+
+Novidade v2.12.3: [instalação em F:](REVISAO_V2_12_3.md). Salve e extraia em F:\Instaladores e abra **INSTALAR_EM_F_COM_27B.bat**. Código, venv, modelos, caches e backups ficam em F:, com preservação da configuração e dos dados existentes.
 
 Novidade v2.12.2: [27B leve, perfil com GPU automática e agendamento por conversa](REVISAO_V2_12_2.md). A alternativa é baixada e selecionada somente pelo iniciador explícito após teste real; o original permanece instalado. “Me agende uma tarefa” pergunta os dados que faltam localmente.
 
@@ -22,7 +24,7 @@ Correção v2.11.1: [início do Ollama e retomada](REVISAO_V2_11_1.md). Para atu
 
 ## Instalação no Windows em um clique
 
-Extraia o pacote completo em Downloads, fora da pasta instalada, e abra **`INSTALAR_E_INICIAR.bat`**. O iniciador confere e implanta as fontes em C: com backup, reaproveita a configuração e os dados externos, prepara os componentes faltantes e solicita o início do assistente. O `iniciar_redirecionado.bat`, sem argumentos, também usa esse fluxo.
+Salve e extraia o pacote completo em F:\Instaladores, fora da pasta instalada, e abra **`INSTALAR_EM_F_COM_27B.bat`**. O iniciador confere e implanta as fontes em F:\MeuControlePC_v2\aplicativo com backup, reaproveita a configuração e os dados externos, prepara os componentes faltantes e solicita o início do assistente. O `iniciar_redirecionado.bat`, sem argumentos, também usa esse fluxo.
 
 A janela local começa a preparação automaticamente. Ela oferece somente as pendências de conta e o botão **Retomar**. O 9Router pode criar sua nova chave dedicada pela autenticação oficial da CLI existente; login, 2FA, CAPTCHA e consentimentos ainda são concluídos pelo proprietário. Chaves são salvas apenas pelo campo oculto local, sem devolução ao chat ou à página de estado.
 

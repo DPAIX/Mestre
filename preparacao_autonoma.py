@@ -24,8 +24,9 @@ import urllib.parse
 import urllib.request
 import urllib.error
 import webbrowser
+import instalacao_em_f as instalacao_f
 
-VERSAO='2.12.2'
+VERSAO='2.12.3'
 BASE=Path(__file__).resolve().parent
 MAX_CORPO=16384
 MODULOS=('telebot','google.genai','psutil','PIL','pyautogui','faster_whisper','googleapiclient','google_auth_oauthlib')
@@ -61,14 +62,20 @@ def _seguro(caminho):
 def caminhos(origem=None,codigo=None,arquivo_env=None,dados=None):
     fonte=_seguro(Path(origem or BASE).absolute())
     perfil=Path(os.environ.get('USERPROFILE',str(Path.home())))
-    destino=_seguro(Path(codigo) if codigo else perfil/'Documents'/'GitHub'/'Mestre')
+    somente_f=instalacao_f.ativo()
+    raiz=instalacao_f.raiz() if somente_f else None
+    destino=_seguro(Path(codigo) if codigo else raiz/'aplicativo' if somente_f else perfil/'Documents'/'GitHub'/'Mestre')
     if arquivo_env is None:
         escolhido=os.environ.get('MEUCONTROLEPC_ENV')
         if escolhido:arquivo_env=Path(escolhido)
+        elif somente_f:arquivo_env=raiz/'.env'
         elif Path('F:/').is_dir():arquivo_env=Path('F:/MeuControlePC_v2/.env')
         else:arquivo_env=Path(os.environ.get('LOCALAPPDATA',str(perfil/'AppData'/'Local')))/'MeuControlePC'/'.env'
     env=_seguro(Path(arquivo_env));seletor_dados=dados or os.environ.get('MEUCONTROLEPC_DADOS')
     pasta=_seguro(Path(seletor_dados) if seletor_dados else env.parent/'dados')
+    if somente_f:
+        for caminho in (fonte,destino,env,pasta,env.parent/'preparacao',env.parent/'backups_codigo'):
+            instalacao_f.validar_caminho(caminho)
     if env.is_relative_to(destino) or pasta.is_relative_to(destino):
         raise ValueError('Configuração e dados precisam ficar fora das fontes.')
     if not pasta.exists() and (destino/'dados').exists():
@@ -103,11 +110,20 @@ def _ambiente(ctx):
         'OLLAMA_MODELS','OLLAMA_NO_CLOUD'}
     env={k:v for k,v in os.environ.items() if k.upper() in permitidas}
     env.update(MEUCONTROLEPC_ENV=str(ctx.arquivo_env),MEUCONTROLEPC_DADOS=str(ctx.dados),PYTHONUTF8='1')
+    if instalacao_f.ativo():env.update(instalacao_f.ambiente(ctx.arquivo_env.parent))
     return env
 
 
+def _venv_python(ctx):
+    for caminho in (ctx.codigo/'.venv'/'Scripts'/'python.exe',ctx.arquivo_env.parent/'.venv'/'Scripts'/'python.exe'):
+        if caminho.is_file():
+            if instalacao_f.ativo():instalacao_f.validar_caminho(caminho)
+            return caminho
+    return None
+
+
 def _python(ctx):
-    return next((p for p in (ctx.codigo/'.venv'/'Scripts'/'python.exe',ctx.arquivo_env.parent/'.venv'/'Scripts'/'python.exe') if p.is_file()),Path(sys.executable))
+    return _venv_python(ctx) or Path(sys.executable)
 
 
 def _filho(ctx,python,argumentos,timeout=30):
@@ -214,6 +230,9 @@ def _instalar_ollama_ausente(ctx):
     servicos.validar_url(os.getenv('OLLAMA_URL',servicos.URL_PADRAO))
     existente=servicos._executavel_ollama()
     if existente is not None:return True
+    # O instalador padrão usa o perfil em C:. No fluxo restrito, a ausência
+    # continua pendente até um executável apropriado ser preparado em F:.
+    if instalacao_f.ativo():return False
     winget=shutil.which('winget.exe')
     if not winget:return False
     retorno=subprocess.run([winget,'install','--id','Ollama.Ollama','--exact',
@@ -290,7 +309,8 @@ class Preparador:
     def _componentes(self):
         ctx=self.ctx
         self.item('bibliotecas','Bibliotecas e voz','verificando','Conferindo o ambiente já instalado.')
-        if _dependencias(ctx,self.python):
+        gerenciado=not instalacao_f.ativo() or _venv_python(ctx)==self.python
+        if gerenciado and _dependencias(ctx,self.python):
             r=_filho(ctx,self.python,['-m','pip','check'],60)
             if r.returncode==0:
                 voz=_filho(ctx,self.python,['-c','from nucleo import ler_env;ler_env();from transcritor_local import verificar_disponibilidade;verificar_disponibilidade()'],30)
@@ -302,6 +322,27 @@ class Preparador:
         plano=preparar.preparar_componentes(plano,incluir_google=True)
         self.python=Path(plano['python'])
         self.item('bibliotecas','Bibliotecas e voz','pronto','Dependências preparadas e compatibilidade conferida.')
+
+    def _modelo_27b_em_f(self):
+        """Etapa explícita, já fora da trava do bot e usando somente a venv F."""
+        if not instalacao_f.ativo() or os.getenv('MEUCONTROLEPC_PREPARAR_27B')!='1':return
+        instalacao_f.validar_caminho(self.python)
+        self.item('modelo_27b','27B leve local','executando',
+            'Conferindo o armazenamento em F: e preparando a quantização menor; acompanhe o progresso no console.')
+        try:
+            resultado=subprocess.run([str(self.python),str(self.ctx.codigo/'preparar_27b_leve.py'),
+                '--baixar-e-testar','--env',str(self.ctx.arquivo_env),'--dados',str(self.ctx.dados)],
+                cwd=str(self.ctx.codigo),env=_ambiente(self.ctx),shell=False,
+                stdin=subprocess.DEVNULL,timeout=2000,check=False)
+            from configurar_ia_local import valores_env
+            opcoes=valores_env(self.ctx.arquivo_env)
+            if resultado.returncode or opcoes.get('OLLAMA_27B_LEVE')!='1' or opcoes.get('OLLAMA_PERFIL')!='equilibrado':
+                raise RuntimeError('A seleção não foi confirmada.')
+            self._configuracao()
+            self.item('modelo_27b','27B leve local','pronto','A quantização respondeu ao teste e foi selecionada; o modelo original foi preservado.')
+        except (OSError,ValueError,RuntimeError,subprocess.SubprocessError):
+            self.item('modelo_27b','27B leve local','pendente','A preparação não confirmou o teste da quantização. Os demais recursos continuam; nenhuma nova tentativa foi enviada.')
+            self.pendente('modelo_27b','retomar','Confira o resultado do console, o armazenamento em F: e a liberação do Ollama antes de retomar.')
 
     def _servicos(self):
         import configuracao_assistente as config
@@ -489,6 +530,7 @@ class Preparador:
                     self.item('startup','Início após logon','presente','Entrada gerenciada preparada; aplicativos externos preservados. Habilitação do Windows não verificada.')
                 except (OSError,ValueError,RuntimeError):
                     self.item('startup','Início após logon','pendente','O registro não foi confirmado; o início manual continua disponível.')
+            self._modelo_27b_em_f()
             from redirecionar_assistente import plano_execucao
             plano=plano_execucao(ctx.codigo,ctx.arquivo_env,ctx.dados,self.python,modo='start' if telegram else 'painel',ambiente=_ambiente(ctx))
             processo=subprocess.Popen(plano['comando'],cwd=plano['cwd'],env=plano['ambiente'],shell=False,stdin=subprocess.DEVNULL,
@@ -554,7 +596,7 @@ class Interface(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MeuControlePCPreparacao/2.12.2'
+    server_version='MeuControlePCPreparacao/2.12.3'
     def setup(self):
         super().setup();self.connection.settimeout(10)
     def log_message(self,*args):pass

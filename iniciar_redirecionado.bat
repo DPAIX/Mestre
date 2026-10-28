@@ -1,8 +1,10 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
+call "%~dp0AMBIENTE_F.bat"
+if errorlevel 1 exit /b 2
 if "%~1"=="" if exist "%~dp0INSTALAR_E_INICIAR.bat" goto preparar_automatico
-set "MEUCONTROLEPC_CODIGO=C:\Users\Mestre\Documents\GitHub\Mestre"
+set "MEUCONTROLEPC_CODIGO=F:\MeuControlePC_v2\aplicativo"
 set "MEUCONTROLEPC_CONFIGURACAO=F:\MeuControlePC_v2"
 if not exist "%MEUCONTROLEPC_CODIGO%\redirecionar_assistente.py" goto codigo_ausente
 if exist "%MEUCONTROLEPC_CODIGO%\.venv\Scripts\python.exe" goto python_codigo

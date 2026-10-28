@@ -26,6 +26,9 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'instalacao_em_f.py','armazenamento_ollama_f.py','AMBIENTE_F.bat','INSTALAR_EM_F_COM_27B.bat',
+    'REVISAO_V2_12_3.md','testes/test_instalacao_em_f.py','testes/test_armazenamento_ollama_f.py',
+    'testes/test_fluxo_instalacao_f.py','testes/test_integracoes_somente_f.py','testes/test_startup_f_v2123.py',
     'alternativa_27b.py','preparar_27b_leve.py','PREPARAR_27B_LEVE.bat','RESTAURAR_27B_LEVE.bat',
     'REVISAO_V2_12_2.md','testes/test_alternativa_27b.py','testes/test_preparar_27b_leve.py',
     'testes/test_perfil_equilibrado_v2122.py',

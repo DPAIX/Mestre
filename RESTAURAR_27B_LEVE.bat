@@ -1,9 +1,11 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
+call "%~dp0AMBIENTE_F.bat"
+if errorlevel 1 exit /b 2
 if not exist "%~dp0preparar_27b_leve.py" goto incompleto
+if exist "F:\MeuControlePC_v2\aplicativo\.venv\Scripts\python.exe" goto python_instalado
 if exist "%~dp0.venv\Scripts\python.exe" goto python_local
-if exist "%USERPROFILE%\Documents\GitHub\Mestre\.venv\Scripts\python.exe" goto python_instalado
 if exist "F:\MeuControlePC_v2\.venv\Scripts\python.exe" goto python_externo
 where py >nul 2>nul
 if not errorlevel 1 goto python_py
@@ -17,7 +19,7 @@ goto fim
 set "MCP_RESULTADO=%ERRORLEVEL%"
 goto fim
 :python_instalado
-"%USERPROFILE%\Documents\GitHub\Mestre\.venv\Scripts\python.exe" "%~dp0preparar_27b_leve.py" --restaurar
+"F:\MeuControlePC_v2\aplicativo\.venv\Scripts\python.exe" "%~dp0preparar_27b_leve.py" --restaurar
 set "MCP_RESULTADO=%ERRORLEVEL%"
 goto fim
 :python_externo
