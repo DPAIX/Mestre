@@ -25,7 +25,8 @@ BASE = Path(__file__).resolve().parent
 ENV = BASE / '.env'
 URL_PADRAO = 'http://127.0.0.1:11434'
 MODELO_PADRAO = 'qwen2.5:3b'
-CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL','OLLAMA_PERFIL','OLLAMA_NUVEM_HABILITADA')
+CHAVES = ('OLLAMA_HABILITADO', 'OLLAMA_URL', 'OLLAMA_MODEL','OLLAMA_PERFIL','OLLAMA_NUVEM_HABILITADA','OLLAMA_27B_LEVE',
+          'OLLAMA_TIMEOUT','OLLAMA_EQUIPE_TIMEOUT_MODELO','OLLAMA_EQUIPE_TIMEOUT','OLLAMA_EQUIPE_ORCAMENTO')
 LIMITE_RESPOSTA = 2_000_000
 TIMEOUT_CONSULTA = 4
 TIMEOUT_DOWNLOAD = 30 * 60
@@ -106,6 +107,7 @@ def listar_catalogo(url=URL_PADRAO):
             raise ValueError
         modelos = {}
         tamanhos = {}
+        digests = {}
         for item in itens:
             nome = item.get('name') or item.get('model')
             nome = validar_modelo(nome)
@@ -118,8 +120,13 @@ def listar_catalogo(url=URL_PADRAO):
             tamanho=item.get('size')
             if type(tamanho) is int and 0<tamanho<=1024**4:
                 tamanhos[nome]=max(tamanhos.get(nome,0),tamanho)
+            digest=item.get('digest')
+            if isinstance(digest,str) and re.fullmatch(r'(?:sha256:)?[a-fA-F0-9]{64}',digest):
+                digest='sha256:'+digest.removeprefix('sha256:').lower()
+                digests[nome]=digest if nome not in digests or digests[nome]==digest else None
         return [{'nome': nome, 'nuvem': nuvem,
-                 **({'tamanho_bytes':tamanhos[nome]} if nome in tamanhos else {})}
+                 **({'tamanho_bytes':tamanhos[nome]} if nome in tamanhos else {}),
+                 **({'digest':digests[nome]} if digests.get(nome) else {})}
                 for nome, nuvem in modelos.items()]
     except (ValueError, UnicodeError, KeyError, TypeError, AttributeError):
         raise FalhaConfiguracao('O serviço local retornou uma lista de modelos inválida.') from None
@@ -224,7 +231,7 @@ def atualizar_env(modelo, url=URL_PADRAO, caminho=None,*,perfil=None):
     """Substitui só opções locais selecionadas, preservando demais linhas e segredos."""
     modelo = validar_modelo(modelo)
     url = validar_url(url)
-    if perfil is not None and perfil not in ('cpu','padrao'):raise ValueError('Perfil Ollama inválido.')
+    if perfil is not None and perfil not in ('cpu','padrao','equilibrado'):raise ValueError('Perfil Ollama inválido.')
     alteracoes = {'OLLAMA_HABILITADO': '1', 'OLLAMA_URL': url, 'OLLAMA_MODEL': modelo}
     if perfil is not None:alteracoes['OLLAMA_PERFIL']=perfil
     _atualizar_opcoes_env(alteracoes,caminho)
@@ -271,16 +278,16 @@ def _atualizar_opcoes_env(alteracoes,caminho=None):
 
 
 def configurar_perfil(perfil,url=URL_PADRAO,caminho=None):
-    if perfil not in ('cpu','padrao'):raise ValueError('Perfil Ollama inválido.')
+    if perfil not in ('cpu','padrao','equilibrado'):raise ValueError('Perfil Ollama inválido.')
     url=validar_url(url)
     atuais=valores_env(caminho)
     modelo='llama3.2:latest' if perfil=='cpu' else atuais.get('OLLAMA_MODEL') or os.getenv('OLLAMA_MODEL') or MODELO_PADRAO
     modelo=validar_modelo(modelo)
     catalogo=listar_catalogo(url)
-    nomes=[m['nome'] for m in catalogo if perfil!='cpu' or not m['nuvem']]
+    nomes=[m['nome'] for m in catalogo if perfil not in ('cpu','equilibrado') or not m['nuvem']]
     encontrado=modelo_instalado(modelo,nomes)
     if encontrado is None:
-        raise FalhaConfiguracao('Perfil não configurado: o modelo '+modelo+' não foi confirmado no catálogo'+(' local.' if perfil=='cpu' else '.'))
+        raise FalhaConfiguracao('Perfil não configurado: o modelo '+modelo+' não foi confirmado no catálogo'+(' local.' if perfil in ('cpu','equilibrado') else '.'))
     atualizar_env(encontrado,url,caminho,perfil=perfil)
     return encontrado
 
@@ -419,17 +426,21 @@ def main(argv=None, caminho=None):
     grupo.add_argument('--baixar-modelo', metavar='NOME', help='Registra ou baixa explicitamente um modelo e o ativa após verificar sua presença.')
     grupo.add_argument('--perfil-cpu',action='store_true',help='Ativa Llama local em CPU com contexto pequeno; sem geração ou download.')
     grupo.add_argument('--perfil-padrao',action='store_true',help='Volta às opções padrão de execução do Ollama; mantém o modelo configurado.')
+    grupo.add_argument('--perfil-equilibrado',action='store_true',help='Contexto curto com execução escolhida pelo Ollama, incluindo GPU quando disponível; mantém o modelo local configurado.')
     parser.add_argument('--url', help='Endereço HTTP local por IP literal; padrão http://127.0.0.1:11434.')
     args = parser.parse_args(argv)
     try:
         caminho = Path(caminho) if caminho is not None else arquivo_env(BASE)
         atuais = valores_env(caminho)
         url = validar_url(args.url or os.getenv('OLLAMA_URL') or atuais.get('OLLAMA_URL') or URL_PADRAO)
-        if args.perfil_cpu or args.perfil_padrao:
-            perfil='cpu' if args.perfil_cpu else 'padrao'
+        if args.perfil_cpu or args.perfil_padrao or args.perfil_equilibrado:
+            perfil='cpu' if args.perfil_cpu else 'equilibrado' if args.perfil_equilibrado else 'padrao'
             encontrado=configurar_perfil(perfil,url,caminho)
             print('Perfil Ollama salvo: '+perfil+'; modelo: '+encontrado+'. Nenhuma geração ou download executado.')
-            print('Reinicie o assistente. Para o perfil CPU, use /chat equipe off e /chat modelo padrao nesta conversa.')
+            if perfil=='equilibrado':
+                print('Reinicie o assistente. O Ollama escolhe GPU/CPU; disponibilidade e velocidade precisam de uma consulta real.')
+            else:
+                print('Reinicie o assistente. Para o perfil CPU, use /chat equipe off e /chat modelo padrao nesta conversa.')
             return 0
         if args.listar:
             mostrar_catalogo(listar_catalogo(url))

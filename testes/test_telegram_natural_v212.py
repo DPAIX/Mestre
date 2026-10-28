@@ -182,6 +182,37 @@ class TelegramNatural212(unittest.TestCase):
         self.assertFalse(app.PENDENTES)
         self.assertNotIn('Estudar física', nucleo.vida().get('kanban', {}).get('A_Fazer', []))
 
+    def test_agendamento_da_captura_completa_por_audio_e_so_grava_apos_confirmar(self):
+        with patch.object(app.SERVICOS, 'conversar', side_effect=AssertionError('Agendamento incompleto é local.')):
+            app.tratar_pedido(self.mensagem('me agende uma tarefa'))
+            self.assertIn('dia e horário', self.bot.send_message.call_args.args[1])
+            self.assertFalse(app.PENDENTES)
+            self.ouvir('Estudar navegação na sexta às 14h30')
+            self.assertEqual(len(app.PENDENTES), 1)
+            pendente = next(iter(app.PENDENTES.values()))
+            self.assertEqual(pendente['dados']['plano']['acao'], 'rotina_criar')
+            self.assertEqual(pendente['dados']['plano']['campos']['atividade'], 'Estudar navegação')
+            self.assertEqual(pendente['dados']['plano']['campos']['horario'], '14:30')
+            antes = [t for t in nucleo.vida().get('rotina', []) if t.get('atividade') == 'Estudar navegação']
+            self.assertEqual(antes, [])
+            app.tratar_pedido(self.mensagem('sim'))
+        depois = [t for t in nucleo.vida()['rotina'] if t.get('atividade') == 'Estudar navegação']
+        self.assertEqual(len(depois), 1)
+        self.assertEqual((depois[0]['dia'], depois[0]['horario']), ('Sexta', '14:30'))
+        self.assertFalse(app.PENDENTES)
+
+    def test_agendamento_por_audio_completa_por_texto_e_cancela_sem_gravar(self):
+        with patch.object(app.SERVICOS, 'conversar', side_effect=AssertionError('Agendamento incompleto é local.')):
+            self.ouvir('me agende uma tarefa')
+            self.assertIn('Qual atividade', self.bot.send_message.call_args.args[1])
+            app.tratar_pedido(self.mensagem('Revisar hidrostática'))
+            self.assertFalse(app.PENDENTES)
+            self.ouvir('na sexta às 10h')
+            self.assertEqual(len(app.PENDENTES), 1)
+            self.ouvir('Não.')
+        self.assertFalse(app.PENDENTES)
+        self.assertFalse(any(t.get('atividade') == 'Revisar hidrostática' for t in nucleo.vida().get('rotina', [])))
+
     def test_cancelar_pergunta_nao_cria_plano_ou_chama_modelos(self):
         with patch.object(app.SERVICOS, 'conversar', side_effect=AssertionError('Sem IA para cancelar.')):
             app.tratar_pedido(self.mensagem('adicione uma tarefa'))

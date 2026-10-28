@@ -125,11 +125,30 @@ def _atividade_quando(texto, hoje):
     quando = _quando(texto, hoje)
     if quando is not None:
         return quando
+    campos = None
     for m in re.finditer(r'\s+(?:(?:na|no|em|para)\s+)?'+_DIA+r'\b', texto, re.I):
-        campos = _quando(texto[m.start():].strip(), hoje)
-        if campos is not None:
-            return {'atividade': texto[:m.start()].strip(), **campos}
-    return {'atividade': texto.strip()} if texto.strip() else {}
+        quando = _quando(texto[m.start():].strip(), hoje)
+        if quando is not None:
+            campos = {'atividade': texto[:m.start()].strip(), **quando}
+            break
+    if campos is None:
+        # Um horário pode vir antes do dia. No sufixo de uma atividade,
+        # exija "às", "h" ou ":" para não ler "capítulo 14" como 14h.
+        inicio_hora = r'\s+(?:[aàá]s?\s+'+_HORA+r'|[0-9]{1,2}(?::[0-9]{2}|h(?:[0-9]{2})?))'
+        for m in re.finditer(inicio_hora, texto, re.I):
+            quando = _quando(texto[m.start():].strip(), hoje)
+            if quando is not None:
+                campos = {'atividade': texto[:m.start()].strip(), **quando}
+                break
+    if campos is None:
+        campos = {'atividade': texto.strip()} if texto.strip() else {}
+    # O tipo do pedido não é o título da atividade. Guarde uma data/hora
+    # explícita, mas pergunte o conteúdo de "agende uma tarefa amanhã".
+    if _normalizar(campos.get('atividade', '')) in {
+            'tarefa', 'uma tarefa', 'atividade', 'uma atividade',
+            'compromisso', 'um compromisso', 'algo'}:
+        campos.pop('atividade', None)
+    return campos
 
 
 def _resposta(estado='nao_tratado', texto='', plano=None):
@@ -170,6 +189,9 @@ class GerenciadorEsclarecimentos:
             return ('Qual é o valor em reais? Informe somente o valor, por exemplo 15,50.' if not campos.get('valor') else
                     'Qual é a descrição desse lançamento financeiro?')
         if not campos.get('atividade'):
+            if not campos.get('dia') and not campos.get('horario'):
+                return ('Qual atividade você quer adicionar à rotina local e para quando (dia e horário)? '
+                        'Isso não ativa um novo alarme ou aviso.')
             return 'Qual atividade você quer adicionar à rotina local? Isso não ativa um novo alarme ou aviso.'
         if not campos.get('dia'):
             return 'Para adicionar essa atividade à rotina local, em qual dia? Pode dizer, por exemplo, amanhã às 14h. Isso não ativa um novo alarme ou aviso.'
@@ -195,7 +217,7 @@ class GerenciadorEsclarecimentos:
             texto = re.sub(r'^por favor[, ]+', '', texto, flags=re.I)
             texto = re.sub(r',? por favor$', '', texto, flags=re.I)
             texto = re.sub(r'^(?:voc[eê] )?(?:pode|consegue) (?:me )?', '', texto, flags=re.I)
-            m = re.fullmatch(r'(?:agende|agendar|marque|marcar|(?:me )?lembre(?:-me)?(?: de)?|adicione (?:a|na) rotina|coloque na rotina)(?:\s+(.+))?', texto, re.I)
+            m = re.fullmatch(r'(?:(?:me )?(?:agende|agendar|marque|marcar)|(?:me )?lembre(?:-me)?(?: de)?|adicione (?:a|na) rotina|coloque na rotina)(?:\s+(.+))?', texto, re.I)
             if m:
                 acao, campos = 'rotina_criar', _atividade_quando(m[1] or '', self._hoje)
                 if len(campos.get('atividade', '')) > 200:

@@ -26,6 +26,9 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'alternativa_27b.py','preparar_27b_leve.py','PREPARAR_27B_LEVE.bat','RESTAURAR_27B_LEVE.bat',
+    'REVISAO_V2_12_2.md','testes/test_alternativa_27b.py','testes/test_preparar_27b_leve.py',
+    'testes/test_perfil_equilibrado_v2122.py',
     'REVISAO_V2_12_1.md','testes/test_formato_conversa_v2121.py',
     'testes/test_qualidade_equipe_v2121.py','testes/test_ollama_truncamento_v2121.py',
     'esclarecimento_conversa.py','bateria_modelos.py','REVISAO_V2_12_0.md',

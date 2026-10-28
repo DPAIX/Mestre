@@ -25,13 +25,13 @@ import urllib.request
 import urllib.error
 import webbrowser
 
-VERSAO='2.12.1'
+VERSAO='2.12.2'
 BASE=Path(__file__).resolve().parent
 MAX_CORPO=16384
 MODULOS=('telebot','google.genai','psutil','PIL','pyautogui','faster_whisper','googleapiclient','google_auth_oauthlib')
 CHAVES=frozenset({'GEMINI_API_KEY','OPENAI_API_KEY','ANTHROPIC_API_KEY','TELEGRAM_TOKEN','TELEGRAM_ALLOWED_USER_IDS'})
 OPCOES=CHAVES|frozenset({'GOOGLE_API_KEY','OLLAMA_HABILITADO','OLLAMA_INICIAR_SERVICO','OLLAMA_URL','OLLAMA_MODEL',
-    'OLLAMA_PERFIL','OLLAMA_NUVEM_HABILITADA','OLLAMA_NO_CLOUD','OLLAMA_MODELS','GEMINI_API_MODO','GEMINI_MODEL','NINE_ROUTER_HABILITADO','NINE_ROUTER_URL',
+    'OLLAMA_PERFIL','OLLAMA_27B_LEVE','OLLAMA_NUVEM_HABILITADA','OLLAMA_NO_CLOUD','OLLAMA_MODELS','GEMINI_API_MODO','GEMINI_MODEL','NINE_ROUTER_HABILITADO','NINE_ROUTER_URL',
     'NINE_ROUTER_MODEL','NINE_ROUTER_API_KEY','VOZ_PROVEDOR','VOZ_MODELO_LOCAL','MEMORIA_HABILITADA','PAINEL_PORTA'})
 
 
@@ -554,7 +554,7 @@ class Interface(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MeuControlePCPreparacao/2.12.1'
+    server_version='MeuControlePCPreparacao/2.12.2'
     def setup(self):
         super().setup();self.connection.settimeout(10)
     def log_message(self,*args):pass

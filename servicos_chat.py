@@ -69,6 +69,9 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
     if not trava.acquire(blocking=False):
         raise RuntimeError('Esta conversa já está respondendo. Aguarde antes de enviar outra pergunta.')
     try:
+        from alternativa_27b import ativada as alternativa_ativa, selecionar as selecionar_alternativa
+        aviso_alternativa=''
+        catalogo_alternativa=None
         politica=chat.get('equipe_politica','automatica')
         if politica not in ('automatica','manual'):raise ValueError('Política de equipe inválida nesta conversa; arquivo preservado.')
         from roteador_9router import configurado as nine_router_configurado
@@ -83,10 +86,19 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
             if not isinstance(itens,list):raise ValueError('O catálogo da equipe automática é inválido.')
             try:modelos=list(dict.fromkeys(validar_modelo(item['nome']) for item in itens))
             except (KeyError,TypeError):raise ValueError('O catálogo da equipe automática é inválido.') from None
+            modelos,aviso_alternativa=selecionar_alternativa(modelos,itens)
+            catalogo_alternativa=itens
             from conversa_equipe import MAX_MODELOS_COOPERATIVA
             if not 1<=len(modelos)<=MAX_MODELOS_COOPERATIVA:
                 raise ValueError('A equipe automática precisa de um a '+str(MAX_MODELOS_COOPERATIVA)+' modelos; selecione uma equipe manual para um catálogo maior. Nenhum participante foi descartado.')
             chat=central.configurar_equipe_automatica(contexto,chat['id'],modelos)
+        if chat.get('equipe_paralela') and alternativa_ativa():
+            if catalogo_alternativa is None:
+                catalogo_alternativa=roteador.catalogo_ollama().get('modelos')
+            # Uma equipe manual antiga pode conter a tag original. A escolha
+            # explícita vale na execução, sem reescrever o histórico ou a equipe salva.
+            escolhidos,aviso_alternativa=selecionar_alternativa(chat['equipe_modelos'],catalogo_alternativa)
+            chat={**chat,'equipe_modelos':escolhidos}
         historico=_historico_sem_avisos_locais(central.historico_chat(contexto,chat_id=chat['id']))
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
@@ -102,7 +114,7 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
             from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
             try:agora=datetime.datetime.now(ZoneInfo('America/Sao_Paulo'))
             except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
-            compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' and
+            compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold() in ('cpu','equilibrado') and
                       bool(chat.get('equipe_paralela')) and chat.get('equipe_modo','paralela')=='cooperativa')
             prefixo=(instrucoes_ia(compacto=compacto)+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
                      '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.')
@@ -125,6 +137,7 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
                 interpretar=retornar_plano,modo=chat.get('equipe_modo','paralela'),
                 progresso=progresso,**extras)
             resposta=equipe_resultado['texto'];provedor='Ollama'
+            if aviso_alternativa:resposta=aviso_alternativa+'\n\n'+resposta
         else:resposta,provedor=roteador.responder(pergunta,**opcoes)
         plano=None
         if retornar_plano and equipe:
@@ -299,6 +312,8 @@ def _executar_acao(acao,obj,contexto,roteador):
         catalogo=roteador.catalogo_ollama()
         if not catalogo.get('habilitado'):raise ValueError('Habilite a integração Ollama antes de ativar a equipe.')
         modelos=list(dict.fromkeys(m['nome'] for m in catalogo['modelos']))
+        from alternativa_27b import selecionar as selecionar_alternativa
+        modelos,aviso_alternativa=selecionar_alternativa(modelos,catalogo['modelos'])
         from conversa_equipe import MAX_MODELOS_COOPERATIVA,MAX_MODELOS_PARALELA
         limite=MAX_MODELOS_COOPERATIVA if modo=='cooperativa' else MAX_MODELOS_PARALELA
         if not 1<=len(modelos)<=limite:raise ValueError('O modo '+modo+' aceita de um a '+str(limite)+' modelos. Use cooperação ou escolha uma composição menor.')
@@ -306,9 +321,13 @@ def _executar_acao(acao,obj,contexto,roteador):
             equipe_modelos=modelos,equipe_paralela=True,equipe_modo=modo)
         nuvem=any(m.get('nuvem') for m in catalogo['modelos'])
         return ('Equipe '+modo+' ativada nesta conversa: '+', '.join(modelos)+
-            ('. Cada mensagem que precisar de IA consulta uma vez cada modelo, um por vez, e pode fazer uma síntese adicional. O perfil CPU atual é preservado. '
-             if modo=='cooperativa' else '. Cada mensagem de conversa consulta uma vez cada modelo simultaneamente. O Ollama pode enfileirar conforme a memória. ')+
+            ('. Cada mensagem que precisar de IA consulta uma vez cada modelo, um por vez, e pode fazer uma síntese adicional. O perfil de execução atual é preservado. '
+             if modo=='cooperativa' else
+             '. Os participantes recebem a mesma mensagem, um por vez, no perfil compacto atual. '
+             if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold() in ('cpu','equilibrado') else
+             '. Cada mensagem de conversa consulta uma vez cada modelo simultaneamente. O Ollama pode enfileirar conforme a memória. ')+
             'Nenhum modelo foi baixado ou consultado nesta ativação.'+
+            (' '+aviso_alternativa if aviso_alternativa else '')+
             (' Há modelos cloud: as mensagens usam a conta, internet e cota Ollama.' if nuvem else ''))
     if acao=='modelo_padrao':
         from configurar_ia_local import configurar_modelo

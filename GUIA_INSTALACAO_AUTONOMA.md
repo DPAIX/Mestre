@@ -1,4 +1,6 @@
-# Instalação automática — MeuControlePC v2.12.1
+> **27B leve em PC com 16 GB:** consulte [a revisão v2.12.2](REVISAO_V2_12_2.md). Com assistente/preparador antigos fechados, abra `PREPARAR_27B_LEVE.bat` na pasta extraída e depois `INSTALAR_E_INICIAR.bat`. O download é explícito e a seleção depende de uma resposta real concluída.
+
+# Instalação automática — MeuControlePC v2.12.2
 
 Extraia o pacote completo em uma pasta de Downloads, fora do diretório de fontes em C:, e abra **`INSTALAR_E_INICIAR.bat`**. Não é necessário copiar as fontes manualmente para a instalação em C:. O `iniciar_redirecionado.bat`, sem argumentos, também abre este fluxo. Depois da implantação, é possível abrir o iniciador na própria pasta instalada; o pacote de atualização não deve ser extraído em uma subpasta dela.
 

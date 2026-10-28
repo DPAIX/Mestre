@@ -48,6 +48,104 @@ class EsclarecimentoConversaTeste(unittest.TestCase):
         self.assertEqual(resultado['plano']['campos'], {'atividade':'estudar','dia':'2026-10-28',
             'horario':'14:30','fim':'','local':''})
 
+    def test_frase_da_captura_pergunta_tarefa_e_quando_sem_inventar_titulo(self):
+        resultado = self.enviar('me agende uma tarefa')
+        self.assertEqual(resultado['estado'], 'pergunta')
+        self.assertIn('Qual atividade', resultado['texto'])
+        self.assertIn('dia e horário', resultado['texto'])
+        self.assertIn('rotina local', resultado['texto'])
+        self.assertIn('não ativa um novo alarme', resultado['texto'])
+        self.assertIsNone(resultado['plano'])
+        self.assertEqual(self.enviar('sim')['estado'], 'pergunta')
+        self.assertEqual(self.enviar('uma tarefa')['estado'], 'pergunta')
+        self.assertIn('em qual dia', self.enviar('Estudar navegação')['texto'])
+        self.assertIn('horário exato', self.enviar('amanhã')['texto'])
+        resultado = self.enviar('às 14h30')
+        self.assertEqual(resultado['estado'], 'plano')
+        self.assertEqual(resultado['plano']['campos'], {
+            'atividade':'Estudar navegação','dia':'2026-10-28',
+            'horario':'14:30','fim':'','local':''})
+        self.assertIn('confirmação', resultado['texto'])
+
+    def test_tipo_generico_nao_serve_como_titulo_mesmo_com_data_e_hora(self):
+        for inicio in ('agende uma tarefa', 'me agende uma atividade',
+                       'marque um compromisso', 'me marque uma tarefa'):
+            with self.subTest(inicio=inicio):
+                resultado = self.enviar(inicio+' amanhã às 9h')
+                self.assertEqual(resultado['estado'], 'pergunta')
+                self.assertIn('Qual atividade', resultado['texto'])
+                self.assertIsNone(resultado['plano'])
+                plano = self.enviar('Revisar relatório')['plano']
+                self.assertEqual(plano['campos']['atividade'], 'Revisar relatório')
+                self.assertEqual(plano['campos']['dia'], '2026-10-28')
+                self.assertEqual(plano['campos']['horario'], '09:00')
+
+    def test_pedido_com_pronome_e_atividade_explicita_preserva_dados(self):
+        for inicio in ('Me agende', 'me agendar', 'Por favor, você pode me agendar'):
+            with self.subTest(inicio=inicio):
+                plano = self.enviar(inicio+' Estudar cálculo na sexta às 14h?')['plano']
+                self.assertEqual(plano['acao'], 'rotina_criar')
+                self.assertEqual(plano['campos']['atividade'], 'Estudar cálculo')
+                self.assertEqual(plano['campos']['dia'], 'Sexta')
+                self.assertEqual(plano['campos']['horario'], '14:00')
+
+    def test_sufixo_horario_sem_dia_preserva_hora_e_pergunta_titulo(self):
+        for horario, esperado in (('às 14h', '14:00'), ('às 14:30', '14:30'),
+                                  ('14h', '14:00'), ('14:30', '14:30')):
+            with self.subTest(horario=horario):
+                resultado = self.enviar('me agende uma tarefa '+horario)
+                self.assertEqual(resultado['estado'], 'pergunta')
+                self.assertIn('Qual atividade', resultado['texto'])
+                self.assertIsNone(resultado['plano'])
+                self.assertIn('em qual dia', self.enviar('Estudar navegação')['texto'])
+                resultado = self.enviar('amanhã')
+                self.assertEqual(resultado['estado'], 'plano')
+                self.assertEqual(resultado['plano']['campos'], {
+                    'atividade':'Estudar navegação', 'dia':'2026-10-28',
+                    'horario':esperado, 'fim':'', 'local':''})
+
+    def test_hora_e_fim_sem_dia_podem_ser_completados_em_ordem_inversa(self):
+        self.assertIn('Qual atividade', self.enviar('me agende uma tarefa às 14h até 15:30')['texto'])
+        self.assertIn('Qual atividade', self.enviar('amanhã')['texto'])
+        plano = self.enviar('Revisar relatório')['plano']
+        self.assertEqual(plano['campos'], {'atividade':'Revisar relatório',
+            'dia':'2026-10-28', 'horario':'14:00', 'fim':'15:30', 'local':''})
+
+    def test_numero_de_capitulo_nao_e_sufixo_horario(self):
+        self.enviar('me agende estudar o capítulo 14')
+        resultado = self.enviar('amanhã')
+        self.assertEqual(resultado['estado'], 'pergunta')
+        self.assertIn('horário exato', resultado['texto'])
+        plano = self.enviar('às 15h')['plano']
+        self.assertEqual(plano['campos']['atividade'], 'estudar o capítulo 14')
+        self.assertEqual(plano['campos']['horario'], '15:00')
+
+    def test_generico_nao_remove_palavra_de_um_titulo_real(self):
+        for atividade in ('Tarefa de cálculo', 'Uma atividade de navegação', 'Algo de eletrônica'):
+            with self.subTest(atividade=atividade):
+                plano = self.enviar('me agende '+atividade+' amanhã às 10h')['plano']
+                self.assertEqual(plano['campos']['atividade'], atividade)
+
+    def test_agendamento_incompleto_da_captura_isola_origem_e_expira(self):
+        self.enviar('me agende uma tarefa')
+        self.assertEqual(self.enviar('Titulo alheio', usuario=20)['estado'], 'nao_tratado')
+        self.assertEqual(self.enviar('Outro topico', contexto='telegram:outro')['estado'], 'nao_tratado')
+        self.enviar('Estudar navegação')
+        self.agora += perguntas.PRAZO_SEGUNDOS
+        self.assertEqual(self.enviar('amanhã às 14h')['estado'], 'nao_tratado')
+        self.enviar('me agende uma tarefa')
+        self.assertEqual(self.enviar('Titulo outra conversa', chat_id='conversa2')['estado'], 'nao_tratado')
+        self.assertEqual(self.enviar('Titulo antigo')['estado'], 'nao_tratado')
+
+    def test_frase_citada_negada_condicional_ou_composta_nao_agenda(self):
+        for texto in ('não me agende uma tarefa', 'se eu pedir, me agende uma tarefa',
+                      'explique como me agendar uma tarefa', 'como me agendar uma tarefa?',
+                      '"me agende uma tarefa"', 'me agende uma tarefa e abra a calculadora',
+                      'me agende uma tarefa; abra a calculadora',
+                      'me agende uma tarefa\nabra a calculadora'):
+            with self.subTest(texto=texto):
+                self.assertEqual(self.enviar(texto)['estado'], 'nao_tratado')
+
     def test_dia_e_horario_no_mesmo_turno_completam_campos(self):
         self.enviar('Agende Estudar')
         plano = self.enviar('na sexta-feira às 8h até 9:30')['plano']

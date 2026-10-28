@@ -188,7 +188,8 @@ def _preferido(sucessos, coordenador):
 def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, coordenador, progresso, parcial, *, independentes=False):
     itens=[]
     total=len(modelos)
-    compacto=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu'
+    perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
+    compacto=perfil in ('cpu','equilibrado')
     por_modelo, rodada, orcamento = _orcamento_equipe(roteador,total,compacto)
     prazo=time.monotonic()+rodada
     interrupcao=None
@@ -256,13 +257,13 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
         raise RuntimeError('Nenhum modelo da equipe respondeu com conteúdo válido. '+
             '\n'.join(r['modelo']+': '+r['erro'] for r in itens))
     if independentes:
-        # O perfil CPU não enfileira todos os modelos locais de uma vez. Cada
+        # Perfis compactos não enfileiram todos os modelos locais de uma vez. Cada
         # participante recebe o mesmo pedido, sem as contribuições dos outros;
         # a escolha do usuário continua "paralela", com execução explicitada.
         itens.sort(key=lambda item:modelos.index(item['modelo']))
         plano=_consenso(itens,interpretar)
         linhas=[f'👥 Equipe Ollama: {len(sucessos)}/{total} modelos responderam com conteúdo válido.',
-                'Modo solicitado: paralelo. Execução sequencial no perfil CPU para evitar concorrência de memória.']
+                'Modo solicitado: paralelo. Execução sequencial no perfil '+('CPU' if perfil=='cpu' else perfil)+' para evitar concorrência de memória.']
         limite=max(350,min(1800,9500//total))
         for item in itens:
             linhas.extend(['\n'+('✅ ' if item['ok'] else '⚠️ ')+item['modelo'],
@@ -272,7 +273,7 @@ def _consultar_cooperativa(mensagem, historico, modelos, roteador, interpretar, 
         elif interpretar and any(r.get('plano') for r in itens):
             linhas.append('\nAs propostas não tiveram concordância de todos os participantes. Nenhuma ação foi preparada; esclareça o pedido.')
         resultado={'texto':'\n'.join(linhas)[:12000],'plano':plano,'resultados':itens,
-                   'modo':'paralela','execucao':'sequencial_cpu'}
+                   'modo':'paralela','execucao':'sequencial_'+perfil}
         if orcamento is not None:resultado['orcamento']=orcamento
         return resultado
     preferencia=coordenador
@@ -373,7 +374,7 @@ def consultar_modelos(texto, historico, modelos, roteador, *, interpretar=False,
     try:
         if modo=='cooperativa':
             return _consultar_cooperativa(mensagem,historico,modelos,roteador,interpretar,coordenador,progresso,parcial)
-        if (os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' and
+        if (os.getenv('OLLAMA_PERFIL','padrao').strip().casefold() in ('cpu','equilibrado') and
                 callable(getattr(type(roteador),'limites_equipe',None))):
             return _consultar_cooperativa(mensagem,historico,modelos,roteador,interpretar,coordenador,
                                          progresso,parcial,independentes=True)

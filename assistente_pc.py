@@ -533,7 +533,7 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.12.1 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.12.2 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Basta enviar texto ou áudio. Se faltar um detalhe de um pedido, vou perguntar antes da confirmação.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -598,7 +598,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.12.1'
+    server_version='MeuControlePC/2.12.2'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -1093,7 +1093,9 @@ def tratar_comandos_novos(m,chave,args,contexto):
             linhas.append('• '+item['nome']+' | '+item.get('familia','')+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
         if not catalogo['modelos']:linhas.append('Nenhum modelo registrado. Confira ollama list no PC.')
         linhas.append('Padrão: '+catalogo['padrao']+'. Integração '+('habilitada.' if catalogo['habilitado'] else 'desabilitada; execute configurar_ia_local.bat.'))
-        linhas.append('Perfil de execução: '+('CPU compacto.' if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' else 'padrão do serviço.'))
+        perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
+        linhas.append('Perfil de execução: '+({'cpu':'CPU compacto.',
+            'equilibrado':'equilibrado; GPU/CPU escolhidas pelo Ollama, contexto curto e equipe sequencial.'}.get(perfil,'padrão do serviço.')))
         linhas.extend(['/chat modelo NOME seleciona para esta conversa. /modelos padrao NOME define o padrão do Ollama.',
                        'Somente catálogo consultado; a geração de respostas não foi testada.'])
         enviar_texto_grande(chat,'\n'.join(linhas))
@@ -1438,7 +1440,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.12.1')
+        print('MeuControlePC v2.12.2')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)

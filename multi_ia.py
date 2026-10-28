@@ -523,8 +523,8 @@ class Roteador:
         return copy.deepcopy(modelos)
 
     def ordenar_equipe_cpu(self,modelos):
-        """Local menor primeiro; nuvem autorizada pode colaborar antes dos maiores."""
-        if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()!='cpu':return list(modelos)
+        """Perfis compactos: local menor primeiro, nuvem somente autorizada."""
+        if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold() not in ('cpu','equilibrado'):return list(modelos)
         from configurar_ia_local import FalhaConfiguracao,modelo_em_nuvem
         try:catalogo=self._obter_catalogo_ollama(endpoint_ollama().removesuffix('/api/chat'),usar_cache=True)
         except (ValueError,FalhaConfiguracao) as erro:
@@ -609,11 +609,13 @@ class Roteador:
             raise FalhaAPI('Ollama',0,'OLLAMA_MODEL inválido; informe o nome de um modelo instalado.','configuracao')
         timeout=_segundos_ollama('OLLAMA_TIMEOUT',90,5,120)
         perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
-        if perfil not in ('cpu','padrao'):
-            raise FalhaAPI('Ollama',0,'OLLAMA_PERFIL inválido; escolha cpu ou padrao.','configuracao')
+        if perfil not in ('cpu','padrao','equilibrado'):
+            raise FalhaAPI('Ollama',0,'OLLAMA_PERFIL inválido; escolha cpu, equilibrado ou padrao.','configuracao')
         payload={'model':modelo,'stream':False,
                  'messages':[{'role':'system','content':SISTEMA}]+preparar_mensagens(pergunta,historico)}
-        if perfil=='cpu':
+        rotulo_perfil='CPU' if perfil=='cpu' else perfil
+        compacto=perfil in ('cpu','equilibrado')
+        if compacto:
             permitir_nuvem=nuvem_autorizada()
             from configurar_ia_local import modelo_em_nuvem,modelo_instalado,FalhaConfiguracao
             if modelo_em_nuvem(modelo) and not permitir_nuvem:
@@ -621,19 +623,19 @@ class Roteador:
             try:
                 catalogo=self._obter_catalogo_ollama(endpoint.removesuffix('/api/chat'),usar_cache=True)
             except (ValueError,FalhaConfiguracao):
-                raise FalhaAPI('Ollama',0,'Não foi possível confirmar o modelo local do perfil CPU no catálogo. Nenhuma geração enviada.','configuracao') from None
+                raise FalhaAPI('Ollama',0,'Não foi possível confirmar o modelo local do perfil '+rotulo_perfil+' no catálogo. Nenhuma geração enviada.','configuracao') from None
             instalado=modelo_instalado(modelo,[m['nome'] for m in catalogo])
             if instalado is None:
                 self.invalidar_catalogo_ollama()
-                raise FalhaAPI('Ollama',0,'O perfil CPU exige uma tag confirmada no catálogo. Nenhuma geração enviada.','configuracao')
+                raise FalhaAPI('Ollama',0,'O perfil '+rotulo_perfil+' exige uma tag confirmada no catálogo. Nenhuma geração enviada.','configuracao')
             # Aliases sem sufixo cloud também podem representar um modelo
             # remoto. Uma indicação remota prevalece sobre registros duplicados.
             nuvem=bool(modelo_em_nuvem(instalado) or any(m['nuvem'] for m in catalogo if m['nome']==instalado))
             if nuvem and os.getenv('OLLAMA_NO_CLOUD','0')=='1':
-                raise FalhaAPI('Ollama',0,'OLLAMA_NO_CLOUD=1 bloqueia esta consulta de nuvem no perfil CPU. O opt-in não remove esse bloqueio. Nenhuma geração enviada.','configuracao')
+                raise FalhaAPI('Ollama',0,'OLLAMA_NO_CLOUD=1 bloqueia esta consulta de nuvem no perfil '+rotulo_perfil+'. O opt-in não remove esse bloqueio. Nenhuma geração enviada.','configuracao')
             if nuvem and not permitir_nuvem:
                 raise FalhaAPI('Ollama',0,'O catálogo identifica este modelo como nuvem do Ollama. Autorize pelo botão de nuvem do assistente; exige internet, login e cota. Nenhuma geração enviada.','configuracao')
-            if modo_cooperativo and not nuvem:
+            if perfil=='cpu' and modo_cooperativo and not nuvem:
                 tamanho=next((m.get('tamanho_bytes') for m in catalogo if m['nome']==instalado),None)
                 total=memoria_fisica_bytes() if type(tamanho) is int and tamanho>0 else None
                 if total is not None and tamanho>max(0,total-RESERVA_RAM_CPU):
@@ -645,15 +647,18 @@ class Roteador:
                         'modelo menor já instalado ou usar um gateway configurado. Nenhuma '
                         'substituição foi feita.','recursos')
             payload['model']=instalado
-            opcoes={'num_ctx':1024,'num_predict':128}
-            if not nuvem:opcoes['num_gpu']=0
+            opcoes={'num_ctx':1024,'num_predict':128 if perfil=='cpu' else 256}
+            if perfil=='cpu' and not nuvem:opcoes['num_gpu']=0
             payload.update({'keep_alive':0,'options':opcoes})
+            # No perfil equilibrado, reserve a saída curta para a resposta
+            # visível também fora da equipe. CPU legado mantém seu contrato.
+            if perfil=='equilibrado':payload['think']=False
         if modo_cooperativo:
             payload['keep_alive']=0
             # O limite de resposta inclui o raciocínio interno em modelos
             # thinking. A equipe precisa de uma contribuição textual curta.
             payload['think']=False
-            if perfil!='cpu':
+            if not compacto:
                 payload['options']={'num_ctx':4096,'num_predict':384}
             else:
                 payload['messages']=[{'role':'system','content':SISTEMA}]+limitar_historico_cpu(payload['messages'][1:])

@@ -45,6 +45,8 @@ def testar_catalogo(roteador, *, progresso=None):
             modelos = list(dict.fromkeys(validar_modelo(item['nome']) for item in registros))
         except (KeyError, TypeError, ValueError):
             raise ValueError('O catálogo contém um modelo inválido; nenhuma geração foi enviada.') from None
+        from alternativa_27b import selecionar
+        modelos,aviso_alternativa=selecionar(modelos,registros)
         limites = _limites(roteador, len(modelos))
         ordem = list(modelos)
         ordenar = getattr(type(roteador), 'ordenar_equipe_cpu', None)
@@ -103,6 +105,7 @@ def testar_catalogo(roteador, *, progresso=None):
         resultados.sort(key=lambda item: modelos.index(item['modelo']))
         return {'resultados': resultados, 'total': len(modelos),
             'responderam': sum(item['ok'] for item in resultados),
+            'aviso_alternativa': aviso_alternativa,
             'limites': dict(limites), 'historico_enviado': False}
     finally:
         conversa_equipe._TRAVA.release()
@@ -110,6 +113,7 @@ def testar_catalogo(roteador, *, progresso=None):
 
 def texto_resultado(resultado):
     linhas = [f"Modelos Ollama: {resultado['responderam']}/{resultado['total']} responderam ao teste."]
+    if resultado.get('aviso_alternativa'):linhas.append(resultado['aviso_alternativa'])
     for item in resultado['resultados']:
         estado = 'respondeu' if item['ok'] else item['categoria']
         duracao=item.get('duracao_s')
