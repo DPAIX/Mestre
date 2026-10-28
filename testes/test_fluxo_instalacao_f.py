@@ -21,7 +21,7 @@ import preparar_inicio_automatico as componentes
 class FluxoFTeste(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.raiz=Path(self.tmp.name)/'F';self.raiz.mkdir()
+        self.raiz=Path(self.tmp.name).resolve()/'F';self.raiz.mkdir()
         self.env=self.raiz/'.env';self.env.write_text('OLLAMA_HABILITADO=1\nOLLAMA_URL=http://127.0.0.1:11434\nOUTRA_OPCAO=preservada\n')
         self.dados=self.raiz/'dados';self.dados.mkdir()
         self.codigo=self.raiz/'aplicativo';self.codigo.mkdir()
@@ -86,7 +86,8 @@ class FluxoFTeste(unittest.TestCase):
 
     def test_destino_padrao_f_sem_usar_documents_do_windows(self):
         origem=self.raiz/'pacote';origem.mkdir()
-        ctx=preparacao.caminhos(origem=origem)
+        with patch.object(Path,'home',side_effect=AssertionError('F não depende do perfil do usuário.')):
+            ctx=preparacao.caminhos(origem=origem)
         self.assertEqual(ctx.codigo,self.codigo)
         self.assertEqual(ctx.arquivo_env,self.env)
         self.assertEqual(ctx.backups,self.raiz/'backups_codigo')

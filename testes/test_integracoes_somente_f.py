@@ -18,8 +18,8 @@ import integracoes_9stack as stack
 class IntegracoesSomenteF(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.raiz=Path(self.tmp.name)/'disco_f'
-        self.c=Path(self.tmp.name)/'perfil_c'
+        self.raiz=Path(self.tmp.name).resolve()/'disco_f'
+        self.c=Path(self.tmp.name).resolve()/'perfil_c'
         self.node=self.raiz/'ferramentas'/'nodejs'/'node.exe'
         self.node.parent.mkdir(parents=True);self.node.write_text('fixture')
         self.npm=self.node.parent/'node_modules'/'npm'/'bin'/'npm-cli.js'

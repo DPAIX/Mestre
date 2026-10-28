@@ -61,9 +61,9 @@ def _seguro(caminho):
 
 def caminhos(origem=None,codigo=None,arquivo_env=None,dados=None):
     fonte=_seguro(Path(origem or BASE).absolute())
-    perfil=Path(os.environ.get('USERPROFILE',str(Path.home())))
     somente_f=instalacao_f.ativo()
     raiz=instalacao_f.raiz() if somente_f else None
+    perfil=None if somente_f else Path(os.environ.get('USERPROFILE') or str(Path.home()))
     destino=_seguro(Path(codigo) if codigo else raiz/'aplicativo' if somente_f else perfil/'Documents'/'GitHub'/'Mestre')
     if arquivo_env is None:
         escolhido=os.environ.get('MEUCONTROLEPC_ENV')
