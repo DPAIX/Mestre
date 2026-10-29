@@ -8,6 +8,7 @@ import argparse
 import copy
 from dataclasses import dataclass
 import datetime as dt
+import errno
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -26,7 +27,7 @@ import urllib.error
 import webbrowser
 import instalacao_em_f as instalacao_f
 
-VERSAO='2.12.3'
+VERSAO='2.12.4'
 BASE=Path(__file__).resolve().parent
 MAX_CORPO=16384
 MODULOS=('telebot','google.genai','psutil','PIL','pyautogui','faster_whisper','googleapiclient','google_auth_oauthlib')
@@ -101,6 +102,29 @@ def _ler_estado(arquivo):
         valor=json.loads(arquivo.read_text(encoding='utf-8'))
         return valor if isinstance(valor,dict) else {}
     except (ValueError,OSError):return {}
+
+
+def _falha_etapa_publica(erro):
+    """Classifica sem formatar a exceção, seus argumentos ou saídas de filhos."""
+    if isinstance(erro,(subprocess.TimeoutExpired,TimeoutError)):
+        codigo='prazo_esgotado'
+        instrucao='O prazo de espera terminou. Confira se o componente indicado responde e use Retomar.'
+    elif isinstance(erro,OSError) and getattr(erro,'winerror',None) in (32,33):
+        codigo='arquivo_em_uso'
+        instrucao='Um arquivo está em uso. Feche a janela anterior do assistente, se aberta, e use Retomar.'
+    elif isinstance(erro,PermissionError) or isinstance(erro,OSError) and erro.errno in (errno.EACCES,errno.EPERM):
+        codigo='acesso_negado'
+        instrucao='O acesso foi negado. Confira as permissões da pasta da instalação e use Retomar.'
+    elif isinstance(erro,FileNotFoundError):
+        codigo='arquivo_ausente'
+        instrucao='Um arquivo necessário não foi localizado. Confira se extraiu o pacote completo e use Retomar.'
+    elif isinstance(erro,OSError) and erro.errno==errno.ENOSPC:
+        codigo='espaco_insuficiente'
+        instrucao='Falta espaço para concluir esta etapa. Libere espaço na unidade da instalação e use Retomar.'
+    else:
+        codigo='etapa_nao_concluida'
+        instrucao='A etapa não concluiu. Confira o requisito indicado e use Retomar.'
+    return codigo,instrucao
 
 
 def _ambiente(ctx):
@@ -541,11 +565,17 @@ class Preparador:
             _json_gravar(ctx.preparacao/'ultima.json',{'versao':VERSAO,'codigo':str(ctx.codigo),'bot_iniciado':True,
                 'config_mtime':ctx.arquivo_env.stat().st_mtime_ns,'painel_url':self.estado['painel_url'],
                 'tem_pendencias':bool(self.estado['pendencias']) or any(i['estado']=='pendente' for i in self.estado['itens'])})
-        except Exception:
+        except Exception as erro:
             # Bibliotecas/instaladores podem incluir segredos nas exceções.
             etapa=self.snapshot()['etapa']
-            self.item('erro','Preparação','pendente','A etapa '+etapa+' não concluiu. Confira o requisito indicado acima e use Retomar; configuração e dados foram preservados.')
-            self.pendente('erro','retomar','Conferir a última etapa e retomar a preparação.')
+            codigo,instrucao=_falha_etapa_publica(erro)
+            detalhe='Código: '+codigo+'. '+instrucao+' Configuração e dados foram preservados.'
+            with self.lock:
+                for item in self.estado['itens']:
+                    if item['id']!='inicio' and item['nome']==etapa and item['estado'] in ('executando','verificando'):
+                        item.update(estado='pendente',detalhe=detalhe)
+            self.item('erro','Preparação','pendente','A etapa '+etapa+' não concluiu. '+detalhe)
+            self.pendente('erro','retomar','Conferir a etapa '+etapa+' ('+codigo+') e retomar a preparação.')
         finally:
             with self.lock:
                 # Um ciclo encerrado não pode deixar etapas antigas parecendo
@@ -596,7 +626,7 @@ class Interface(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='MeuControlePCPreparacao/2.12.3'
+    server_version='MeuControlePCPreparacao/2.12.4'
     def setup(self):
         super().setup();self.connection.settimeout(10)
     def log_message(self,*args):pass

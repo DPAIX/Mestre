@@ -26,6 +26,7 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'REVISAO_V2_12_4.md','testes/test_primeira_instalacao_f_v2124.py','testes/test_erros_preparacao_v2124.py',
     'instalacao_em_f.py','armazenamento_ollama_f.py','AMBIENTE_F.bat','INSTALAR_EM_F_COM_27B.bat',
     'REVISAO_V2_12_3.md','testes/test_instalacao_em_f.py','testes/test_armazenamento_ollama_f.py',
     'testes/test_fluxo_instalacao_f.py','testes/test_integracoes_somente_f.py','testes/test_startup_f_v2123.py',

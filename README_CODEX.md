@@ -1,4 +1,6 @@
-# MeuControlePC v2.12.3 — Projeto para Codex
+> **v2.12.4:** [Correção da primeira instalação em F:](REVISAO_V2_12_4.md). Corrige a parada em “Instância anterior” quando a pasta aplicativo ainda não existe. Feche o preparador anterior, extraia o pacote novo em F:\Instaladores e abra INSTALAR_EM_F_COM_27B.bat.
+
+# MeuControlePC v2.12.4 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
 

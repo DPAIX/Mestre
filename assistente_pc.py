@@ -533,7 +533,7 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.12.3 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.12.4 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
             'Basta enviar texto ou áudio. Se faltar um detalhe de um pedido, vou perguntar antes da confirmação.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
@@ -598,7 +598,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.12.3'
+    server_version='MeuControlePC/2.12.4'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -1440,7 +1440,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.12.3')
+        print('MeuControlePC v2.12.4')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)

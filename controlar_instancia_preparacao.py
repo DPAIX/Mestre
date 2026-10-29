@@ -246,7 +246,6 @@ def parar_assistente(codigo, dados, *, autorizado=False, timeout=8, python=None)
     codigo, dados = _caminho(codigo), _caminho(dados)
     if python is not None: python = _caminho(python)
     _sem_links(codigo/'assistente_pc.py')
-    if not (codigo/'assistente_pc.py').is_file(): raise ValueError('Selecione a raiz completa do assistente.')
     if not _WINDOWS:
         return _resultado('indisponivel','A parada automática é exclusiva do Windows; encerre o assistente no PC.')
     inicio = time.monotonic(); processo = None
@@ -254,6 +253,13 @@ def parar_assistente(codigo, dados, *, autorizado=False, timeout=8, python=None)
         trava = _inspecionar_trava(dados)
         if not trava['ativa']:
             return _resultado('livre','Nenhuma instância mantém a trava; preparação pode continuar.',livre=True)
+        # O destino da primeira instalação ainda não tem fontes. A ausência
+        # delas não impede implantar quando os dados estão livres, mas também
+        # não autoriza encerrar um bot que ainda usa a instalação anterior.
+        if not (codigo/'assistente_pc.py').is_file():
+            return _resultado('destino_sem_fontes',
+                'Há uma instância ativa nos dados e o destino novo ainda não tem as fontes. '
+                'Feche a janela do assistente anterior e use Retomar; nenhum processo foi encerrado.')
         pid = trava['pid']
         info = _metadados_windows(pid,min(4,timeout))
         if not _identidade_permitida(info,pid,codigo,dados,python):

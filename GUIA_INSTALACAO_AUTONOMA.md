@@ -1,4 +1,6 @@
-# Instalação automática — MeuControlePC v2.12.3
+> **v2.12.4:** se a preparação anterior parou em “Instância anterior” antes de copiar fontes, use o [pacote corrigido](REVISAO_V2_12_4.md). Feche o console da preparação antiga antes de abrir o pacote novo; Retomar na página antiga mantém o código antigo em memória.
+
+# Instalação automática — MeuControlePC v2.12.4
 
 Salve e extraia o ZIP diretamente em **F:\Instaladores**, fora da pasta instalada, e abra **INSTALAR_EM_F_COM_27B.bat**. O destino é **F:\MeuControlePC_v2\aplicativo**. O fluxo prepara as dependências, confere/importa os modelos e solicita o teste da versão leve antes de iniciar. Para atualizar sem repetir a preparação do 27B, use INSTALAR_E_INICIAR.bat. Os iniciadores recusam execução fora de F:; não escolhem C: como alternativa. Consulte [os caminhos e limites da revisão](REVISAO_V2_12_3.md).
 
