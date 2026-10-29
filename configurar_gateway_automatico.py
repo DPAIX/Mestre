@@ -58,8 +58,11 @@ def _seguro(caminho, *, existe=False, tamanho=None):
 
 
 def _diretorio(valor=None):
-    if valor is not None: return _seguro(valor)
-    appdata = os.getenv('APPDATA', '')
+    import instalacao_em_f as instalacao
+    if valor is not None:
+        if instalacao.ativo():instalacao.validar_caminho(valor)
+        return _seguro(valor)
+    appdata = str(instalacao.raiz()/'runtime'/'Roaming') if instalacao.ativo() else os.getenv('APPDATA', '')
     if not appdata: raise _Pendente('Diretório local do 9Router indisponível nesta sessão.')
     return _seguro(Path(appdata) / '9router')
 
@@ -316,6 +319,13 @@ def configurar_gateway(*, caminho_env=None, diretorio_gateway=None, modelo=None,
         caminho = Path(caminho_env) if caminho_env is not None else arquivo_env(BASE)
         _seguro(caminho)
         opcoes = _opcoes(caminho); raiz = _diretorio(diretorio_gateway)
+        import instalacao_em_f as instalacao
+        if instalacao.ativo():
+            from integracoes_9stack import servico_f_comprovado
+            if validar_url(opcoes.get('NINE_ROUTER_URL',URL_PADRAO))!=URL_PADRAO:
+                raise _Pendente('No modo F, selecione o endpoint gerenciado 127.0.0.1:20128 antes de preparar a chave. Nenhuma autenticação foi enviada para outra porta.')
+            if not servico_f_comprovado('9router'):
+                raise _Pendente('O serviço 9Router não confirmou o perfil em F. Encerre a instância anterior pela interface oficial e retome; nenhuma autenticação ou escrita foi solicitada.')
         meta = _metadados(raiz)
         selecionado = _selecionar(modelo if modelo is not None else opcoes.get('NINE_ROUTER_MODEL', ''), meta['combos'])
         publico.update(modelo=selecionado, combos=meta['combos'])

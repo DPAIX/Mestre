@@ -26,6 +26,19 @@ MAX_TAREFAS = 500
 MAX_CONTRIBUICOES = 300
 MAX_PROPOSTA = 30_000
 FONTES_EXPORTAVEIS = (
+    'REVISAO_V2_12_4.md','testes/test_primeira_instalacao_f_v2124.py','testes/test_erros_preparacao_v2124.py',
+    'instalacao_em_f.py','armazenamento_ollama_f.py','AMBIENTE_F.bat','INSTALAR_EM_F_COM_27B.bat',
+    'REVISAO_V2_12_3.md','testes/test_instalacao_em_f.py','testes/test_armazenamento_ollama_f.py',
+    'testes/test_fluxo_instalacao_f.py','testes/test_integracoes_somente_f.py','testes/test_startup_f_v2123.py',
+    'alternativa_27b.py','preparar_27b_leve.py','PREPARAR_27B_LEVE.bat','RESTAURAR_27B_LEVE.bat',
+    'REVISAO_V2_12_2.md','testes/test_alternativa_27b.py','testes/test_preparar_27b_leve.py',
+    'testes/test_perfil_equilibrado_v2122.py',
+    'REVISAO_V2_12_1.md','testes/test_formato_conversa_v2121.py',
+    'testes/test_qualidade_equipe_v2121.py','testes/test_ollama_truncamento_v2121.py',
+    'esclarecimento_conversa.py','bateria_modelos.py','REVISAO_V2_12_0.md',
+    'testes/test_bateria_modelos.py','testes/test_inferencia_equipe_v212.py','testes/test_equipe_continuacao.py',
+    'testes/test_esclarecimento_conversa.py','testes/test_telegram_natural_v212.py',
+    'saude_telegram.py','REVISAO_V2_11_4.md','testes/test_saude_telegram.py','testes/test_saude_telegram_integracao.py',
     'preparacao_autonoma.py','preparacao_autonoma.html','INSTALAR_E_INICIAR.bat',
     'implantacao_assistente.py','configurar_gateway_automatico.py','controlar_instancia_preparacao.py','ponte_preparacao_windows.py',
     'GUIA_INSTALACAO_AUTONOMA.md','REVISAO_V2_11_0.md','REVISAO_V2_11_1.md','REVISAO_V2_11_2.md','REVISAO_V2_11_3.md',

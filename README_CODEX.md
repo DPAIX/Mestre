@@ -1,8 +1,24 @@
-# MeuControlePC v2.11.3 — Projeto para Codex
+> **v2.12.4:** [Correção da primeira instalação em F:](REVISAO_V2_12_4.md). Corrige a parada em “Instância anterior” quando a pasta aplicativo ainda não existe. Feche o preparador anterior, extraia o pacote novo em F:\Instaladores e abra INSTALAR_EM_F_COM_27B.bat.
+
+# MeuControlePC v2.12.4 — Projeto para Codex
 
 Este pacote contém o código-fonte, documentação, testes e instruções do Codex (`AGENTS.md`). Os arquivos `dados_iniciais/` são exemplos genéricos. O pacote de distribuição exclui `.env`, dados pessoais, credenciais, ambientes virtuais e modelos.
 
+Novidade v2.12.3: [instalação em F:](REVISAO_V2_12_3.md). Salve e extraia em F:\Instaladores e abra **INSTALAR_EM_F_COM_27B.bat**. Código, venv, modelos, caches e backups ficam em F:, com preservação da configuração e dos dados existentes.
+
+Novidade v2.12.2: [27B leve, perfil com GPU automática e agendamento por conversa](REVISAO_V2_12_2.md). A alternativa é baixada e selecionada somente pelo iniciador explícito após teste real; o original permanece instalado. “Me agende uma tarefa” pergunta os dados que faltam localmente.
+
+Correção v2.12.1: [respostas utilizáveis e conversa em texto simples](REVISAO_V2_12_1.md). Formato inválido não conta como sucesso da equipe; a pergunta sobre capacidades recebe resposta local.
+
+Novidade v2.12.0: [equipe com orçamento por modelo e conversa por texto/áudio com esclarecimentos](REVISAO_V2_12_0.md). Basta pedir em linguagem comum; tarefas incompletas geram perguntas e ações continuam sujeitas a confirmação.
+
+Novidade v2.11.4: [estado observado do Telegram no painel e no /status](REVISAO_V2_11_4.md), com idade da última consulta, falhas e recuperação, sem chamadas extras. A atualização completa preserva configuração, dados, modelos e rede.
+
 Correção v2.11.3: [conexão IPv6 e reinício do 9Remote](REVISAO_V2_11_3.md). O [reparo separado](REPARO_9REMOTE.md) corrige os bundles gerenciados exatos com backup e abre o painel do host, sem reinstalar o bot.
+
+Ferramentas separadas: [diagnóstico do acesso ao Telegram por duplo clique](DIAGNOSTICO_TELEGRAM.md) e [teste reversível da detecção automática de proxy do Windows](TESTE_PROXY_WINDOWS.md). Os pacotes próprios ficam em `distribuicao/`; não exigem reinstalar o assistente. O diagnóstico não valida o token do bot nem envia mensagens. O teste de proxy atua somente na opção indicada, com backup e restauração, e precisa de conferência no PC.
+
+Se o teste retornar `inalterado`, use o [reparo específico do hosts e diagnóstico do Windows](REPARO_HOSTS_E_DIAGNOSTICO.md). A correção de hosts libera somente `wl.spotify.com`; a sonda de proxy localiza a etapa que não responde, e as sondas NCSI comparam o acesso público por IPv4 e IPv6. O arquivo hosts privado não é distribuído.
 
 Correção v2.11.2: [painel do host 9Remote e progresso da preparação](REVISAO_V2_11_2.md). O painel local do host é http://127.0.0.1:2208/ui/index.html.
 
@@ -10,7 +26,7 @@ Correção v2.11.1: [início do Ollama e retomada](REVISAO_V2_11_1.md). Para atu
 
 ## Instalação no Windows em um clique
 
-Extraia o pacote completo em Downloads, fora da pasta instalada, e abra **`INSTALAR_E_INICIAR.bat`**. O iniciador confere e implanta as fontes em C: com backup, reaproveita a configuração e os dados externos, prepara os componentes faltantes e solicita o início do assistente. O `iniciar_redirecionado.bat`, sem argumentos, também usa esse fluxo.
+Salve e extraia o pacote completo em F:\Instaladores, fora da pasta instalada, e abra **`INSTALAR_EM_F_COM_27B.bat`**. O iniciador confere e implanta as fontes em F:\MeuControlePC_v2\aplicativo com backup, reaproveita a configuração e os dados externos, prepara os componentes faltantes e solicita o início do assistente. O `iniciar_redirecionado.bat`, sem argumentos, também usa esse fluxo.
 
 A janela local começa a preparação automaticamente. Ela oferece somente as pendências de conta e o botão **Retomar**. O 9Router pode criar sua nova chave dedicada pela autenticação oficial da CLI existente; login, 2FA, CAPTCHA e consentimentos ainda são concluídos pelo proprietário. Chaves são salvas apenas pelo campo oculto local, sem devolução ao chat ou à página de estado.
 
@@ -55,6 +71,7 @@ Opcional: `python -m pip install -r requirements.txt` no ambiente Windows, para 
 | Arquivo | Função |
 |---|---|
 | `assistente_pc.py` | Interface Telegram e comandos |
+| `saude_telegram.py` | Estado em memória das consultas existentes ao Telegram |
 | `nucleo.py` | Dados JSON, logs, migração e rotinas |
 | `multi_ia.py` | Provedores, erros e cotas |
 | `evolucao_segura.py` | Autoanálise e melhorias com backup |

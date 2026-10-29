@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.11.3 · Centro de comando</title>
+<meta name="referrer" content="no-referrer"><title>MeuControlePC v2.12.4 · Centro de comando</title>
 <style>
 :root{color-scheme:dark;--bg:#090f1c;--panel:#151f31;--inner:#0e1727;--border:#29384c;--text:#eaf1fa;--muted:#95a9c1;--accent:#5caafc;--success:#6dd8b3;--warn:#e0ba69}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,'Segoe UI',sans-serif}
@@ -10,12 +10,14 @@ button,.action{cursor:pointer;background:#1c3552;color:var(--text);border:1px so
 input,select,textarea{padding:11px;border-radius:9px;border:1px solid #31415a;background:#0d1828;color:white;min-width:120px;font:inherit}input:focus,select:focus,textarea:focus{outline:2px solid var(--accent)}textarea{width:100%;resize:vertical;min-height:90px}label{display:block;margin:8px 0 4px}.chat-historico{max-height:460px;overflow:auto}.chat-lista{display:grid;gap:8px}.chat-lista button{text-align:left}.form-grade{display:grid;gap:8px}.projeto-item{margin:12px 0;padding:12px;background:var(--inner);border:1px solid var(--border);border-radius:9px}.projeto-item p{white-space:pre-wrap;overflow-wrap:anywhere}.projeto-item h3{margin:0 0 6px;font-size:15px}
 input[type=checkbox]{min-width:0;width:auto;margin:0 5px 0 0}fieldset{border:1px solid var(--border);border-radius:9px;margin-top:12px}#equipe-provedores label,#equipe-modelos-ollama label{display:flex;align-items:center}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:20px}.tile,.panel{padding:18px;background:var(--panel);border:1px solid var(--border);border-radius:13px;min-width:0}.tile strong{display:block;font-size:25px;margin-top:6px;color:#83c4ff}.section{display:none}.section.active{display:block}.duo{display:grid;grid-template-columns:2fr 1fr;gap:18px}
+.telegram-saude{margin-bottom:20px;border-left:3px solid var(--warn)}.telegram-saude[data-estado=consultando]{border-left-color:var(--success)}.telegram-saude h2{margin-bottom:8px}.telegram-saude p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:11px 8px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-size:12px}td button{padding:5px 9px}.scroll{overflow:auto}.status{border-left:3px solid var(--accent);background:var(--inner);border-radius:8px;padding:10px;margin-bottom:10px;white-space:pre-wrap;overflow-wrap:anywhere} .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0}.flex{flex:1;min-width:160px}.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kcol{min-width:0;background:var(--inner);border:1px solid var(--border);border-radius:12px;padding:14px}.item{background:#1d2b40;padding:9px;margin-bottom:8px;border-radius:8px;overflow-wrap:anywhere}.pill{font-size:11px;padding:4px 7px;background:#264564;border-radius:20px;white-space:nowrap}#aviso{white-space:pre-wrap;position:sticky;bottom:12px;background:#11304e;border:1px solid #4f83b7;border-radius:9px;padding:12px;max-width:700px;display:none;margin:10px auto}
 @media(max-width:800px){main{padding:12px}header{padding:15px}.duo{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}table{min-width:700px}} 
 </style></head>
-<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.11.3</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
+<body><header><div><h1>⚙️ MeuControlePC <span style="color:#78beff">v2.12.4</span></h1><small>Painel local • Windows, RoboTask, FURG e Multi-IA</small></div><div><small id="rede">Carregando estado...</small><div class="row"><a href="https://sistemas.furg.br" target="_blank" rel="noopener noreferrer">Portal FURG ↗</a><a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Google Agenda ↗</a><a href="https://colab.research.google.com" target="_blank" rel="noopener noreferrer">Colab ↗</a></div></div></header>
 <main>
 <div class="grid"><div class="tile">Rotina concluída<strong id="progresso">—</strong></div><div class="tile">Saldo registrado<strong id="saldo">—</strong></div><div class="tile">Ações aprendidas<strong id="aprendizado">—</strong></div><div class="tile">Disco livre<strong id="disco">—</strong></div></div>
+<section class="panel telegram-saude" id="telegram-saude" data-estado="nao_informado" aria-labelledby="telegram-titulo"><h2 id="telegram-titulo">Telegram</h2><p id="telegram-estado" role="status">Aguardando estado do assistente...</p><p id="telegram-detalhe"></p><p id="telegram-consulta" class="muted"></p><small>Observa as consultas que o bot já faz. Atualizar este painel não envia consultas extras ao Telegram. Consulta concluída não comprova entrega de respostas.</small></section>
 <nav role="tablist"><button class="active" data-tab="rotina">📅 Rotina FURG</button><button data-tab="colaboracao">💬 Chats e projeto</button><button data-tab="integracoes">🧩 Integrações & memória</button><button data-tab="kanban">📋 Kanban</button><button data-tab="saude">💧 Hábitos & finanças</button><button data-tab="robotask">🤖 RoboTask & PC</button><button data-tab="ias">🧠 Multi-IA</button><button data-tab="logs">📊 Logs</button><button data-tab="evolucao">🧠 Autoanálise & reinício</button></nav>
 <section class="section active" id="rotina"><div class="panel"><h2>Atividades e compromissos</h2><p class="muted">Marque tarefas concluídas. Os dados são atualizados em gestao_vida.json.</p><div class="scroll"><table><thead><tr><th>Feito</th><th>Dia</th><th>Horário</th><th>Atividade</th><th>Local</th><th>Prioridade</th></tr></thead><tbody id="tabela-rotina"></tbody></table></div></div></section>
 <section class="section" id="kanban"><div class="panel"><h2>Kanban · projetos acadêmicos e automações</h2><div class="kanban" id="colunas"></div></div></section>
@@ -505,11 +507,31 @@ function textoAutoanalise(a){
  if(Array.isArray(a.sugestoes)&&a.sugestoes.length)linhas.push('','Orientações:',...a.sugestoes.map(String));
  return linhas.join('\n');
 }
+function renderTelegram(dados,desatualizado=false){
+ const titulos={nao_iniciado:'Recebimento não iniciado',somente_painel:'Modo somente painel',iniciando:'Iniciando recebimento',consultando:'Consulta ao Telegram confirmada',falha:'Falha na consulta ao Telegram',sem_confirmacao_recente:'Sem confirmação recente',encerrado:'Recebimento encerrado'};
+ const idadeValida=valor=>valor===null||Number.isSafeInteger(valor)&&valor>=0;
+ const valido=dados&&typeof dados==='object'&&!Array.isArray(dados)&&Object.hasOwn(titulos,dados.estado)&&typeof dados.detalhe==='string'&&idadeValida(dados.ultima_consulta_ha_s)&&idadeValida(dados.ultima_falha_ha_s)&&Number.isSafeInteger(dados.falhas_consecutivas)&&dados.falhas_consecutivas>=0;
+ if(desatualizado||!valido){
+  $('telegram-saude').dataset.estado='nao_informado';
+  text($('telegram-estado'),desatualizado?'Estado desatualizado':'Não informado');
+  text($('telegram-detalhe'),desatualizado?'Não foi possível atualizar o painel; a conexão do Telegram não está confirmada.':'Atualize ou reinicie o assistente para consultar o estado do Telegram.');
+  text($('telegram-consulta'),'');return;
+ }
+ const estado=dados.estado==='consultando'&&(dados.ultima_consulta_ha_s===null||dados.ultima_consulta_ha_s>90)?'sem_confirmacao_recente':dados.estado;
+ $('telegram-saude').dataset.estado=estado;
+ text($('telegram-estado'),titulos[estado]);
+ text($('telegram-detalhe'),estado!==dados.estado?'A última confirmação não é recente. Aguarde uma nova consulta concluída pelo bot.':dados.detalhe.slice(0,600));
+ const linhas=[dados.ultima_consulta_ha_s===null?'Nenhuma consulta concluída nesta sessão.':`Última consulta concluída há ${dados.ultima_consulta_ha_s} s.`];
+ if(dados.ultima_falha_ha_s!==null)linhas.push(`Última falha há ${dados.ultima_falha_ha_s} s.`);
+ if(dados.falhas_consecutivas)linhas.push(`${dados.falhas_consecutivas} falha(s) consecutiva(s).`);
+ text($('telegram-consulta'),linhas.join(' '));
+}
 function render(s){const {vida:v,resumo:r,provedores:p,logs,robotask,autoanalise}=s;
+ renderTelegram(s.telegram);
  renderColaboracao(s.colaboracao);
  text($('modelos-nuvem-status'),s.ollama_nuvem===true?'Nuvem permitida no perfil CPU. Disponibilidade da conta e dos modelos não foi testada.':'Perfil CPU restrito a modelos locais, conforme os recursos do PC. O perfil padrão do serviço mantém suas próprias opções.');
  const a=$('resumo-analise');if(a)text(a,textoAutoanalise(autoanalise));
- text($('rede'),'Painel local • dados sincronizados com Telegram (quando disponível)');text($('progresso'),`${r.concluidas}/${r.total_tarefas}`);text($('saldo'),money(r.saldo));text($('aprendizado'),r.comandos);text($('disco'),r.disco_livre_mb+' MiB');
+ text($('rede'),'Painel local • estado atualizado do assistente');text($('progresso'),`${r.concluidas}/${r.total_tarefas}`);text($('saldo'),money(r.saldo));text($('aprendizado'),r.comandos);text($('disco'),r.disco_livre_mb+' MiB');
  const t=$('tabela-rotina');t.replaceChildren();for(const item of v.rotina||[]){const tr=el('tr');const td=el('td');const b=el('button',item.status==='Concluído'?'✅':'⬜');b.setAttribute('aria-label',(item.status==='Concluído'?'Reabrir: ':'Concluir: ')+(item.atividade||item.id));b.disabled=pedidosAtivos.size>0;b.addEventListener('click',()=>agir('concluir',{id:item.id}));td.append(b);tr.append(td);for(const val of [item.dia,(item.horario||'')+' – '+(item.fim||''),item.atividade,item.local,item.prioridade])tr.append(el('td',val));t.append(tr)}
  const k=$('colunas');k.replaceChildren();for(const [campo,nome] of [['A_Fazer','A fazer'],['Em_Andamento','Em andamento'],['Concluido','Concluído']]){const col=el('div',undefined,'kcol');col.append(el('h3',nome));for(const x of (v.kanban||{})[campo]||[])col.append(el('div',x,'item'));k.append(col)}
  const hab=$('habitos');hab.replaceChildren();for(const [nome,obj] of Object.entries(v.habitos_saude||{})){const d=el('p');d.append(el('strong',nome.replaceAll('_',' ')+': '));d.append(el('span',`${obj.valor??'-'} / ${obj.meta??'-'} ${obj.unidade||''}`));hab.append(d)}
@@ -529,7 +551,7 @@ async function atualizar(){
   }else if(protocoloIdempotencia===true)throw Error('O painel não informou a versão do estado. Atualize antes de enviar outra ação.');
   else protocoloIdempotencia=false;
   render(estado);estadoRecebido=true;return true;
- }catch(e){if(versao===versaoEstado){estadoRecebido=false;text($('rede'),'⚠️ '+e.message)}return false}
+ }catch(e){if(versao===versaoEstado){estadoRecebido=false;text($('rede'),'⚠️ '+e.message);renderTelegram(null,true)}return false}
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===b.dataset.tab))}));
 document.querySelectorAll('[data-acao]').forEach(b=>b.addEventListener('click',()=>agir(b.dataset.acao)));

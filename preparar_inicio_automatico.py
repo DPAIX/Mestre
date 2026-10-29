@@ -13,6 +13,7 @@ import sys
 
 import redirecionar_assistente as redirecionar
 import startup_windows as startup
+import instalacao_em_f as instalacao_f
 from instancia_assistente import InstanciaAtiva, instancia_unica
 
 BASE=Path(__file__).resolve().parent
@@ -21,7 +22,9 @@ TIMEOUT_MODELO=900
 PUBLICAS={'PATH','SYSTEMROOT','WINDIR','COMSPEC','PATHEXT','TEMP','TMP','LANG','LC_ALL',
           'USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','LOCALAPPDATA','APPDATA',
           'SSL_CERT_FILE','SSL_CERT_DIR','REQUESTS_CA_BUNDLE','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY',
-          'VOZ_MODELO_LOCAL'}
+          'VOZ_MODELO_LOCAL','MEUCONTROLEPC_SOMENTE_F','MEUCONTROLEPC_RAIZ_F',
+          'PIP_CACHE_DIR','HF_HOME','HUGGINGFACE_HUB_CACHE','HF_HUB_CACHE',
+          'XDG_CACHE_HOME','PYTHONPYCACHEPREFIX','NPM_CONFIG_CACHE','NPM_CONFIG_PREFIX'}
 
 
 def ambiente_preparacao(plano):
@@ -29,6 +32,7 @@ def ambiente_preparacao(plano):
     ambiente={k:v for k,v in plano['ambiente'].items() if k.upper() in PUBLICAS}
     ambiente['MEUCONTROLEPC_ENV']=str(plano['arquivo_env'])
     ambiente['MEUCONTROLEPC_DADOS']=str(plano['dados'])
+    if instalacao_f.ativo():ambiente.update(instalacao_f.ambiente(plano['arquivo_env'].parent))
     return ambiente
 
 
@@ -52,8 +56,8 @@ def planejar_preparacao(codigo=None,arquivo_env_externo=None,dados=None,python=N
     """Valida caminhos/requisitos sem instalar pacotes ou ler a configuração."""
     if os.name!='nt':raise RuntimeError('A preparação do início automático está disponível apenas no Windows.')
     if not isinstance(incluir_google,bool):raise ValueError('A opção de Google deve ser verdadeira ou falsa.')
-    codigo=Path(codigo) if codigo is not None else BASE
-    env=arquivo_env_externo if arquivo_env_externo is not None else redirecionar.ENV_PADRAO
+    codigo=Path(codigo) if codigo is not None else Path(redirecionar.codigo_padrao()) if instalacao_f.ativo() else BASE
+    env=arquivo_env_externo if arquivo_env_externo is not None else redirecionar.env_padrao()
     plano=redirecionar.plano_execucao(codigo,env,dados,python,modo='start')
     requisitos=[plano['codigo']/'requirements.txt',plano['codigo']/'requirements-voz-local.txt']
     if incluir_google:requisitos.append(plano['codigo']/'requirements-google.txt')
@@ -72,17 +76,27 @@ def preparar_componentes(plano,*,python_explicito=False,incluir_google=False):
     """
     if not isinstance(python_explicito,bool) or not isinstance(incluir_google,bool):
         raise ValueError('As opções da preparação devem ser booleanas.')
+    somente_f=instalacao_f.ativo()
+    if somente_f:
+        for caminho in (plano['codigo'],plano['arquivo_env'],plano['dados']):
+            instalacao_f.validar_caminho(caminho)
+        instalacao_f.preparar_pastas()
     ambiente=ambiente_preparacao(plano)
     _executar([str(plano['python']),'-c','import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 2)'],
               plano,ambiente,15,'A verificação de Python 3.11 ou superior')
     # Reaproveita as .venv existentes. Sem uma delas, cria uma .venv do projeto,
     # evitando instalar bibliotecas de voz no Python global.
     candidatos=(plano['codigo']/'.venv'/'Scripts'/'python.exe',plano['arquivo_env'].parent/'.venv'/'Scripts'/'python.exe')
-    if not python_explicito and not any(p.is_file() for p in candidatos):
+    existente=next((p for p in candidatos if p.is_file()),None)
+    if somente_f and existente is not None:instalacao_f.validar_caminho(existente)
+    if (somente_f or not python_explicito) and existente is None:
         alvo=plano['codigo']/'.venv'
         print('Preparando ambiente Python do projeto...')
         _executar([str(plano['python']),'-m','venv',str(alvo)],plano,ambiente,180,'A criação do ambiente Python')
         plano=redirecionar.plano_execucao(plano['codigo'],plano['arquivo_env'],plano['dados'],alvo/'Scripts'/'python.exe',modo='start')
+        ambiente=ambiente_preparacao(plano)
+    elif somente_f and Path(plano['python']).resolve()!=existente.resolve():
+        plano=redirecionar.plano_execucao(plano['codigo'],plano['arquivo_env'],plano['dados'],existente,modo='start')
         ambiente=ambiente_preparacao(plano)
     print('Conferindo dependências da aplicação e da voz local...')
     requisitos=[plano['codigo']/'requirements.txt',plano['codigo']/'requirements-voz-local.txt']
@@ -126,8 +140,8 @@ def preparar(codigo=None,arquivo_env_externo=None,dados=None,python=None,*,inici
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--codigo',default=str(BASE))
-    parser.add_argument('--env',dest='arquivo_env',default=redirecionar.ENV_PADRAO)
+    parser.add_argument('--codigo')
+    parser.add_argument('--env',dest='arquivo_env')
     parser.add_argument('--dados')
     parser.add_argument('--python')
     args=parser.parse_args(argv)

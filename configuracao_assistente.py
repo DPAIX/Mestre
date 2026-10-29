@@ -120,6 +120,8 @@ def _ambiente_configurador():
     # credencial do .env é copiado para o ambiente do configurador.
     ambiente['MEUCONTROLEPC_ENV']=str(arquivo_env(BASE))
     ambiente['MEUCONTROLEPC_DADOS']=str(diretorio_dados(BASE))
+    import instalacao_em_f as instalacao
+    if instalacao.ativo():ambiente.update(instalacao.ambiente())
     return ambiente
 
 
@@ -251,6 +253,11 @@ def _preparar_node():
     import integracoes_9stack as stack
     try:stack._node(stack._ambiente());return 'Node.js compatível já localizado; nenhum instalador foi executado.'
     except RuntimeError:pass
+    import instalacao_em_f as instalacao
+    if instalacao.ativo():
+        raise RuntimeError('Node.js 22+ com npm está pendente. Coloque a distribuição portable oficial em '
+                           'F:\\PROGRAMAS\\nodejs ou em F:\\MeuControlePC_v2\\ferramentas\\nodejs e retome. '
+                           'Nenhum instalador em C foi executado.')
     winget=shutil.which('winget.exe')
     if not winget:return 'Node.js pendente. Instale o LTS com npm em https://nodejs.org/en/download e reabra o configurador.'
     retorno=subprocess.run([winget,'install','--id','OpenJS.NodeJS.LTS','--exact','--source','winget',

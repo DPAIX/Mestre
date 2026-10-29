@@ -1,6 +1,7 @@
 """Serviços de conversas e projeto compartilhado, sem dependência do Telegram."""
 from __future__ import annotations
 import os
+import re
 import threading
 import nucleo
 import colaboracao_chats as central
@@ -9,10 +10,37 @@ _TRAVAS = {}
 _TRAVAS_LOCK = threading.Lock()
 _CONFIG_OLLAMA_LOCK = threading.RLock()
 ACOES_CENTRAL = {
-    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelo_padrao','ollama_perfil','ollama_nuvem','tarefa_projeto','tarefa_status',
+    'chat_criar','chat_selecionar','chat_provedor','chat_modelo','chat_modo','chat_equipe','chats_modelos_ollama','modelo_testar','modelos_testar','modelo_padrao','ollama_perfil','ollama_nuvem','tarefa_projeto','tarefa_status',
     'contribuicao_importar','contribuicao_status','conexoes_ia','equipe_ia','9router_configurar','chat_modelo_9router','modelo_testar_9router',
     'rotina_criar','rotina_remover','kanban_adicionar','kanban_mover','financeiro',
 }
+_AVISOS_FORMATO_LOCAIS = (
+    'A resposta do modelo veio em formato incompleto ou inválido. Envie uma mensagem curta para tentar novamente.',
+    'Não preparei uma ação válida. Descreva o que deseja fazer e os dados necessários para eu ajudar.',
+)
+
+
+def _historico_sem_avisos_locais(historico):
+    """Exclui da próxima consulta apenas avisos locais antigos reconhecíveis.
+
+    Os registros persistidos, turnos do dono e contribuições reais permanecem.
+    A estrutura do relatório distingue um aviso selecionado de uma explicação
+    técnica que apenas cita o mesmo texto.
+    """
+    def aviso_local(item):
+        if not isinstance(item,dict) or item.get('role')!='assistant':return False
+        texto=item.get('content')
+        if not isinstance(texto,str):return False
+        corpo=texto.strip()
+        if corpo.startswith('🤖 ') and '\n' in corpo:
+            corpo=corpo.partition('\n')[2].strip()
+        if corpo in _AVISOS_FORMATO_LOCAIS:return True
+        inicio=(r'\A👥 Equipe cooperativa Ollama: [^\n]*\n'
+                r'(?:\nParticipação: [^\n]*\n)?'
+                r'Resposta (?:de|consolidada por) [^\r\n]{1,200}:\n')
+        avisos='(?:'+'|'.join(re.escape(aviso) for aviso in _AVISOS_FORMATO_LOCAIS)+')'
+        return re.match(inicio+avisos+r'(?=\nA síntese adicional |\n\nParticipação:|$)',corpo) is not None
+    return [item for item in historico if not aviso_local(item)]
 
 
 def campo_texto(obj,nome,limite=200,obrigatorio=True):
@@ -41,10 +69,13 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
     if not trava.acquire(blocking=False):
         raise RuntimeError('Esta conversa já está respondendo. Aguarde antes de enviar outra pergunta.')
     try:
+        from alternativa_27b import ativada as alternativa_ativa, selecionar as selecionar_alternativa
+        aviso_alternativa=''
+        catalogo_alternativa=None
         politica=chat.get('equipe_politica','automatica')
         if politica not in ('automatica','manual'):raise ValueError('Política de equipe inválida nesta conversa; arquivo preservado.')
-        from roteador_9router import configurado as nine_router_configurado
-        if politica=='automatica' and nine_router_configurado():
+        from roteador_9router import configurado as nine_router_configurado, perfil_local_permitido
+        if politica=='automatica' and nine_router_configurado() and perfil_local_permitido():
             chat=central.configurar_roteador_automatico(contexto,chat['id'])
         elif politica=='automatica':
             from configurar_ia_local import validar_modelo
@@ -55,11 +86,20 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
             if not isinstance(itens,list):raise ValueError('O catálogo da equipe automática é inválido.')
             try:modelos=list(dict.fromkeys(validar_modelo(item['nome']) for item in itens))
             except (KeyError,TypeError):raise ValueError('O catálogo da equipe automática é inválido.') from None
+            modelos,aviso_alternativa=selecionar_alternativa(modelos,itens)
+            catalogo_alternativa=itens
             from conversa_equipe import MAX_MODELOS_COOPERATIVA
             if not 1<=len(modelos)<=MAX_MODELOS_COOPERATIVA:
                 raise ValueError('A equipe automática precisa de um a '+str(MAX_MODELOS_COOPERATIVA)+' modelos; selecione uma equipe manual para um catálogo maior. Nenhum participante foi descartado.')
             chat=central.configurar_equipe_automatica(contexto,chat['id'],modelos)
-        historico=central.historico_chat(contexto,chat_id=chat['id'])
+        if chat.get('equipe_paralela') and alternativa_ativa():
+            if catalogo_alternativa is None:
+                catalogo_alternativa=roteador.catalogo_ollama().get('modelos')
+            # Uma equipe manual antiga pode conter a tag original. A escolha
+            # explícita vale na execução, sem reescrever o histórico ou a equipe salva.
+            escolhidos,aviso_alternativa=selecionar_alternativa(chat['equipe_modelos'],catalogo_alternativa)
+            chat={**chat,'equipe_modelos':escolhidos}
+        historico=_historico_sem_avisos_locais(central.historico_chat(contexto,chat_id=chat['id']))
         opcoes={'historico':historico,'provedor':chat.get('provedor','auto')}
         modelo=chat.get('modelo_ollama','') if opcoes['provedor']=='Ollama' else ''
         if modelo:opcoes['modelo_ollama']=modelo
@@ -74,7 +114,7 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
             from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
             try:agora=datetime.datetime.now(ZoneInfo('America/Sao_Paulo'))
             except ZoneInfoNotFoundError:agora=datetime.datetime.now().astimezone()
-            compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' and
+            compacto=(os.getenv('OLLAMA_PERFIL','padrao').strip().casefold() in ('cpu','equilibrado') and
                       bool(chat.get('equipe_paralela')) and chat.get('equipe_modo','paralela')=='cooperativa')
             prefixo=(instrucoes_ia(compacto=compacto)+'\nData/hora de referência do assistente: '+agora.isoformat(timespec='minutes')+
                      '. Datas relativas devem usar essa referência; se houver ambiguidade, pergunte.')
@@ -97,14 +137,23 @@ def conversar(texto,contexto,roteador,retornar_plano=False,*,progresso=None,parc
                 interpretar=retornar_plano,modo=chat.get('equipe_modo','paralela'),
                 progresso=progresso,**extras)
             resposta=equipe_resultado['texto'];provedor='Ollama'
+            if aviso_alternativa:resposta=aviso_alternativa+'\n\n'+resposta
         else:resposta,provedor=roteador.responder(pergunta,**opcoes)
-        resposta=nucleo.redigir(resposta)
         plano=None
         if retornar_plano and equipe:
             plano=equipe_resultado['plano']
         elif retornar_plano:
-            resultado=extrair_resposta(resposta);resposta=resultado['texto'];plano=resultado['plano']
+            # Interpretar em memória antes da redação evita corromper escapes
+            # de um JSON válido. Só o resultado redigido pode ser apresentado
+            # ou registrado; avisos locais de formato não são falas da IA.
+            from interpretacao_natural import RespostaModeloInvalida
+            try:resultado=nucleo.redigir(extrair_resposta(resposta,estrito=True))
+            except RespostaModeloInvalida as erro:
+                from multi_ia import FalhaAPI
+                raise FalhaAPI(provedor,0,str(erro),'resposta_invalida') from None
+            resposta=resultado['texto'];plano=resultado['plano']
             if plano:resposta='Entendi: '+plano['descricao']+'. O pedido ainda não foi executado.'
+        resposta=nucleo.redigir(resposta)
         if notas['aviso']:resposta+='\n\n'+notas['aviso']
         extras_registro={'modelo_9router':modelo_gateway} if modelo_gateway else {}
         central.registrar_troca(contexto,texto.strip(),resposta,provedor,chat_id=chat['id'],modelo_ollama=modelo,**extras_registro)
@@ -180,6 +229,14 @@ def executar_acao(acao,obj,contexto,roteador):
 
 
 def _executar_acao(acao,obj,contexto,roteador):
+    if acao=='modelos_testar':
+        if obj.get('confirmacao')!='TESTAR MODELOS':
+            raise ValueError('Confirme TESTAR MODELOS; será feita uma consulta por modelo Ollama registrado.')
+        progresso=obj.get('_progresso_modelos')
+        if progresso is not None and not callable(progresso):
+            raise ValueError('Progresso dos testes inválido.')
+        from bateria_modelos import testar_catalogo, texto_resultado
+        return texto_resultado(testar_catalogo(roteador,progresso=progresso))
     if acao in ('chat_modelo_9router','modelo_testar_9router'):
         from roteador_9router import validar_modelo,listar_modelos
         teste=acao=='modelo_testar_9router'
@@ -255,6 +312,8 @@ def _executar_acao(acao,obj,contexto,roteador):
         catalogo=roteador.catalogo_ollama()
         if not catalogo.get('habilitado'):raise ValueError('Habilite a integração Ollama antes de ativar a equipe.')
         modelos=list(dict.fromkeys(m['nome'] for m in catalogo['modelos']))
+        from alternativa_27b import selecionar as selecionar_alternativa
+        modelos,aviso_alternativa=selecionar_alternativa(modelos,catalogo['modelos'])
         from conversa_equipe import MAX_MODELOS_COOPERATIVA,MAX_MODELOS_PARALELA
         limite=MAX_MODELOS_COOPERATIVA if modo=='cooperativa' else MAX_MODELOS_PARALELA
         if not 1<=len(modelos)<=limite:raise ValueError('O modo '+modo+' aceita de um a '+str(limite)+' modelos. Use cooperação ou escolha uma composição menor.')
@@ -262,9 +321,13 @@ def _executar_acao(acao,obj,contexto,roteador):
             equipe_modelos=modelos,equipe_paralela=True,equipe_modo=modo)
         nuvem=any(m.get('nuvem') for m in catalogo['modelos'])
         return ('Equipe '+modo+' ativada nesta conversa: '+', '.join(modelos)+
-            ('. Cada mensagem que precisar de IA consulta uma vez cada modelo, um por vez, e pode fazer uma síntese adicional. O perfil CPU atual é preservado. '
-             if modo=='cooperativa' else '. Cada mensagem de conversa consulta uma vez cada modelo simultaneamente. O Ollama pode enfileirar conforme a memória. ')+
+            ('. Cada mensagem que precisar de IA consulta uma vez cada modelo, um por vez, e pode fazer uma síntese adicional. O perfil de execução atual é preservado. '
+             if modo=='cooperativa' else
+             '. Os participantes recebem a mesma mensagem, um por vez, no perfil compacto atual. '
+             if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold() in ('cpu','equilibrado') else
+             '. Cada mensagem de conversa consulta uma vez cada modelo simultaneamente. O Ollama pode enfileirar conforme a memória. ')+
             'Nenhum modelo foi baixado ou consultado nesta ativação.'+
+            (' '+aviso_alternativa if aviso_alternativa else '')+
             (' Há modelos cloud: as mensagens usam a conta, internet e cota Ollama.' if nuvem else ''))
     if acao=='modelo_padrao':
         from configurar_ia_local import configurar_modelo

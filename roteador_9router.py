@@ -129,6 +129,15 @@ def configurado():
         raise
 
 
+def perfil_local_permitido(url=None):
+    """No fluxo F, um serviço antigo em C não recebe novas consultas/escritas."""
+    import instalacao_em_f as politica
+    if not politica.ativo():return True
+    from integracoes_9stack import servico_f_comprovado
+    return (validar_url(url or os.getenv('NINE_ROUTER_URL',URL_PADRAO))==URL_PADRAO
+            and servico_f_comprovado('9router'))
+
+
 def diagnostico_local():
     """Inspeção de opções em memória; nunca lê .env ou faz consulta ao serviço."""
     try:
@@ -183,6 +192,8 @@ def _requisicao(cfg,recurso,*,payload=None,timeout=None):
     """Uma tentativa limitada; não usa os proxies do ambiente nem redireciona."""
     from multi_ia import FalhaAPI,analisar_erro
     if recurso not in ('/models','/chat/completions'):raise _falha('Recurso 9Router não permitido.')
+    if not perfil_local_permitido(cfg.url):
+        raise _falha('O perfil do 9Router em F: não foi comprovado. Confira a preparação local; nenhuma consulta ou credencial foi enviada ao serviço antigo.')
     # A listagem explícita prepara a seleção antes de habilitar a geração.
     if not cfg.habilitado and recurso!='/models':
         raise _falha('A integração 9Router está desabilitada. Ative-a após configurar o serviço e revisar o envio de mensagens.')

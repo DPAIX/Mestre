@@ -29,9 +29,13 @@ from reinicio_seguro import preparar_reinicio_assistente, reiniciar_windows, can
 import colaboracao_chats as CENTRAL
 import servicos_chat as SERVICOS
 from idempotencia_painel import ControleAcoes,FalhaControle
+from saude_telegram import MonitorTelegram
+from esclarecimento_conversa import GerenciadorEsclarecimentos
 
 ROTEADOR=Roteador()
 BOT=None
+SAUDE_TELEGRAM=MonitorTelegram()
+ESCLARECIMENTOS=GerenciadorEsclarecimentos()
 PENDENTES={}
 POMODOROS_ATIVOS=set()
 PEND_LOCK=threading.RLock()
@@ -39,7 +43,7 @@ TOKEN_PAINEL=secrets.token_urlsafe(32)
 CONFIRMACOES_WINDOWS={}
 SAIDA_AGENDADA=threading.Event()
 PEDIDOS_PAINEL={}
-LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda','agentes','memoria','configuracao'}
+LEITURAS_NATURAIS={'status','rotina','financas','kanban','robotask','agenda','agentes','memoria','configuracao','modelos'}
 CONTROLE_PAINEL=ControleAcoes()
 
 
@@ -134,13 +138,13 @@ def texto_logs_resumo(eventos):
 def mostrar_rotina():
     tarefas=vida().get('rotina',[])
     if not tarefas:return 'Nenhuma tarefa cadastrada.'
-    return '📅 Rotina FURG\n'+ '\n'.join(f"{'✅' if t.get('status')=='Concluído' else '▫️'} {t.get('id','?')} | {t.get('dia','')} {t.get('horario','')}–{t.get('fim','')} | {t.get('atividade','')}" for t in tarefas[:30])+'\nUse /concluir r1.'
+    return '📅 Rotina FURG\n'+ '\n'.join(f"{'✅' if t.get('status')=='Concluído' else '▫️'} {t.get('id','?')} | {t.get('dia','')} {t.get('horario','')}–{t.get('fim','')} | {t.get('atividade','')}" for t in tarefas[:30])+'\nPara concluir, diga “conclua r1”, usando o identificador da atividade.'
 
 def mostrar_financeiro():
     f=vida().get('financeiro',{})
     return (f"💰 Saldo registrado: R$ {float(f.get('saldo',0)):.2f}\n"
             f"RU: R$ {float(f.get('custo_unitario_ru',6)):.2f}/refeição (custo armazenado).\n"
-            "/gasto 15,50 almoço | /entrada 50 devolução | /ru 10 (simulação)")
+            'Diga “gastei 15,50 com almoço” ou “recebi 50 de reembolso”.')
 
 def mostrar_agenda():
     from agenda_google import proximos_eventos
@@ -158,7 +162,7 @@ def mostrar_agenda():
 def mostrar_kanban():
     k=vida().get('kanban',{})
     nomes={'A_Fazer':'A fazer','Em_Andamento':'Em andamento','Concluido':'Concluído'}
-    return '📋 Kanban\n'+'\n'.join(f"{nomes[ch]}: {len(k.get(ch,[]))}\n"+'\n'.join('• '+str(v)[:95] for v in k.get(ch,[])[:5]) for ch in nomes)+ '\nUse /tarefa Descrição para acrescentar.'
+    return '📋 Kanban\n'+'\n'.join(f"{nomes[ch]}: {len(k.get(ch,[]))}\n"+'\n'.join('• '+str(v)[:95] for v in k.get(ch,[])[:5]) for ch in nomes)+ '\nDiga “adicione tarefa”, seguido da descrição, para acrescentar.'
 
 def mostrar_ias():
     status=ROTEADOR.status()
@@ -177,16 +181,19 @@ def mostrar_ias():
                 estado=f'última tentativa: {causa}'+(f' (HTTP {codigo})' if codigo else '')+'; nova consulta liberada, recuperação ainda não verificada'
         linhas.append('• '+nome+': '+estado)
     linhas += ['Modelo Gemini configurado: '+os.getenv('GEMINI_MODEL','gemini-3.8-flash'),
-               'Use /ia para uma pergunta e /pesquisar para pesquisa web.',
+               'Envie sua pergunta normalmente ou diga “pesquise”, seguido do assunto.',
                '«Não testado» não confirma conectividade ou saldo. /verificar examina dependências sem gastar créditos.']
     return '\n'.join(linhas)
 
 def mostrar_status():
     s=resumo_status();r=ROTEADOR.status()
+    telegram=SAUDE_TELEGRAM.snapshot()
+    idade=telegram['ultima_consulta_ha_s']
+    recebimento=telegram['detalhe']+(f' Última consulta bem-sucedida há {idade}s.' if idade is not None else '')
     return (f"📊 PC: {s['disco_livre_mb']} MiB livres | CPU: {s['cpu_percentual'] if s['cpu_percentual'] is not None else 'N/D'}% | RAM: {s['ram_percentual'] if s['ram_percentual'] is not None else 'N/D'}%\n📅 Rotina: {s['concluidas']}/{s['total_tarefas']}\n"
             f"💧 Água: {s['agua']} | 🤖 RoboTask: {s['robotask_total']} tarefas\n"
-            f"🧠 Comandos registrados: {s['comandos']}\n🌐 APIs: "+', '.join(k+' '+v for k,v in r.items())+
-            '\nStatus não verificado = nenhuma consulta em tempo real foi feita.')
+            f"🧠 Comandos registrados: {s['comandos']}\n📡 Telegram: {recebimento}\n🌐 APIs: "+', '.join(k+' '+v for k,v in r.items())+
+            '\nAPIs de IA: esta leitura usa o estado local, sem novas consultas aos provedores.')
 
 def interpretar_comando(texto,contexto=None):
     """Usado também no painel local; não executa shell nem mudanças de código."""
@@ -213,7 +220,7 @@ def interpretar_comando(texto,contexto=None):
         return f'🤖 {prov}:\n'+resposta
     except FalhaAPI as e:
         return ('⚠️ Não consegui responder pela API neste momento. '+str(e)+
-                '\nComandos locais continuam disponíveis: /status, /rotina, /reparar, /financas e /robotask.')
+                '\nPosso mostrar seu status, rotina, saldo e catálogo RoboTask por mensagens comuns.')
 
 
 def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
@@ -254,6 +261,34 @@ def executar_plano_natural(plano,contexto,chat_id=None,telegram_chat=None):
         atual=CENTRAL.obter_chat_ativo(contexto)
         resultado=SERVICOS.executar_acao('chat_equipe',{'id':atual['id'],'ativo':campos['modo']!='individual',
             'modo':'cooperativa' if campos['modo']=='individual' else campos['modo']},contexto,ROTEADOR)
+    elif acao=='modelos':
+        catalogo=ROTEADOR.catalogo_ollama()
+        nomes=[item['nome'] for item in catalogo['modelos']]
+        resultado='Modelos disponíveis no Ollama: '+(', '.join(nomes[:60]) or 'nenhum')+'.'
+        resultado+=' Somente o catálogo foi consultado; geração não testada.'
+    elif acao=='modelo_conversa':
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        resultado=SERVICOS.executar_acao('chat_modelo',{'id':atual['id'],'modelo':campos['modelo']},contexto,ROTEADOR)
+        CENTRAL.configurar_chat(contexto,atual['id'],modo_conversa=True)
+        resultado+=' Esse modelo individual será usado somente nesta conversa. Nenhuma geração foi enviada.'
+    elif acao=='provedor_conversa':
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        resultado=SERVICOS.executar_acao('chat_provedor',{'id':atual['id'],'provedor':campos['provedor']},contexto,ROTEADOR)
+        CENTRAL.configurar_chat(contexto,atual['id'],modo_conversa=True)
+        resultado+=' A escolha vale somente para esta conversa. Nenhuma geração foi enviada.'
+    elif acao=='modelos_testar':
+        opcoes={'confirmacao':'TESTAR MODELOS'}
+        if telegram_chat is not None:
+            BOT.send_message(telegram_chat,'Vou testar os modelos selecionados, um por vez. Aguarde o relatório; não é necessário reenviar o pedido.')
+            def progresso_modelos(evento):
+                if not isinstance(evento,dict):return
+                modelo=evento.get('modelo');indice=evento.get('indice');total=evento.get('total')
+                if (not isinstance(modelo,str) or type(indice) is not int or type(total) is not int
+                        or not 1<=indice<=total<=32):return
+                BOT.send_message(telegram_chat,'Testando modelo '+str(redigir(modelo))[:200]+
+                    f' ({indice}/{total}). Aguarde o relatório antes de enviar outro teste.')
+            opcoes['_progresso_modelos']=progresso_modelos
+        resultado=SERVICOS.executar_acao('modelos_testar',opcoes,contexto,ROTEADOR)
     elif acao in ('memoria','memoria_salvar','memoria_remover'):
         from memoria_assistente import contexto_chat,listar_notas,salvar_nota,remover_nota
         atual=CENTRAL.obter_chat_ativo(contexto)
@@ -333,9 +368,29 @@ def preparar_pedido_natural(texto,contexto,*,progresso=None,parcial=None):
     return {'mensagem':resultado['texto'],'plano':plano,'chat_id':resultado['chat_id']}
 
 
-def responder_natural_telegram(m,texto):
+def responder_natural_telegram(m,texto,*,consulta_explicita=False):
+    if not autenticado(m.from_user.id):return
     contexto=contexto_mensagem(m)
     chat=CENTRAL.obter_chat_ativo(contexto)
+    with PEND_LOCK:
+        esclarecimento=ESCLARECIMENTOS.processar(texto,contexto=contexto,
+            usuario=m.from_user.id,chat_id=chat['id'])
+        if esclarecimento['estado']=='pergunta':
+            # A resposta seguinte pertence à pergunta que vamos apresentar.
+            # Ela não pode confirmar uma ação anterior, nem pelo botão antigo.
+            for token,pendente in list(PENDENTES.items()):
+                if (pendente['acao']=='pedido_natural' and pendente['user']==m.from_user.id
+                        and pendente['chat']==m.chat.id
+                        and pendente.get('dados',{}).get('contexto')==contexto):
+                    PENDENTES.pop(token,None)
+    if esclarecimento['estado'] in ('pergunta','cancelado'):
+        enviar_texto_grande(m.chat.id,esclarecimento['texto'])
+        return
+    if esclarecimento['estado']=='nao_tratado' and not chat.get('modo_conversa') and not consulta_explicita:
+        from interpretacao_natural import interpretar_local
+        if classificar_texto(texto)=='conversa' and interpretar_local(texto) is None:
+            BOT.send_message(m.chat.id,'Conversa pausada neste chat. Diga “volte a conversar” para retomar. Os pedidos locais continuam disponíveis.')
+            return
     aviso=[None]
     parcial_enviada=[False]
     def progresso(evento):
@@ -360,7 +415,16 @@ def responder_natural_telegram(m,texto):
             BOT.send_message(m.chat.id,mensagem)
         except Exception:pass
     informar=bool(chat.get('equipe_politica','automatica')=='automatica' or (chat.get('equipe_paralela') and chat.get('equipe_modo')=='cooperativa'))
-    try:resultado=preparar_pedido_natural(texto,contexto,**({'progresso':progresso,'parcial':parcial} if informar else {}))
+    try:
+        if esclarecimento['estado']=='plano':
+            plano=esclarecimento['plano']
+            resultado={'mensagem':esclarecimento['texto'],'texto':esclarecimento['texto'],
+                       'plano':plano,'chat_id':chat['id']}
+            if plano['acao'] in LEITURAS_NATURAIS:
+                resultado={**executar_plano_natural(plano,contexto,chat['id']),
+                           'plano':None,'chat_id':chat['id']}
+        else:
+            resultado=preparar_pedido_natural(texto,contexto,**({'progresso':progresso,'parcial':parcial} if informar else {}))
     finally:
         if aviso[0] is not None:
             try:BOT.edit_message_text('👥 Consulta da equipe encerrada. Confira o resultado abaixo.',chat_id=m.chat.id,message_id=aviso[0].message_id)
@@ -373,19 +437,33 @@ def responder_natural_telegram(m,texto):
 
 
 def confirmar_pedido_por_texto(m,texto):
-    normal=texto.strip().casefold().rstrip('.!')
-    if normal not in ('sim','confirmo','pode executar','execute','cancelar','cancele'):return False
+    # A fala transcrita costuma conter vírgulas ou pontuação final. Aceitar
+    # somente respostas inteiras evita confirmar uma frase que contém outro
+    # pedido, uma negação ou uma citação.
+    normal=' '.join(re.sub(r'[,;:]',' ',texto.strip().casefold().rstrip('.!')).split())
+    cancelar={'cancelar','cancele','cancela','não','nao','não execute','nao execute'}
+    confirmar={'sim','confirmo','pode executar','execute','sim pode executar','pode fazer'}
+    if normal not in confirmar|cancelar:return False
+    if not autenticado(m.from_user.id):return False
     contexto=contexto_mensagem(m)
     with PEND_LOCK:
-        candidatos=[(token,pend) for token,pend in PENDENTES.items()
+        agora=time.monotonic()
+        origem=[(token,pend) for token,pend in PENDENTES.items()
                     if pend['acao']=='pedido_natural' and pend['user']==m.from_user.id and pend['chat']==m.chat.id
-                    and pend.get('dados',{}).get('contexto')==contexto and time.monotonic()<=pend['expira']]
-        if not candidatos:return False
+                    and pend.get('dados',{}).get('contexto')==contexto]
+        expirados=[token for token,pend in origem if agora>pend['expira']]
+        for token in expirados:PENDENTES.pop(token,None)
+        candidatos=[(token,pend) for token,pend in origem if agora<=pend['expira']]
         if len(candidatos)==1:
             token,pend=candidatos[0];PENDENTES.pop(token)
+    if not candidatos:
+        if expirados:
+            BOT.send_message(m.chat.id,'O prazo de confirmação terminou. Envie o pedido novamente para preparar outra confirmação. Nenhuma ação foi executada.')
+            return True
+        return False
     if len(candidatos)>1:
         BOT.send_message(m.chat.id,'Há mais de um pedido pendente. Use o botão do pedido que deseja confirmar ou cancelar.');return True
-    if normal in ('cancelar','cancele'):BOT.send_message(m.chat.id,'Pedido cancelado. Nenhuma ação foi executada.');return True
+    if normal in cancelar:BOT.send_message(m.chat.id,'Pedido cancelado. Nenhuma ação foi executada.');return True
     dados=pend['dados'];res=executar_plano_natural(dados['plano'],contexto,dados['chat_id'],m.chat.id)
     enviar_texto_grande(m.chat.id,res['mensagem']);return True
 
@@ -455,11 +533,13 @@ def registrar_pedido_painel(resultado):
     return resultado
 
 def mensagem_ajuda():
-    return ('🤖 MeuControlePC v2.11.3 — converse por mensagens comuns\n'
+    return ('🤖 MeuControlePC v2.12.4 — converse por mensagens comuns\n'
             'Escreva o que precisa: posso conversar, consultar seus dados e preparar ações do assistente.\n'
-            'Equipe de modelos e transcrição local são o padrão. Basta enviar texto ou áudio.\n'
+            'Basta enviar texto ou áudio. Se faltar um detalhe de um pedido, vou perguntar antes da confirmação.\n'
             'Exemplos: mostre minha rotina; abra o VS Code; gastei 15,50 com almoço; agende estudar na sexta às 14:00.\n'
-            'Pedidos de alteração mostram uma confirmação. Você pode responder sim/cancele ou usar os botões.\n'
+            'Você pode pedir “use todos os modelos”, “mostre os modelos disponíveis” ou “teste todos os modelos”.\n'
+            'Pedidos de alteração mostram uma confirmação. Você pode responder sim/cancele por texto ou áudio, ou usar os botões.\n'
+            'Os comandos antigos abaixo continuam disponíveis, mas não são necessários para conversar.\n'
             '/status /rotina /concluir r1 /agua /financas /ru 5\n'
             '/gasto 12,50 almoço | /entrada 30 reembolso\n'
             '/kanban /tarefa Texto da tarefa /pomodoro\n'
@@ -518,7 +598,7 @@ class ServidorPainel(ThreadingHTTPServer):
         finally:self._vagas.release()
 
 class PainelHandler(BaseHTTPRequestHandler):
-    server_version='MeuControlePC/2.11.3'
+    server_version='MeuControlePC/2.12.4'
     timeout_conexao=10
     def setup(self):
         super().setup()
@@ -605,7 +685,7 @@ class PainelHandler(BaseHTTPRequestHandler):
                 dados_vida=vida()
                 dados_robotask=ler_json('robotask_conhecimento.json',{})
                 estado={'vida':dados_vida,'resumo':resumo_status(dados_vida=dados_vida,dados_robotask=dados_robotask),
-                         'provedores':ROTEADOR.status(),
+                         'provedores':ROTEADOR.status(),'telegram':SAUDE_TELEGRAM.snapshot(),
                          'logs':ler_json('log_acoes_e_erros.json',[])[-20:],
                          'robotask':dados_robotask.get('tarefas',[])[:100],
                          'autoanalise':ler_json('ultima_autoanalise.json',{}),
@@ -1013,7 +1093,9 @@ def tratar_comandos_novos(m,chave,args,contexto):
             linhas.append('• '+item['nome']+' | '+item.get('familia','')+(' — nuvem (conta, internet e cota)' if item['nuvem'] else ' — local'))
         if not catalogo['modelos']:linhas.append('Nenhum modelo registrado. Confira ollama list no PC.')
         linhas.append('Padrão: '+catalogo['padrao']+'. Integração '+('habilitada.' if catalogo['habilitado'] else 'desabilitada; execute configurar_ia_local.bat.'))
-        linhas.append('Perfil de execução: '+('CPU compacto.' if os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()=='cpu' else 'padrão do serviço.'))
+        perfil=os.getenv('OLLAMA_PERFIL','padrao').strip().casefold()
+        linhas.append('Perfil de execução: '+({'cpu':'CPU compacto.',
+            'equilibrado':'equilibrado; GPU/CPU escolhidas pelo Ollama, contexto curto e equipe sequencial.'}.get(perfil,'padrão do serviço.')))
         linhas.extend(['/chat modelo NOME seleciona para esta conversa. /modelos padrao NOME define o padrão do Ollama.',
                        'Somente catálogo consultado; a geração de respostas não foi testada.'])
         enviar_texto_grande(chat,'\n'.join(linhas))
@@ -1121,10 +1203,15 @@ def importar_documento(m):
         registrar('importar_contribuicao','falha',str(exc));BOT.reply_to(m,'Não foi possível importar o arquivo; confira o formato e os logs.')
 
 
-def tratar_pedido(m):
+def tratar_pedido(m,*,texto=None):
     chat=m.chat.id; usuario=m.from_user.id
     contexto=contexto_mensagem(m)
-    texto=(m.text or '').strip()
+    # Texto digitado e áudio transcrito passam pela mesma autorização,
+    # confirmação e seleção de conversa. A mensagem Telegram original mantém
+    # o proprietário, o chat e o tópico; a transcrição não cria outra origem.
+    texto=(getattr(m,'text',None) or '') if texto is None else texto
+    if not isinstance(texto,str):raise ValueError('Envie texto ou uma mensagem de voz.')
+    texto=texto.strip()
     if texto.startswith('/id'):
         BOT.reply_to(m,f'Seu ID de usuário Telegram é {usuario}. Acrescente esse número a TELEGRAM_ALLOWED_USER_IDS no .env.')
         return
@@ -1132,6 +1219,13 @@ def tratar_pedido(m):
         BOT.reply_to(m,'⛔ Acesso negado. Use /id e configure o seu identificador no .env do computador.')
         return
     if confirmar_pedido_por_texto(m,texto):return
+    retomar=' '.join(texto.casefold().rstrip('.!?').split())
+    if retomar in ('volte a conversar','voltar a conversar','retome a conversa',
+                   'retomar conversa','pode conversar normalmente','continue conversando'):
+        atual=CENTRAL.obter_chat_ativo(contexto)
+        CENTRAL.configurar_chat(contexto,atual['id'],modo_conversa=True)
+        BOT.send_message(chat,'Conversa retomada. Pode enviar seu pedido por texto ou áudio.')
+        return
     if texto==MENU_BOTOES[17]:return responder_natural_telegram(m,'configure o assistente')
     if texto==MENU_BOTOES[18]:return tratar_comandos_novos(m,'/integracoes','',contexto)
     if texto==MENU_BOTOES[19]:return tratar_comandos_novos(m,'/gemini','',contexto)
@@ -1224,15 +1318,12 @@ def tratar_pedido(m):
     elif chave=='/agenda':BOT.send_message(chat,mostrar_agenda())
     elif chave=='/furg':BOT.send_message(chat,'🎓 https://sistemas.furg.br\n'+mostrar_rotina())
     elif chave in ('/ia','/perguntar'):
-        if args:responder_natural_telegram(m,args)
+        if args:responder_natural_telegram(m,args,consulta_explicita=True)
         else:BOT.send_message(chat,'Pode escrever sua pergunta normalmente. Também entendo pedidos como mostre minha rotina, qual meu saldo e abra o VS Code.')
     elif chave in ('/pesquisar','/exa'):enviar_texto_grande(chat,interpretar_comando('pesquise '+args))
     elif chave=='/scanrt':BOT.send_message(chat,f'🤖 {len(catalogo_robotask())} tarefas catalogadas.')
     else:
-        from interpretacao_natural import interpretar_local
         if texto.startswith('/'):BOT.send_message(chat,'Comando não reconhecido. Use /ajuda ou escreva o que precisa por mensagem comum.')
-        elif (not CENTRAL.obter_chat_ativo(contexto).get('modo_conversa') and classificar_texto(texto)=='conversa' and interpretar_local(texto) is None):
-            BOT.send_message(chat,'Conversa contínua pausada neste chat. Use /chat modo on para retomar ou /ia sua pergunta. Os pedidos locais continuam disponíveis.')
         else:responder_natural_telegram(m,texto)
 
 
@@ -1247,6 +1338,7 @@ def configurar_bot():
     try:import telebot
     except ImportError:raise RuntimeError('Instale as dependências: pip install -r requirements.txt') from None
     BOT=telebot.TeleBot(chave,threaded=True,num_threads=4)
+    SAUDE_TELEGRAM.observar(BOT)
     @BOT.message_handler(content_types=['document'])
     def documento(m):importar_documento(m)
     @BOT.message_handler(content_types=['voice','audio'])
@@ -1269,7 +1361,7 @@ def configurar_bot():
             registrar('voz','falha',str(redigir(erro)))
             BOT.send_message(m.chat.id,'⚠️ Não foi possível obter o áudio do Telegram. Envie texto por enquanto.')
             return
-        try:responder_natural_telegram(m,texto)
+        try:tratar_pedido(m,texto=texto)
         except (ValueError,RuntimeError,FalhaAPI) as erro:
             BOT.send_message(m.chat.id,'⚠️ '+str(redigir(erro)))
     @BOT.message_handler(content_types=['text'])
@@ -1348,7 +1440,7 @@ def main():
     os.environ.setdefault('OLLAMA_HABILITADO','1')
     if not opt.diagnostico:
         from caminhos_instalacao import arquivo_env
-        print('MeuControlePC v2.11.3')
+        print('MeuControlePC v2.12.4')
         print('Código:',BASE)
         print('Configuração:',arquivo_env(BASE))
         print('Dados:',DADOS)
@@ -1372,10 +1464,13 @@ def _executar_instancia(opt):
             raise RuntimeError('Token Telegram ausente ou invalido. Execute configurar_telegram.bat para corrigi-lo.')
         if not validar_ids(os.getenv('TELEGRAM_ALLOWED_USER_IDS','')):
             raise RuntimeError('TELEGRAM_ALLOWED_USER_IDS invalido. Corrija no .env.')
-    servidor=iniciar_painel()
-    print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
+    if opt.somente_painel:SAUDE_TELEGRAM.somente_painel()
+    else:SAUDE_TELEGRAM.iniciar()
+    servidor=None
+    monitor_parada=threading.Event()
     try:
-        monitor_parada=threading.Event()
+        servidor=iniciar_painel()
+        print('Painel: http://127.0.0.1:'+os.getenv('PAINEL_PORTA','8765'))
         if os.name=='nt':threading.Thread(target=preparar_ia_em_segundo_plano,daemon=True).start()
         threading.Thread(target=executar_agendador,args=(monitor_parada,),kwargs={'obter_estado_provedores':ROTEADOR.estado_local},daemon=True).start()
         if opt.somente_painel:
@@ -1392,8 +1487,9 @@ def _executar_instancia(opt):
             print('Bot configurado; aguardando mensagens de proprietários autorizados.')
             bot.infinity_polling(timeout=20,long_polling_timeout=15,skip_pending=True)
     finally:
+        SAUDE_TELEGRAM.encerrar()
         monitor_parada.set()
-        servidor.shutdown();servidor.server_close()
+        if servidor is not None:servidor.shutdown();servidor.server_close()
 
 if __name__=='__main__':
     try:main()

@@ -10,6 +10,7 @@ const {webcrypto}=require('node:crypto');
 const html=fs.readFileSync(path.join(__dirname,'..','painel_rotina.html'),'utf8');
 const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const estado={vida:{rotina:[],kanban:{},habitos_saude:{},financeiro:{}},resumo:{},provedores:{},logs:[],robotask:[],versao_estado:0};
+const telegram={estado:'consultando',detalhe:'A consulta de recebimento respondeu; entrega de respostas não testada.',ultima_consulta_ha_s:4,ultima_falha_ha_s:null,categoria:null,codigo_http:null,falhas_consecutivas:0};
 const resposta=(body,status=200)=>({ok:status<400,status,json:async()=>body});
 function elemento(id=''){
  return {value:'',reportValidity(){return true},id,disabled:false,textContent:'',style:{},dataset:{},children:[],eventos:{},classList:{toggle(){}},
@@ -31,6 +32,83 @@ async function painel({estadoInicial=estado}={}){
  await new Promise(setImmediate);
  return {contexto,obter,executar:codigo=>vm.runInContext(codigo,contexto)};
 }
+
+test('cartão Telegram usa somente a leitura de estado já existente',async()=>{
+ const p=await painel({estadoInicial:{...estado,telegram}}),chamadas=[];
+ assert.equal(p.obter('telegram-saude').dataset.estado,'consultando');
+ assert.equal(p.obter('telegram-estado').textContent,'Consulta ao Telegram confirmada');
+ assert.equal(p.obter('telegram-detalhe').textContent,telegram.detalhe);
+ assert.match(p.obter('telegram-consulta').textContent,/há 4 s/);
+ assert.doesNotMatch(p.obter('rede').textContent,/sincronizados com Telegram/);
+ p.contexto.fetch=async(url,opt)=>{chamadas.push({url,opt});return resposta({...estado,telegram})};
+ await p.executar('atualizar()');
+ assert.deepEqual(chamadas.map(x=>x.url),['/api/estado']);
+ assert.equal(chamadas[0].opt.method,undefined);
+});
+
+test('cartão distingue modo painel, início, falta de confirmação e encerramento',async()=>{
+ const p=await painel();
+ for(const [estadoTelegram,titulo] of Object.entries({nao_iniciado:'Recebimento não iniciado',somente_painel:'Modo somente painel',iniciando:'Iniciando recebimento',sem_confirmacao_recente:'Sem confirmação recente',encerrado:'Recebimento encerrado'})){
+  p.contexto.saude={...telegram,estado:estadoTelegram,ultima_consulta_ha_s:null,detalhe:'Estado observado nesta sessão.'};
+  p.executar('renderTelegram(saude)');
+  assert.equal(p.obter('telegram-saude').dataset.estado,estadoTelegram);
+  assert.equal(p.obter('telegram-estado').textContent,titulo);
+  assert.match(p.obter('telegram-consulta').textContent,/Nenhuma consulta concluída/);
+ }
+});
+
+test('cartão preserva orientação de falhas HTTP e de rede sem anunciar entrega',async()=>{
+ const p=await painel();
+ for(const [codigo,categoria,detalhe] of [[401,'autenticacao','Token recusado. Confira a credencial no PC.'],[409,'conflito','Outra instância está consultando mensagens.'],[429,'limite','O Telegram pediu uma pausa antes de nova consulta.'],[null,'rede','A consulta não concluiu por falha de conexão.']]){
+  p.contexto.saude={...telegram,estado:'falha',codigo_http:codigo,categoria,detalhe,ultima_falha_ha_s:1,falhas_consecutivas:2};
+  p.executar('renderTelegram(saude)');
+  assert.equal(p.obter('telegram-saude').dataset.estado,'falha');
+  assert.equal(p.obter('telegram-detalhe').textContent,detalhe);
+  assert.match(p.obter('telegram-consulta').textContent,/2 falha\(s\) consecutiva\(s\)/);
+ }
+});
+
+test('confirmação antiga ou ausente nunca mantém cartão verde',async()=>{
+ const p=await painel();
+ for(const idade of [91,null]){
+  p.contexto.saude={...telegram,ultima_consulta_ha_s:idade};
+  p.executar('renderTelegram(saude)');
+  assert.equal(p.obter('telegram-saude').dataset.estado,'sem_confirmacao_recente');
+  assert.match(p.obter('telegram-detalhe').textContent,/A última confirmação não é recente/);
+ }
+});
+
+test('backend antigo ou saúde inválida mostra estado não informado',async()=>{
+ const p=await painel();
+ assert.equal(p.obter('telegram-estado').textContent,'Não informado');
+ for(const saude of [null,[],{...telegram,estado:'__proto__'},{...telegram,ultima_consulta_ha_s:-1},{...telegram,ultima_falha_ha_s:NaN},{...telegram,falhas_consecutivas:'0'},{...telegram,detalhe:{}}]){
+  p.contexto.saude=saude;p.executar('renderTelegram(saude)');
+  assert.equal(p.obter('telegram-saude').dataset.estado,'nao_informado');
+  assert.match(p.obter('telegram-detalhe').textContent,/Atualize ou reinicie/);
+ }
+});
+
+test('saúde Telegram permanece texto mesmo com conteúdo HTML no detalhe',async()=>{
+ const p=await painel();
+ p.contexto.saude={...telegram,detalhe:'<img src=x onerror=alert(1)>'};
+ p.executar('renderTelegram(saude)');
+ assert.equal(p.obter('telegram-detalhe').textContent,p.contexto.saude.detalhe);
+ p.contexto.saude.detalhe='x'.repeat(700);p.executar('renderTelegram(saude)');
+ assert.equal(p.obter('telegram-detalhe').textContent.length,600);
+});
+
+test('falha na atualização retira confirmação Telegram anterior',async()=>{
+ const p=await painel({estadoInicial:{...estado,telegram}});
+ p.contexto.fetch=async()=>{throw Error('offline')};
+ assert.equal(await p.executar('atualizar()'),false);
+ assert.equal(p.obter('telegram-saude').dataset.estado,'nao_informado');
+ assert.equal(p.obter('telegram-estado').textContent,'Estado desatualizado');
+ assert.match(p.obter('telegram-detalhe').textContent,/conexão do Telegram não está confirmada/);
+ assert.equal(p.obter('telegram-consulta').textContent,'');
+ p.contexto.fetch=async()=>resposta({...estado,telegram});
+ assert.equal(await p.executar('atualizar()'),true);
+ assert.equal(p.obter('telegram-saude').dataset.estado,'consultando');
+});
 
 test('duplo clique aguarda a ação e a atualização, sem repetir escrita',async()=>{
  const p=await painel();let liberarAcao,liberarEstado,posts=0;

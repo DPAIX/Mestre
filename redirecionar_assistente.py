@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import instalacao_em_f as instalacao_f
 
 CODIGO_PADRAO = r'C:\Users\Mestre\Documents\GitHub\Mestre'
 ENV_PADRAO = r'F:\MeuControlePC_v2\.env'
@@ -27,6 +28,14 @@ MODOS = {
 
 class FalhaRedirecionamento(RuntimeError):
     """Erro de configuração sem ler ou expor credenciais."""
+
+
+def codigo_padrao():
+    return str(instalacao_f.raiz()/'aplicativo') if instalacao_f.ativo() else CODIGO_PADRAO
+
+
+def env_padrao():
+    return str(instalacao_f.raiz()/'.env') if instalacao_f.ativo() else ENV_PADRAO
 
 
 def _absoluto(valor, nome):
@@ -69,7 +78,7 @@ def _argumentos_permitidos(modo, argumentos):
             raise FalhaRedirecionamento('Use inicio-automatico --ativar ou --desativar explicitamente.')
     elif modo == 'ollama':
         opcoes = {'--listar': 0, '--detalhes': 1, '--usar-existente': 0,
-                  '--modelo': 1, '--baixar-modelo': 1, '--url': 1,'--perfil-cpu':0,'--perfil-padrao':0}
+                  '--modelo': 1, '--baixar-modelo': 1, '--url': 1,'--perfil-cpu':0,'--perfil-padrao':0,'--perfil-equilibrado':0}
         quantidade_acoes = 0
         indice = 0
         while indice < len(argumentos):
@@ -89,7 +98,7 @@ def _argumentos_permitidos(modo, argumentos):
     return argumentos
 
 
-def plano_execucao(codigo=CODIGO_PADRAO, arquivo_env=ENV_PADRAO, dados=None,
+def plano_execucao(codigo=None, arquivo_env=None, dados=None,
                    python=None, modo='start', argumentos=(), ambiente=None):
     """Planeja uma execução validada sem importar o app nem abrir arquivos privados.
 
@@ -98,8 +107,14 @@ def plano_execucao(codigo=CODIGO_PADRAO, arquivo_env=ENV_PADRAO, dados=None,
     """
     if modo not in MODOS:
         raise FalhaRedirecionamento('Modo de execução não permitido.')
-    codigo = _absoluto(codigo, 'Código')
-    arquivo_env = _absoluto(arquivo_env, 'Arquivo .env')
+    try:
+        codigo = _absoluto(codigo if codigo is not None else codigo_padrao(), 'Código')
+        arquivo_env = _absoluto(arquivo_env if arquivo_env is not None else env_padrao(), 'Arquivo .env')
+        if instalacao_f.ativo():
+            instalacao_f.validar_caminho(codigo)
+            instalacao_f.validar_caminho(arquivo_env)
+    except ValueError:
+        raise FalhaRedirecionamento('No modo F:, código e configuração precisam permanecer na unidade F:.') from None
     if not codigo.is_dir():
         raise FalhaRedirecionamento('A pasta do código atualizado não foi encontrada. Confira --codigo.')
     for nome in FONTES_NECESSARIAS:
@@ -111,6 +126,10 @@ def plano_execucao(codigo=CODIGO_PADRAO, arquivo_env=ENV_PADRAO, dados=None,
         raise FalhaRedirecionamento('O arquivo .env externo não foi encontrado. Confira --env; nenhum arquivo foi criado.')
     explicito = dados is not None
     pasta_dados = _absoluto(dados if explicito else arquivo_env.parent / 'dados', 'Dados')
+    if instalacao_f.ativo():
+        try:instalacao_f.validar_caminho(pasta_dados)
+        except ValueError:
+            raise FalhaRedirecionamento('No modo F:, a pasta de dados precisa permanecer na unidade F:.') from None
     _fora_do_codigo(pasta_dados, codigo, 'A pasta de dados')
     if pasta_dados.exists() and not pasta_dados.is_dir():
         raise FalhaRedirecionamento('O caminho de dados aponta para um arquivo; escolha uma pasta externa.')
@@ -146,6 +165,7 @@ def plano_execucao(codigo=CODIGO_PADRAO, arquivo_env=ENV_PADRAO, dados=None,
     env_filho.pop('PYTHONHOME', None)
     env_filho['MEUCONTROLEPC_ENV'] = str(arquivo_env)
     env_filho['MEUCONTROLEPC_DADOS'] = str(pasta_dados)
+    if instalacao_f.ativo():env_filho.update(instalacao_f.ambiente(arquivo_env.parent))
     return {'modo': modo, 'codigo': codigo, 'arquivo_env': arquivo_env, 'dados': pasta_dados,
             'python': executavel, 'script': script, 'cwd': str(codigo), 'ambiente': env_filho,
             'comando': [str(executavel), str(script), *fixos, *adicionais]}
@@ -153,8 +173,8 @@ def plano_execucao(codigo=CODIGO_PADRAO, arquivo_env=ENV_PADRAO, dados=None,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--codigo', default=CODIGO_PADRAO, help='Pasta absoluta com o código atualizado.')
-    parser.add_argument('--env', dest='arquivo_env', default=ENV_PADRAO, help='Arquivo .env externo existente (somente o caminho).')
+    parser.add_argument('--codigo', help='Pasta absoluta com o código atualizado.')
+    parser.add_argument('--env', dest='arquivo_env', help='Arquivo .env externo existente (somente o caminho).')
     parser.add_argument('--dados', help='Pasta absoluta externa de dados já existentes; padrão: dados junto ao .env.')
     parser.add_argument('--python', help='Interpretador absoluto; padrão: .venv do código, da instalação externa ou Python atual.')
     parser.add_argument('--verificar', action='store_true', help='Mostra apenas caminhos/modo, sem ler .env, iniciar processos ou chamar APIs.')
